@@ -1,5 +1,6 @@
 // Typed fetch client for the Threat Hunt Findings Engine backend.
 import type {
+  CorrelationResult,
   CreateHuntInput,
   CreateKnowledgeInput,
   CreateTenantInput,
@@ -9,6 +10,7 @@ import type {
   Hunt,
   Job,
   KnowledgeDoc,
+  ReportLang,
   Tenant,
 } from "./types";
 
@@ -130,6 +132,44 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ status }),
     }),
+
+  // --- Correlations (Phase 2) ---
+  getCorrelations: (tid: string, hid: string) =>
+    request<CorrelationResult>(`/api/tenants/${tid}/hunts/${hid}/correlations`),
+
+  // --- Report (Phase 2): download the generated DOCX ---
+  downloadReport: async (tid: string, hid: string, lang: ReportLang = "en") => {
+    const path = `/api/tenants/${tid}/hunts/${hid}/report?lang=${lang}`;
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}${path}`, { headers: { Accept: "*/*" } });
+    } catch (e) {
+      throw new ApiError(`Network error contacting ${API_BASE}${path}.`, 0, e);
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      let detail = `Report failed (${res.status})`;
+      try {
+        const j = JSON.parse(text);
+        if (j && typeof j === "object" && "detail" in j) detail = String(j.detail);
+      } catch {
+        /* non-JSON body */
+      }
+      throw new ApiError(detail, res.status, text);
+    }
+    const blob = await res.blob();
+    const disposition = res.headers.get("Content-Disposition") ?? "";
+    const match = /filename="?([^"]+)"?/.exec(disposition);
+    const filename = match?.[1] ?? `lens_report_${hid}_${lang}.docx`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
 };
 
 // Poll a job until it reaches a terminal state.

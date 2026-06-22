@@ -135,11 +135,6 @@ function FindingDetail({
         >
           Reject
         </Button>
-        <span className="ml-auto">
-          <Button variant="ghost" disabled title="Coming in Phase 2">
-            Generate Report (Phase 2)
-          </Button>
-        </span>
       </div>
     </div>
   );

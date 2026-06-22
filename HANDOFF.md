@@ -79,18 +79,22 @@ with validate/reject and an expandable evidence drawer). Typed API client in
 
 ## 5. What to BUILD NEXT (roadmap)
 
-### Phase 2 — Reporting & correlation
-- `services/correlation.py`: cross-dataset entity correlation. Find entities
-  (hosts/users/IPs/hashes) that appear across multiple datasets/findings in a
-  hunt; surface "campaign" candidates. Add a `correlations` table or compute
-  on demand; expose `GET /api/tenants/{tid}/hunts/{hid}/correlations`.
-- `services/report_docx.py`: python-docx report — executive summary, findings
-  table, IOC table, MITRE mapping, per-dataset assessments. Endpoint
-  `GET /api/tenants/{tid}/hunts/{hid}/report` returning the .docx. Support
-  Spanish output (operator writes client reports in Spanish).
-- Frontend: "Generate Report" (currently a Phase-2 placeholder) + a
-  correlations view.
-- Introduce **Alembic** migrations; stop relying on `create_all`.
+### Phase 2 — Reporting & correlation ✅ (built)
+- `services/correlation.py`: cross-dataset entity correlation, computed on
+  demand. Groups hosts/users (from `affected_assets`/`affected_users`) and
+  IP/hash/domain IOCs (classified from finding `evidence`) and surfaces
+  entities spanning ≥2 datasets as "campaign" candidates. Exposed via
+  `GET /api/tenants/{tid}/hunts/{hid}/correlations`. Pure functions, unit-tested.
+- `services/report_docx.py`: python-docx report — title block, executive
+  summary (deterministic counts), per-dataset assessments, findings table +
+  detail blocks, IOC table, MITRE ATT&CK mapping, correlations table.
+  Bilingual (EN/ES) via a label catalogue. Endpoint
+  `GET /api/tenants/{tid}/hunts/{hid}/report?lang=en|es` returns the .docx.
+- Frontend: hunt-level "Generate Report (.docx)" with EN/ES selector +
+  `CorrelationsPanel` (expandable per-entity occurrences).
+- **Alembic** wired (`backend/alembic/`, initial migration `0001`). Dev still
+  auto-creates via `DB_AUTO_CREATE=true`; set false in prod and run
+  `alembic upgrade head`.
 
 ### Phase 3 — Validation workflow & learning
 - Finding approval workflow UI (bulk validate/reject, reviewer notes).

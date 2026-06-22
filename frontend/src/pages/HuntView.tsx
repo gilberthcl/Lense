@@ -1,20 +1,36 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, ApiError } from "../lib/api";
-import type { Hunt, Tenant } from "../lib/types";
+import type { Hunt, ReportLang, Tenant } from "../lib/types";
 import { useToast } from "../components/Toast";
 import { Breadcrumbs } from "../components/Layout";
-import { Badge, Card, Spinner } from "../components/ui";
+import { Badge, Button, Card, Select, Spinner } from "../components/ui";
 import DatasetsPanel from "../components/DatasetsPanel";
 import FindingsPanel from "../components/FindingsPanel";
+import CorrelationsPanel from "../components/CorrelationsPanel";
 
 export default function HuntView() {
   const { tid, hid } = useParams<{ tid: string; hid: string }>();
   const toast = useToast();
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [hunt, setHunt] = useState<Hunt | null>(null);
-  // Bumping this key tells the FindingsPanel to reload (after an analysis run).
+  // Bumping this key tells the Findings/Correlations panels to reload.
   const [findingsKey, setFindingsKey] = useState(0);
+  const [reportLang, setReportLang] = useState<ReportLang>("en");
+  const [downloading, setDownloading] = useState(false);
+
+  const onGenerateReport = async () => {
+    if (!tid || !hid) return;
+    setDownloading(true);
+    try {
+      await api.downloadReport(tid, hid, reportLang);
+      toast.success("Report generated.");
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Report generation failed.");
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   useEffect(() => {
     if (!tid || !hid) return;
@@ -48,6 +64,24 @@ export default function HuntView() {
               {hunt.status}
             </Badge>
           )}
+          <div className="ml-auto flex items-center gap-2">
+            <Select
+              aria-label="Report language"
+              value={reportLang}
+              onChange={(e) => setReportLang(e.target.value as ReportLang)}
+              className="w-auto"
+            >
+              <option value="en">English</option>
+              <option value="es">Español</option>
+            </Select>
+            <Button
+              variant="primary"
+              onClick={onGenerateReport}
+              disabled={downloading || !hunt}
+            >
+              {downloading ? <Spinner /> : "Generate Report (.docx)"}
+            </Button>
+          </div>
         </div>
         {hunt?.objective && (
           <p className="mt-2 max-w-3xl text-sm text-slate-400">{hunt.objective}</p>
@@ -72,6 +106,7 @@ export default function HuntView() {
           onAnalysisComplete={() => setFindingsKey((k) => k + 1)}
         />
         <FindingsPanel tid={tid} hid={hid} reloadKey={findingsKey} />
+        <CorrelationsPanel tid={tid} hid={hid} reloadKey={findingsKey} />
       </div>
     </div>
   );

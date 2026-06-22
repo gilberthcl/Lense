@@ -83,10 +83,23 @@ ollama pull gpt-oss:20b
 ollama pull nomic-embed-text
 ```
 
+## Database migrations (Alembic)
+
+Dev auto-creates tables on startup (`DB_AUTO_CREATE=true`). For production, set
+`DB_AUTO_CREATE=false` and manage the schema with Alembic:
+
+```bash
+cd backend
+alembic upgrade head          # apply migrations
+alembic revision --autogenerate -m "describe change"   # after model changes
+```
+
 ## Roadmap
 
-- **Phase 1 (MVP)** — tenant mgmt, knowledge base upload, CSV upload,
+- **Phase 1 (MVP)** ✅ — tenant mgmt, knowledge base upload, CSV upload,
   single-dataset analysis, finding generation.
-- **Phase 2** — cross-dataset correlation, DOCX reports, IOC tables.
-- **Phase 3** — multi-agent validation, finding approval workflow.
+- **Phase 2** ✅ — cross-dataset correlation, DOCX reports (EN/ES), IOC tables,
+  MITRE mapping, Alembic migrations.
+- **Phase 3** — multi-agent validation, finding approval workflow, KB RAG
+  (`nomic-embed-text` → pgvector).
 - **Phase 4** — hypothesis generation, query generation, threat-intel.

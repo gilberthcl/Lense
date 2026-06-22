@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     secret_key: str = "dev-secret-change-me"
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
     max_upload_bytes: int = 20 * 1024 * 1024  # 20 MB — methodology hard cap
+    # Dev: auto-create tables on startup. Set false in prod and use Alembic.
+    db_auto_create: bool = True
 
     # Ollama (host-local, multi-agent)
     ollama_base_url: str = "http://localhost:11434"

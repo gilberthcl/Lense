@@ -88,6 +88,38 @@ export interface Finding {
   [key: string]: unknown;
 }
 
+// --- Correlations (Phase 2) ---
+export type EntityType = "host" | "user" | "ip" | "hash" | "domain" | string;
+
+export interface CorrelationFindingRef {
+  finding_id?: number;
+  finding_ref?: string;
+  title?: string;
+  category?: FindingCategory;
+  dataset_id?: number;
+  dataset_name?: string | null;
+}
+
+export interface CorrelationEntity {
+  entity_type: EntityType;
+  value: string;
+  dataset_count: number;
+  finding_count: number;
+  datasets: { dataset_id: number; filename?: string | null }[];
+  categories: FindingCategory[];
+  max_category: FindingCategory;
+  findings: CorrelationFindingRef[];
+}
+
+export interface CorrelationResult {
+  hunt_id?: number;
+  entity_count: number;
+  correlations: CorrelationEntity[];
+  iocs: CorrelationEntity[];
+}
+
+export type ReportLang = "en" | "es";
+
 // Request payload helpers
 export interface CreateTenantInput {
   name: string;

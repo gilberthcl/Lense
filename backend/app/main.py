@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from app.api import datasets, findings, hunts, knowledge, tenants
+from app.api import correlations, datasets, findings, hunts, knowledge, reports, tenants
 from app.core.config import settings
 from app.core.db import Base, engine
 import app.models  # noqa: F401 — ensure models are registered on Base
@@ -13,10 +13,12 @@ import app.models  # noqa: F401 — ensure models are registered on Base
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Dev convenience: enable pgvector + create tables. In production use Alembic.
+    # Dev convenience: enable pgvector + create tables. Set DB_AUTO_CREATE=false to
+    # disable and manage the schema with Alembic instead (`alembic upgrade head`).
     with engine.begin() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-    Base.metadata.create_all(bind=engine)
+    if settings.db_auto_create:
+        Base.metadata.create_all(bind=engine)
     yield
 
 
@@ -35,6 +37,8 @@ app.include_router(knowledge.router)
 app.include_router(hunts.router)
 app.include_router(datasets.router)
 app.include_router(findings.router)
+app.include_router(correlations.router)
+app.include_router(reports.router)
 
 
 @app.get("/api/health")
