@@ -11,7 +11,9 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models import AnalysisJob, Dataset, Finding, Hunt, KnowledgeDocument
-from app.services import config_store, csv_loader, findings_engine, knowledge, methodology
+from app.services import (
+    categories, config_store, csv_loader, findings_engine, knowledge, methodology,
+)
 from app.services import ollama_client as ollama
 
 
@@ -143,7 +145,7 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
                     dataset_id=dataset.id,
                     finding_ref=f"F-{i:03d}",
                     title=f.get("title", "Untitled finding")[:400],
-                    category=f.get("category", "unconfirmed"),
+                    category=categories.normalize(f.get("category")),
                     severity=f.get("severity"),
                     confidence=f.get("confidence"),
                     summary=f.get("summary"),

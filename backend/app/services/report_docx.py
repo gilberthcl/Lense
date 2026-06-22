@@ -24,6 +24,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt, RGBColor
 
 from app.services import correlation
+from app.services.categories import CATEGORIES
 
 # ── Bilingual label catalogue ───────────────────────────────────────────────
 LABELS: dict[str, dict[str, str]] = {
@@ -77,8 +78,8 @@ LABELS: dict[str, dict[str, str]] = {
     "findings_col": {"en": "Findings", "es": "Hallazgos"},
 }
 
-CATEGORY_ORDER = ["malicious", "suspicious", "risky", "policy_violation", "unconfirmed", "no_finding"]
-SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"]
+CATEGORY_ORDER = [c["key"] for c in CATEGORIES] + ["no_finding"]
+SEVERITY_ORDER = ["critical", "high", "medium", "low", "info", "informational"]
 
 _HEADER_FILL = "1F2937"  # slate-800-ish header shading
 

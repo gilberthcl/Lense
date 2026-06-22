@@ -1,43 +1,54 @@
-Goal/Purpose
-To provide a succinct conclusion to hunt findings that provides a clear next step for the client, and to standardize the terminology used among hunters in reporting. 
-Example Use case: 
+# FINDING CATEGORIZATION STRUCTURE
 
-[TABLE]
-Outcome | Organizational Policy Requested [Our word bank below]
-Severity | MED-LOW
-Timeframe | Feb 2,2022 – Mar 28, 2022
-Hosts affected | NY-01-L-12o847 
-NY-01-L-167243
-Recommendations | Determine if YandexDisk is approved by the organization, and if security controls are appropriately allocated with all instances of YandexDisk. If not, remediate and engage in DLP measures to control organizational documents within YandexDisk.
-[/TABLE]
+## Goal / Purpose
+Provide a succinct conclusion to hunt findings that gives the client a clear next
+step, and standardize the terminology used among hunters in reporting. Each
+finding is assigned exactly ONE outcome category from the canonical list below.
+Categories are bilingual — use the label matching the hunt's report language.
 
-Outcome Wordbank
+## Example use case
+| Field | Value |
+|---|---|
+| Outcome | Potential Policy Violation Identified |
+| Severity | Medium–Low |
+| Timeframe | Feb 2, 2022 – Mar 28, 2022 |
+| Hosts affected | NY-01-L-12o847, NY-01-L-167243 |
+| Recommendation | Determine if YandexDisk is approved by the organization, and whether security controls are appropriately allocated to all instances. If not, remediate and engage DLP measures to control organizational documents within YandexDisk. |
 
-[TABLE]
-Outcome / Identified | When Used | Example(s)
-Malicious Activity Identified
+## Canonical outcome categories (use exact terminology)
 
-Actividad Maliciosa Identificada | You found bad | Bluecrab, Ransomware artifacts, active netconns to knownbad.
-Suspicious Activity Identified
+1. **Malicious Activity Identified** — *Actividad Maliciosa Identificada*
+   When used: you found bad.
+   Examples: ransomware artifacts, active netconns to known-bad.
 
-Actividad Sospechosa Identificada | Oddness found or bad with low confidence | Netconns tied to low-fidelity IOCs, registry changes to keylogging with no exfil.
-Risky Behavior Identified
+2. **Suspicious Activity Identified** — *Actividad Sospechosa Identificada*
+   When used: oddness found, or bad with low confidence.
+   Examples: netconns tied to low-fidelity IOCs; registry changes for keylogging with no exfil.
 
-Comportamiento de riesgo identificado | Activity or behaviors that could lead to exploitation, but are not inherently suspicious | Stored credentials in cleartext or are publicly available
-Potential Policy Violation Identified
+3. **Risky Behavior Identified** — *Comportamiento de Riesgo Identificado*
+   When used: activity/behaviors that could lead to exploitation but are not inherently suspicious.
+   Examples: credentials stored in cleartext or publicly available.
 
-Posible Violación de Políticas Identificada | Findings that potentially violate acceptable use, organizational policy. | Non-business software (Steam, TorBrowser) run on 20 machines.
-Vulnerable Configuration Identified
+4. **Potential Policy Violation Identified** — *Posible Violación de Políticas Identificada*
+   When used: findings that potentially violate acceptable use / organizational policy.
+   Examples: non-business software (Steam, TorBrowser) run on 20 machines.
 
-Configuración Vulnerable Identificada | You identified a protocol, aspects of a protocol or a configuration option within a tool that requires changing/disabling. | NTP servers pointing to inappropriate locations, obsolete protocols (POP, SMBv1) enabled within the environment. CVE-202X-XXXX is identified, or older software versions running
-New Hunting Opportunity Identified
+5. **Vulnerable Configuration Identified** — *Configuración Vulnerable Identificada*
+   When used: a protocol, aspect of a protocol, or configuration option that requires changing/disabling.
+   Examples: NTP servers pointing to inappropriate locations; obsolete protocols (POP, SMBv1) enabled; a CVE-202X-XXXX identified, or outdated software versions running.
 
-Nueva Oportunidad de ‘Hunt’ Identificada | A new hunt is identified | You find a new hunting opportunity
-Unconfirmed Activity Identified
+6. **New Hunting Opportunity Identified** — *Nueva Oportunidad de 'Hunt' Identificada*
+   When used: a new hunt is identified.
+   Examples: you find a new hunting opportunity.
 
-Actividad No Confirmada Identificada | Activity that is observed that can relate to IOAs, requires client follow up/confirmed to be acceptable | Local Admin account created
-Potential Baseline Activity (Optional, to be used in initial set of Hunts)
+7. **Unconfirmed Activity Identified** — *Actividad No Confirmada Identificada*
+   When used: observed activity that can relate to IOAs and requires client follow-up / confirmation to be acceptable.
+   Examples: local admin account created.
 
-Posible Actividad “Baseline” Identificada (opcional, para usar en investigaciones iniciales) | When finding RMM’s that are not confirmed by client as acceptable within environment | Installing remote access software, where previously unseen in environment; add to summary (explanation)
-[/TABLE]
+8. **Potential Baseline Activity Identified** *(optional, for initial hunts)* — *Posible Actividad "Baseline" Identificada (opcional, para investigaciones iniciales)*
+   When used: RMMs / remote-access tooling not yet confirmed acceptable by the client.
+   Examples: installing remote-access software previously unseen in the environment; add an explanation to the summary.
 
+> Note: "Informational" is a **severity** level (High / Medium / Low / Informational),
+> not an outcome category. Findings that are merely informational should carry the
+> closest applicable outcome above (commonly *Unconfirmed Activity Identified*).

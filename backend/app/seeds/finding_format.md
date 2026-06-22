@@ -28,12 +28,15 @@ Create a descriptive H3 header (###) that clearly identifies the finding topic
 | **Timeframe** | [Date range in YYYY-MM-DD format with UTC timezone] |
 | **Assets Affected** | [Number of endpoints and reference to spreadsheet/subsections] |
 | **Recommendation** | [Numbered list of 2-5 actionable recommendations] |
-**Outcome Categories** (use exact terminology):
+**Outcome Categories** (use exact terminology — see the Finding Categorization config for the full canonical list and definitions):
 - Malicious Activity Identified
 - Suspicious Activity Identified
 - Risky Behavior Identified
 - Potential Policy Violation Identified
-- Informational
+- Vulnerable Configuration Identified
+- New Hunting Opportunity Identified
+- Unconfirmed Activity Identified
+- Potential Baseline Activity Identified
 **Severity Levels**: High, Medium, Low, Informational
 **Recommendation Guidelines**:
 - Always use numbered format (1., 2., 3., etc.) with HTML `<br>` tags between items

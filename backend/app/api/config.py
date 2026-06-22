@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.schemas import ConfigOut, ConfigUpdate
-from app.services import config_store
+from app.services import categories, config_store
 
 router = APIRouter(prefix="/api/config/structured-threat-hunt", tags=["config"])
 
@@ -18,6 +18,12 @@ router = APIRouter(prefix="/api/config/structured-threat-hunt", tags=["config"])
 @router.get("", response_model=list[ConfigOut])
 def list_config(db: Session = Depends(get_db)):
     return config_store.list_configs(db)
+
+
+@router.get("/categories")
+def list_categories():
+    """Canonical finding categories (the machine-usable contract)."""
+    return {"categories": categories.CATEGORIES}
 
 
 @router.put("/{key}", response_model=ConfigOut)

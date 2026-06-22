@@ -1,9 +1,16 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../lib/api";
-import type { ModuleConfig } from "../lib/types";
+import type { CategoryDef, ModuleConfig } from "../lib/types";
 import { useToast } from "../components/Toast";
 import { Breadcrumbs } from "../components/Layout";
-import { Button, Card, PanelHeader, Spinner, Textarea } from "../components/ui";
+import {
+  Button,
+  Card,
+  CategoryBadge,
+  PanelHeader,
+  Spinner,
+  Textarea,
+} from "../components/ui";
 
 const DESCRIPTIONS: Record<string, string> = {
   analysis_instructions:
@@ -77,9 +84,35 @@ function ConfigEditor({ item }: { item: ModuleConfig }) {
   );
 }
 
+function CategoriesReference({ categories }: { categories: CategoryDef[] }) {
+  return (
+    <Card>
+      <PanelHeader
+        title="Finding Categories (canonical)"
+        subtitle="The machine-usable category contract — every finding is assigned one of these."
+      />
+      <div className="grid grid-cols-1 gap-2 p-4 sm:grid-cols-2">
+        {categories.map((c) => (
+          <div
+            key={c.key}
+            className="rounded border border-slate-800 bg-slate-950/40 p-2.5"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <CategoryBadge category={c.key} />
+              <span className="text-xs text-slate-500">{c.label_es}</span>
+            </div>
+            <p className="mt-1 text-xs text-slate-400">{c.definition}</p>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 export default function ConfigPage() {
   const toast = useToast();
   const [items, setItems] = useState<ModuleConfig[] | null>(null);
+  const [categories, setCategories] = useState<CategoryDef[]>([]);
 
   useEffect(() => {
     api
@@ -89,6 +122,10 @@ export default function ConfigPage() {
         toast.error(e.message);
         setItems([]);
       });
+    api
+      .listCategories()
+      .then((r) => setCategories(r.categories))
+      .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -117,6 +154,7 @@ export default function ConfigPage() {
           {items.map((it) => (
             <ConfigEditor key={it.key} item={it} />
           ))}
+          {categories.length > 0 && <CategoriesReference categories={categories} />}
         </div>
       )}
     </div>

@@ -72,6 +72,14 @@ export interface ModuleConfig {
   updated_at: string;
 }
 
+export interface CategoryDef {
+  key: string;
+  label_en: string;
+  label_es: string;
+  definition: string;
+  color: string;
+}
+
 export type DatasetStatus = "uploaded" | "analyzing" | "analyzed" | "error" | string;
 
 export interface Dataset {

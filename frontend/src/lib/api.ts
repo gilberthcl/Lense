@@ -1,5 +1,6 @@
 // Typed fetch client for the Threat Hunt Findings Engine backend.
 import type {
+  CategoryDef,
   CorrelationResult,
   CreateHuntInput,
   CreateKnowledgeInput,
@@ -122,6 +123,10 @@ export const api = {
   // --- Global module configuration (Structured Threat Hunt) ---
   listConfig: () =>
     request<ModuleConfig[]>("/api/config/structured-threat-hunt"),
+  listCategories: () =>
+    request<{ categories: CategoryDef[] }>(
+      "/api/config/structured-threat-hunt/categories",
+    ),
   updateConfig: (key: string, content: string) =>
     request<ModuleConfig>(`/api/config/structured-threat-hunt/${key}`, {
       method: "PUT",

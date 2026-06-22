@@ -149,7 +149,7 @@ const CATEGORY_RULES: { match: string; cls: string }[] = [
 ];
 
 export function CategoryBadge({ category }: { category: FindingCategory }) {
-  const key = String(category).toLowerCase();
+  const key = String(category).toLowerCase().replace(/_/g, " ");
   const cls =
     CATEGORY_RULES.find((r) => key.includes(r.match))?.cls ??
     "bg-slate-800 text-slate-300 border border-slate-700";
