@@ -149,10 +149,25 @@ export const api = {
   // --- Findings ---
   listFindings: (tid: string, hid: string) =>
     request<Finding[]>(`/api/tenants/${tid}/hunts/${hid}/findings`),
-  patchFinding: (tid: string, hid: string, fid: string, status: FindingStatus) =>
+  patchFinding: (
+    tid: string,
+    hid: string,
+    fid: string,
+    body: { status?: FindingStatus; reviewer_notes?: string },
+  ) =>
     request<Finding>(`/api/tenants/${tid}/hunts/${hid}/findings/${fid}`, {
       method: "PATCH",
-      body: JSON.stringify({ status }),
+      body: JSON.stringify(body),
+    }),
+  bulkPatchFindings: (
+    tid: string,
+    hid: string,
+    finding_ids: string[],
+    status: FindingStatus,
+  ) =>
+    request<Finding[]>(`/api/tenants/${tid}/hunts/${hid}/findings`, {
+      method: "PATCH",
+      body: JSON.stringify({ finding_ids: finding_ids.map(Number), status }),
     }),
 
   // --- Correlations (Phase 2) ---

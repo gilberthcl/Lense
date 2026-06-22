@@ -167,6 +167,7 @@ class Finding(Base):
     affected_users: Mapped[dict | None] = mapped_column(JSON)
     recommendations: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default="draft")
+    reviewer_notes: Mapped[str | None] = mapped_column(Text)  # analyst review notes
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     hunt: Mapped["Hunt"] = relationship(back_populates="findings")

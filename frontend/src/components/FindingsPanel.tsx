@@ -10,7 +10,10 @@ import {
   FindingStatusBadge,
   PanelHeader,
   Spinner,
+  Textarea,
 } from "./ui";
+
+type PatchBody = { status?: FindingStatus; reviewer_notes?: string };
 
 function prettyJson(value: unknown): string {
   if (value === null || value === undefined) return "—";
@@ -78,9 +81,11 @@ function FindingDetail({
   patching,
 }: {
   finding: Finding;
-  onPatch: (status: FindingStatus) => void;
+  onPatch: (body: PatchBody) => void;
   patching: boolean;
 }) {
+  const [notes, setNotes] = useState(finding.reviewer_notes ?? "");
+  const notesDirty = notes !== (finding.reviewer_notes ?? "");
   return (
     <div className="space-y-4 border-t border-slate-800 bg-slate-950/60 p-4">
       {finding.summary && (
@@ -120,18 +125,36 @@ function FindingDetail({
         </Field>
       </div>
 
+      <Field label="Reviewer Notes">
+        <Textarea
+          rows={2}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Add review rationale — saved with the finding and fed to the knowledge base on validation."
+        />
+        <div className="mt-2">
+          <Button
+            variant="ghost"
+            disabled={patching || !notesDirty}
+            onClick={() => onPatch({ reviewer_notes: notes })}
+          >
+            Save notes
+          </Button>
+        </div>
+      </Field>
+
       <div className="flex items-center gap-2 pt-1">
         <Button
           variant="success"
           disabled={patching || finding.status === "validated"}
-          onClick={() => onPatch("validated")}
+          onClick={() => onPatch({ status: "validated" })}
         >
           {patching ? <Spinner /> : "Validate"}
         </Button>
         <Button
           variant="danger"
           disabled={patching || finding.status === "rejected"}
-          onClick={() => onPatch("rejected")}
+          onClick={() => onPatch({ status: "rejected" })}
         >
           Reject
         </Button>
@@ -153,11 +176,16 @@ export default function FindingsPanel({
   const [findings, setFindings] = useState<Finding[] | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [patchingId, setPatchingId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const load = () =>
     api
       .listFindings(tid, hid)
-      .then(setFindings)
+      .then((f) => {
+        setFindings(f);
+        setSelected(new Set());
+      })
       .catch((e: ApiError) => {
         toast.error(e.message);
         setFindings([]);
@@ -168,18 +196,50 @@ export default function FindingsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tid, hid, reloadKey]);
 
-  const onPatch = async (finding: Finding, status: FindingStatus) => {
+  const onPatch = async (finding: Finding, body: PatchBody) => {
     setPatchingId(finding.id);
     try {
-      const updated = await api.patchFinding(tid, hid, finding.id, status);
+      const updated = await api.patchFinding(tid, hid, finding.id, body);
       setFindings((prev) =>
         prev ? prev.map((f) => (f.id === finding.id ? { ...f, ...updated } : f)) : prev,
       );
-      toast.success(`Finding ${status}.`);
+      toast.success(body.status ? `Finding ${body.status}.` : "Notes saved.");
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Update failed.");
     } finally {
       setPatchingId(null);
+    }
+  };
+
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const toggleAll = () => {
+    if (!findings) return;
+    setSelected((prev) =>
+      prev.size === findings.length ? new Set() : new Set(findings.map((f) => f.id)),
+    );
+  };
+
+  const bulk = async (status: FindingStatus) => {
+    if (selected.size === 0) return;
+    setBulkBusy(true);
+    try {
+      const updated = await api.bulkPatchFindings(tid, hid, [...selected], status);
+      const byId = new Map(updated.map((u) => [u.id, u]));
+      setFindings((prev) =>
+        prev ? prev.map((f) => (byId.has(f.id) ? { ...f, ...byId.get(f.id)! } : f)) : prev,
+      );
+      toast.success(`${updated.length} finding(s) ${status}.`);
+      setSelected(new Set());
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Bulk update failed.");
+    } finally {
+      setBulkBusy(false);
     }
   };
 
@@ -197,6 +257,21 @@ export default function FindingsPanel({
         }
       />
 
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 bg-slate-950/40 px-4 py-2.5">
+          <span className="text-xs text-slate-400">{selected.size} selected</span>
+          <Button variant="success" disabled={bulkBusy} onClick={() => bulk("validated")}>
+            {bulkBusy ? <Spinner /> : "Validate selected"}
+          </Button>
+          <Button variant="danger" disabled={bulkBusy} onClick={() => bulk("rejected")}>
+            Reject selected
+          </Button>
+          <Button variant="ghost" disabled={bulkBusy} onClick={() => setSelected(new Set())}>
+            Clear
+          </Button>
+        </div>
+      )}
+
       <div className="p-4">
         {findings === null ? (
           <div className="flex items-center gap-2 text-sm text-slate-500">
@@ -211,6 +286,14 @@ export default function FindingsPanel({
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-800 bg-slate-950/40 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <th className="px-3 py-2">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all"
+                      checked={findings.length > 0 && selected.size === findings.length}
+                      onChange={toggleAll}
+                    />
+                  </th>
                   <th className="px-3 py-2 font-medium">Ref</th>
                   <th className="px-3 py-2 font-medium">Title</th>
                   <th className="px-3 py-2 font-medium">Category</th>
@@ -230,6 +313,14 @@ export default function FindingsPanel({
                           open ? "bg-slate-800/40" : ""
                         }`}
                       >
+                        <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${f.finding_ref}`}
+                            checked={selected.has(f.id)}
+                            onChange={() => toggle(f.id)}
+                          />
+                        </td>
                         <td className="px-3 py-2.5 font-mono text-xs text-indigo-300">
                           {f.finding_ref}
                         </td>
@@ -249,11 +340,11 @@ export default function FindingsPanel({
                       </tr>
                       {open && (
                         <tr>
-                          <td colSpan={6} className="p-0">
+                          <td colSpan={7} className="p-0">
                             <FindingDetail
                               finding={f}
                               patching={patchingId === f.id}
-                              onPatch={(status) => onPatch(f, status)}
+                              onPatch={(body) => onPatch(f, body)}
                             />
                           </td>
                         </tr>

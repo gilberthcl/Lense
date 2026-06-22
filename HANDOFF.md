@@ -96,12 +96,19 @@ with validate/reject and an expandable evidence drawer). Typed API client in
   auto-creates via `DB_AUTO_CREATE=true`; set false in prod and run
   `alembic upgrade head`.
 
-### Phase 3 — Validation workflow & learning
-- Finding approval workflow UI (bulk validate/reject, reviewer notes).
-- Implement `services/knowledge.py`: chunk + embed KB docs (`nomic-embed-text`)
-  into `knowledge_chunks` (pgvector) and retrieve relevant context during
-  analysis (RAG) — e.g. inject prior validated findings + approved-software
-  baselines into the Analyst prompt. Keep retrieval tenant-scoped.
+### Phase 3 — Validation workflow & learning ✅ (built)
+- Finding approval workflow: per-finding **reviewer notes**, single PATCH
+  (status and/or notes), and a **bulk** `PATCH .../findings {finding_ids,status}`
+  for validate/reject. Frontend adds row selection, a bulk action bar, and a
+  reviewer-notes field. (`findings.reviewer_notes`, migration `0003`.)
+- `services/knowledge.py` (RAG, "learning without retraining"): chunk + embed
+  KB docs with `nomic-embed-text` into `knowledge_chunks` (pgvector). Validated
+  findings and tenant baselines (approved_software / previous_report /
+  report_standard) are indexed (on knowledge create, and on finding validation).
+  During analysis the engine retrieves the most relevant tenant-scoped chunks for
+  the dataset and injects them into the Analyst's tenant context. STRICTLY
+  tenant-scoped; embedding calls are **fail-open** (indexing/retrieval degrade to
+  no-ops if Ollama is down). Pure chunking logic is unit-tested.
 
 ### Phase 4 — Future agents (separate from this engine)
 Hypothesis generator; multi-platform query generator (CrowdStrike/Splunk/

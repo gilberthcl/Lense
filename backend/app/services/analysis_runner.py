@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models import AnalysisJob, Dataset, Finding, Hunt, KnowledgeDocument
-from app.services import config_store, csv_loader, findings_engine, methodology
+from app.services import config_store, csv_loader, findings_engine, knowledge, methodology
 from app.services import ollama_client as ollama
 
 
@@ -23,6 +23,22 @@ def _tenant_context(db: Session, tenant_id: int) -> str:
         ):
             parts.append(f"[{dt}] {doc.title}\n{doc.content}")
     return "\n\n".join(parts)
+
+
+def _retrieval_query(hunt: Hunt, dataset: Dataset, evidence: dict) -> str:
+    """Build a compact query string to retrieve relevant prior tenant knowledge."""
+    bits = [hunt.name or "", dataset.filename or ""]
+    brief = hunt.methodology_brief or {}
+    if isinstance(brief, dict) and brief.get("hunt_overview"):
+        bits.append(str(brief["hunt_overview"]))
+    schema = evidence.get("schema") or []
+    if schema:
+        bits.append("columns: " + ", ".join(map(str, schema[:25])))
+    for etype in ("hosts", "users", "processes"):
+        vals = (evidence.get("entities") or {}).get(etype) or []
+        if vals:
+            bits.append(f"{etype}: " + ", ".join(map(str, vals[:10])))
+    return "\n".join(b for b in bits if b)[:2000]
 
 
 def _finding_format(db: Session, tenant_id: int) -> str:
@@ -86,8 +102,19 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
         dataset.col_count = evidence["stats"]["col_count"]
         dataset.columns = evidence["schema"]
         dataset.stats = evidence["stats"]
+        job.current_task = "Retrieving prior knowledge"
+        job.progress = 40
+        db.commit()
+        # RAG: retrieve relevant prior validated findings + baselines (fail-open).
+        retrieved = knowledge.retrieve(
+            db, job.tenant_id, _retrieval_query(hunt, dataset, evidence)
+        )
+        tenant_context = "\n\n".join(
+            c for c in (_tenant_context(db, job.tenant_id), knowledge.format_context(retrieved)) if c
+        )
+
         job.current_task = "Running analyst → reviewer → QA"
-        job.progress = 45
+        job.progress = 50
         db.commit()
 
         result = findings_engine.analyze_dataset(
@@ -102,7 +129,7 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
             language=hunt.report_language or "English",
             edr=hunt.edr,
             siem=hunt.siem,
-            tenant_context=_tenant_context(db, job.tenant_id),
+            tenant_context=tenant_context,
         )
 
         job.current_task = "Persisting findings"

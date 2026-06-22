@@ -107,10 +107,17 @@ class FindingOut(ORMModel):
     affected_users: dict | list | None
     recommendations: str | None
     status: str
+    reviewer_notes: str | None
     created_at: datetime
 
 
 class FindingStatusUpdate(BaseModel):
+    status: str | None = None  # validated | rejected | draft
+    reviewer_notes: str | None = None
+
+
+class FindingBulkUpdate(BaseModel):
+    finding_ids: list[int]
     status: str  # validated | rejected | draft
 
 

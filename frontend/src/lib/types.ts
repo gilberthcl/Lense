@@ -119,6 +119,7 @@ export interface Finding {
   affected_users?: unknown;
   recommendations?: unknown;
   status: FindingStatus;
+  reviewer_notes?: string | null;
   [key: string]: unknown;
 }
 
