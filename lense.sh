@@ -320,6 +320,50 @@ cmd_logs() {
   esac
 }
 
+cmd_ollama() {
+  command -v ollama >/dev/null 2>&1 || { err "ollama not found in PATH"; return 1; }
+  case "${1:-status}" in
+    status)
+      say "${bold}Ollama${rst}"
+      if curl -sf -o /dev/null "$OLLAMA_URL/api/tags"; then ok "reachable at $OLLAMA_URL"
+      else warn "not reachable at $OLLAMA_URL"; fi
+      say "  loaded models in memory (ollama ps):"
+      ollama ps 2>/dev/null | sed 's/^/    /'
+      ;;
+    stop|unload)
+      # Unload all loaded models from RAM/VRAM (frees memory; keeps server up).
+      say "${bold}Unloading Ollama models${rst}"
+      local names; names="$(ollama ps 2>/dev/null | awk 'NR>1{print $1}')"
+      if [ -z "$names" ]; then ok "no models currently loaded"; return 0; fi
+      local m; for m in $names; do ollama stop "$m" 2>/dev/null && ok "unloaded $m" || warn "could not unload $m"; done
+      ;;
+    restart|kill)
+      # Kill in-flight generations + the server, then bring it back. Use this
+      # when stuck requests are pegging the machine.
+      say "${bold}Restarting Ollama${rst}"
+      if command -v brew >/dev/null 2>&1 && brew services list 2>/dev/null | grep -q '^ollama'; then
+        brew services restart ollama && { ok "restarted via brew services"; }
+      else
+        pkill -f "ollama serve" 2>/dev/null || true
+        killall Ollama 2>/dev/null || true
+        killall ollama 2>/dev/null || true
+        sleep 2
+        if [ -d "/Applications/Ollama.app" ]; then
+          open -a Ollama && ok "relaunched the Ollama app"
+        else
+          ( nohup ollama serve >/dev/null 2>&1 & ) && ok "started 'ollama serve'"
+        fi
+      fi
+      local i; for i in $(seq 1 30); do
+        curl -sf -o /dev/null "$OLLAMA_URL/api/tags" && { ok "Ollama reachable again"; return 0; }
+        sleep 1
+      done
+      warn "Ollama not reachable yet — give it a few seconds or check the app"
+      ;;
+    *) say "usage: lense ollama [status|stop|restart]" ;;
+  esac
+}
+
 case "${1:-start}" in
   setup|deploy) cmd_setup "${2:-}" ;;
   install)      cmd_install ;;
@@ -330,5 +374,6 @@ case "${1:-start}" in
   status)  cmd_status ;;
   logs)    cmd_logs "${2:-both}" ;;
   pull)    pull_models ;;
-  *) say "usage: lense [setup [--pull-models] | install | start | fresh | stop [--all] | restart | status | logs [backend|frontend] | pull]" ;;
+  ollama)  cmd_ollama "${2:-status}" ;;
+  *) say "usage: lense [setup [--pull-models] | install | start | fresh | stop [--all] | restart | status | logs [backend|frontend] | pull | ollama [status|stop|restart]]" ;;
 esac
