@@ -26,6 +26,7 @@ export default function ClientWizard({
   const [step, setStep] = useState(0);
   const [slugTouched, setSlugTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
   const [f, setF] = useState<Form>({
     name: "",
     slug: "",
@@ -59,6 +60,13 @@ export default function ClientWizard({
     };
     try {
       const created = await api.createTenant(payload);
+      if (logoFile) {
+        try {
+          await api.uploadLogo(String(created.id), logoFile);
+        } catch {
+          toast.error("Client created, but the logo upload failed — add it from Settings.");
+        }
+      }
       toast.success(`Client "${created.name}" created.`);
       onCreated(created);
     } catch (e) {
@@ -232,9 +240,31 @@ export default function ClientWizard({
                 </div>
               ))}
             </dl>
-            <p className="pt-2 text-xs text-slate-500">
-              Logo and contract files can be uploaded from the client's Settings tab after creation.
-            </p>
+            <div className="pt-2">
+              <Label>Client Logo (identifies this client across the platform)</Label>
+              <div className="flex items-center gap-3">
+                {logoFile ? (
+                  <img
+                    src={URL.createObjectURL(logoFile)}
+                    alt=""
+                    className="h-12 w-12 rounded-lg object-cover ring-1 ring-slate-700"
+                  />
+                ) : (
+                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-800 text-[10px] text-slate-500">
+                    No logo
+                  </div>
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setLogoFile(e.target.files?.[0] ?? null)}
+                  className="block text-sm text-slate-400 file:mr-3 file:rounded-md file:border file:border-slate-700 file:bg-slate-800 file:px-3 file:py-1.5 file:text-sm file:text-slate-200 hover:file:bg-slate-700"
+                />
+              </div>
+              <p className="mt-1 text-xs text-slate-600">
+                Optional — you can also add or change it later from the client's Settings tab.
+              </p>
+            </div>
           </div>
         )}
       </div>

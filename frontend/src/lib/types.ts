@@ -187,6 +187,7 @@ export interface AiEngineConfig {
 export interface PlatformConfig {
   platform_name: string;
   default_report_language: string;
+  logo_path?: string | null;
 }
 
 export interface GlobalConfig {

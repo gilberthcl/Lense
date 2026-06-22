@@ -2,10 +2,10 @@ import { useEffect, useState, type ComponentType, type SVGProps } from "react";
 import { NavLink } from "react-router-dom";
 import { api, API_BASE } from "../lib/api";
 import { MODULES } from "../lib/modules";
+import { BrandLogo } from "./BrandLogo";
 import {
   IconClients,
   IconIntel,
-  IconLogo,
   IconReviews,
   IconStructured,
   IconUnstructured,
@@ -60,9 +60,7 @@ export default function Sidebar() {
     <aside className="flex h-full w-64 shrink-0 flex-col border-r border-slate-800/80 bg-slate-900/40">
       {/* Brand */}
       <div className="flex items-center gap-3 px-5 py-5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-500/15 text-indigo-300 ring-1 ring-inset ring-indigo-500/30">
-          <IconLogo width={20} height={20} />
-        </div>
+        <BrandLogo className="h-9 w-9 rounded-lg" />
         <div className="leading-tight">
           <div className="font-mono text-sm font-bold tracking-[0.25em] text-slate-100">
             LENS

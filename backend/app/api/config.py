@@ -6,7 +6,11 @@ Configuration API.
 
 None of this is tenant-scoped — these are platform/service-wide standards.
 """
-from fastapi import APIRouter, Depends, HTTPException
+import re
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -14,6 +18,8 @@ from app.schemas import ConfigOut, ConfigUpdate
 from app.services import categories, config_store, global_config
 
 router = APIRouter(prefix="/api/config", tags=["config"])
+
+UPLOAD_ROOT = Path("uploads")
 
 
 # ── Structured Threat Hunt module config ───────────────────────────────────
@@ -59,3 +65,25 @@ def update_ai_engine(payload: dict, db: Session = Depends(get_db)):
 @router.put("/global/platform")
 def update_platform(payload: dict, db: Session = Depends(get_db)):
     return global_config.update_platform(db, payload)
+
+
+# ── Platform logo ──────────────────────────────────────────────────────────
+@router.post("/platform/logo")
+async def upload_platform_logo(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    data = await file.read()
+    if len(data) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Logo exceeds 5 MB")
+    dest_dir = UPLOAD_ROOT / "platform"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", file.filename or "logo")
+    dest = dest_dir / f"logo_{safe}"
+    dest.write_bytes(data)
+    return global_config.set_platform_logo(db, str(dest))
+
+
+@router.get("/platform/logo")
+def get_platform_logo(db: Session = Depends(get_db)):
+    path = global_config.get_platform(db).get("logo_path")
+    if not path or not Path(path).exists():
+        raise HTTPException(status_code=404, detail="No platform logo")
+    return FileResponse(path)

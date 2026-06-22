@@ -39,7 +39,11 @@ def ai_defaults() -> dict:
 
 
 def platform_defaults() -> dict:
-    return {"platform_name": "LENS", "default_report_language": "English"}
+    return {
+        "platform_name": "LENS",
+        "default_report_language": "English",
+        "logo_path": None,
+    }
 
 
 def _read(db: Session, key: str, defaults: dict) -> dict:
@@ -100,9 +104,16 @@ def update_ai(db: Session, patch: dict) -> dict:
 
 def update_platform(db: Session, patch: dict) -> dict:
     data = get_platform(db)
-    for k in platform_defaults():
+    for k in ("platform_name", "default_report_language"):
         if k in patch and patch[k] is not None:
             data[k] = patch[k]
+    _write(db, PLATFORM_KEY, "Platform", data)
+    return data
+
+
+def set_platform_logo(db: Session, path: str) -> dict:
+    data = get_platform(db)
+    data["logo_path"] = path
     _write(db, PLATFORM_KEY, "Platform", data)
     return data
 

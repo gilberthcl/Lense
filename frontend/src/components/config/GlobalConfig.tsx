@@ -1,8 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../../lib/api";
 import type { AiEngineConfig, GlobalConfig, PlatformConfig } from "../../lib/types";
 import { useToast } from "../Toast";
+import { BrandLogo } from "../BrandLogo";
 import { Button, Card, Input, Label, PanelHeader, Select, Spinner } from "../ui";
+
+const PIN_LEN = 6;
 
 const AI_FIELDS: { key: keyof AiEngineConfig; label: string; hint?: string }[] = [
   { key: "base_url", label: "Ollama Base URL", hint: "Local endpoint — never a cloud host" },
@@ -19,6 +22,13 @@ export default function GlobalConfig() {
   const [platform, setPlatform] = useState<PlatformConfig | null>(null);
   const [savingAi, setSavingAi] = useState(false);
   const [savingPlatform, setSavingPlatform] = useState(false);
+  const [logoVer, setLogoVer] = useState(0);
+  const logoRef = useRef<HTMLInputElement>(null);
+
+  // Change-PIN state
+  const [curPin, setCurPin] = useState("");
+  const [newPin, setNewPin] = useState("");
+  const [changingPin, setChangingPin] = useState(false);
 
   useEffect(() => {
     api
@@ -60,6 +70,33 @@ export default function GlobalConfig() {
     }
   };
 
+  const uploadLogo = async (file?: File) => {
+    if (!file) return;
+    try {
+      await api.uploadPlatformLogo(file);
+      setLogoVer((v) => v + 1);
+      toast.success("Platform logo updated. It appears across the platform.");
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Logo upload failed.");
+    }
+  };
+
+  const changePin = async () => {
+    if (curPin.length !== PIN_LEN || newPin.length !== PIN_LEN)
+      return toast.error(`PINs must be exactly ${PIN_LEN} characters.`);
+    setChangingPin(true);
+    try {
+      await api.authChange(curPin, newPin);
+      setCurPin("");
+      setNewPin("");
+      toast.success("Access PIN changed.");
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Could not change PIN.");
+    } finally {
+      setChangingPin(false);
+    }
+  };
+
   const resetAi = () => cfg && setAi(cfg.ai_defaults);
 
   if (!ai || !platform)
@@ -75,6 +112,23 @@ export default function GlobalConfig() {
       <Card>
         <PanelHeader title="Platform" subtitle="Cross-module defaults" />
         <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <Label>Platform Logo</Label>
+            <div className="flex items-center gap-3">
+              <BrandLogo className="h-12 w-12 rounded-lg ring-1 ring-slate-700" version={logoVer} />
+              <input
+                ref={logoRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => uploadLogo(e.target.files?.[0])}
+              />
+              <Button variant="ghost" onClick={() => logoRef.current?.click()}>
+                Upload Logo
+              </Button>
+              <p className="text-xs text-slate-600">Shown in the sidebar and on the lock screen.</p>
+            </div>
+          </div>
           <div>
             <Label>Platform Name</Label>
             <Input
@@ -155,6 +209,38 @@ export default function GlobalConfig() {
             </div>
             <Button variant="primary" onClick={saveAi} disabled={savingAi}>
               {savingAi ? <Spinner /> : "Save AI Engine Settings"}
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      {/* Security */}
+      <Card>
+        <PanelHeader title="Access PIN" subtitle="Local single-operator access — enforced by the API" />
+        <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-3">
+          <div>
+            <Label>Current PIN</Label>
+            <Input
+              type="password"
+              maxLength={PIN_LEN}
+              value={curPin}
+              onChange={(e) => setCurPin(e.target.value)}
+              className="font-mono tracking-widest"
+            />
+          </div>
+          <div>
+            <Label>New PIN</Label>
+            <Input
+              type="password"
+              maxLength={PIN_LEN}
+              value={newPin}
+              onChange={(e) => setNewPin(e.target.value)}
+              className="font-mono tracking-widest"
+            />
+          </div>
+          <div className="flex items-end">
+            <Button variant="primary" onClick={changePin} disabled={changingPin}>
+              {changingPin ? <Spinner /> : "Change PIN"}
             </Button>
           </div>
         </div>

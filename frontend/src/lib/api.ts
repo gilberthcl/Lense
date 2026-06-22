@@ -41,13 +41,21 @@ export class ApiError extends Error {
   }
 }
 
+// --- Access token (local PIN) ---
+const TOKEN_KEY = "lens-token";
+export const getToken = () => localStorage.getItem(TOKEN_KEY);
+export const setToken = (t: string) => localStorage.setItem(TOKEN_KEY, t);
+export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
+  const token = getToken();
   try {
     res = await fetch(`${API_BASE}${path}`, {
       ...init,
       headers: {
         Accept: "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(init?.body && !(init.body instanceof FormData)
           ? { "Content-Type": "application/json" }
           : {}),
@@ -60,6 +68,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       0,
       e,
     );
+  }
+
+  // The PIN became invalid (e.g. changed elsewhere) — drop it and re-gate.
+  if (res.status === 401 && !path.startsWith("/api/auth")) {
+    clearToken();
+    window.location.reload();
   }
 
   const text = await res.text();
@@ -91,6 +105,32 @@ export interface Health {
 export const api = {
   // --- Health ---
   health: () => request<Health>("/api/health"),
+
+  // --- Auth (local access PIN) ---
+  authStatus: () => request<{ configured: boolean }>("/api/auth/status"),
+  authSetup: (pin: string) =>
+    request<{ token: string }>("/api/auth/setup", {
+      method: "POST",
+      body: JSON.stringify({ pin }),
+    }),
+  authLogin: (pin: string) =>
+    request<{ token: string }>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ pin }),
+    }),
+  authChange: (current_pin: string, new_pin: string) =>
+    request<{ token: string }>("/api/auth/change", {
+      method: "POST",
+      body: JSON.stringify({ current_pin, new_pin }),
+    }),
+
+  // --- Platform logo ---
+  platformLogoUrl: () => `${API_BASE}/api/config/platform/logo`,
+  uploadPlatformLogo: (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request<PlatformConfig>("/api/config/platform/logo", { method: "POST", body: fd });
+  },
 
   // --- Tenants ---
   listTenants: () => request<Tenant[]>("/api/tenants"),
@@ -252,9 +292,12 @@ export const api = {
   // --- Report (Phase 2): download the generated DOCX ---
   downloadReport: async (tid: string, hid: string, lang: ReportLang = "en") => {
     const path = `/api/tenants/${tid}/hunts/${hid}/report?lang=${lang}`;
+    const token = getToken();
     let res: Response;
     try {
-      res = await fetch(`${API_BASE}${path}`, { headers: { Accept: "*/*" } });
+      res = await fetch(`${API_BASE}${path}`, {
+        headers: { Accept: "*/*", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
     } catch (e) {
       throw new ApiError(`Network error contacting ${API_BASE}${path}.`, 0, e);
     }
