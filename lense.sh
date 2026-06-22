@@ -159,22 +159,42 @@ check_prereqs() {
   [ "$all" = 1 ] || { err "install the missing tool(s) above and re-run"; return 1; }
 }
 
+rc_file() { case "${SHELL:-}" in *bash*) echo "$HOME/.bashrc" ;; *) echo "$HOME/.zshrc" ;; esac; }
+
+add_alias_rc() {
+  local rc; rc="$(rc_file)"
+  if grep -q "alias lense=" "$rc" 2>/dev/null; then ok "alias already in $rc"; else
+    printf 'alias lense="%s/lense.sh"\n' "$ROOT" >> "$rc"; ok "alias added to $rc"
+  fi
+}
+
+add_path_rc() {
+  local dir="$1" rc; rc="$(rc_file)"
+  grep -q "$dir" "$rc" 2>/dev/null || { printf 'export PATH="%s:$PATH"\n' "$dir" >> "$rc"; ok "added $dir to PATH in $rc"; }
+}
+
 install_cli() {
   say "${bold}CLI${rst}"
   chmod +x "$ROOT/lense.sh" 2>/dev/null || true
-  if command -v lense >/dev/null 2>&1; then ok "'lense' already on PATH"; return 0; fi
-  local dir="/usr/local/bin"
-  if [ -w "$dir" ]; then
-    ln -sf "$ROOT/lense.sh" "$dir/lense" && { ok "installed 'lense' → $dir/lense"; return 0; }
+  # Prefer a writable directory already on PATH (no sudo needed).
+  local d target=""
+  for d in /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin" "$HOME/bin"; do
+    case ":$PATH:" in *":$d:"*) [ -d "$d" ] && [ -w "$d" ] && { target="$d"; break; } ;; esac
+  done
+  if [ -z "$target" ]; then
+    mkdir -p "$HOME/.local/bin"; target="$HOME/.local/bin"; add_path_rc "$target"
   fi
-  local rc="$HOME/.zshrc"; case "${SHELL:-}" in *bash*) rc="$HOME/.bashrc" ;; esac
-  if ! grep -q "alias lense=" "$rc" 2>/dev/null; then
-    printf 'alias lense="%s/lense.sh"\n' "$ROOT" >> "$rc"
-    ok "added alias to $rc"
-  else
-    ok "alias already in $rc"
-  fi
-  warn "run:  source $rc   (or open a new terminal) to use 'lense'"
+  ln -sf "$ROOT/lense.sh" "$target/lense" && ok "installed: $target/lense" || warn "could not symlink into $target"
+  add_alias_rc   # belt-and-suspenders so it works either way
+}
+
+cmd_install() {
+  say "${bold}Enabling the 'lense' command${rst} ${dim}($ROOT)${rst}"
+  install_cli
+  pull_models
+  say ""
+  ok "Done. Open a NEW terminal, or run:  source $(rc_file)"
+  ok "Then:  lense status"
 }
 
 pull_models() {
@@ -266,6 +286,7 @@ cmd_logs() {
 
 case "${1:-start}" in
   setup|deploy) cmd_setup "${2:-}" ;;
+  install)      cmd_install ;;
   start)   cmd_start ;;
   fresh)   rm -rf "$FRONTEND/node_modules/.vite" && ok "cleared Vite cache"; cmd_start ;;
   stop)    cmd_stop "${2:-}" ;;
@@ -273,5 +294,5 @@ case "${1:-start}" in
   status)  cmd_status ;;
   logs)    cmd_logs "${2:-both}" ;;
   pull)    pull_models ;;
-  *) say "usage: lense [setup [--pull-models] | start | fresh | stop [--all] | restart | status | logs [backend|frontend] | pull]" ;;
+  *) say "usage: lense [setup [--pull-models] | install | start | fresh | stop [--all] | restart | status | logs [backend|frontend] | pull]" ;;
 esac
