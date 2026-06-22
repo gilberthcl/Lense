@@ -159,7 +159,9 @@ def _parse_queries(lines: list[str]) -> list[dict[str, Any]]:
                     # The Query cell embeds ` | ` (CrowdStrike pipe syntax), so it
                     # over-splits. Name and Outcome never contain a pipe → take
                     # the first and last cells; rejoin the middle as the query.
-                    name = r[0]
+                    name = r[0].strip()
+                    if not name:
+                        continue  # skip stray/empty rows (e.g. trailing notes)
                     if len(r) >= 3:
                         outcome = r[-1]
                         query = " | ".join(r[1:-1])

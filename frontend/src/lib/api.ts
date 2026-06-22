@@ -204,6 +204,8 @@ export const api = {
     }),
   getHunt: (tid: string, hid: string) =>
     request<Hunt>(`/api/tenants/${tid}/hunts/${hid}`),
+  deleteHunt: (tid: string, hid: string) =>
+    request<void>(`/api/tenants/${tid}/hunts/${hid}`, { method: "DELETE" }),
   uploadMethodology: (tid: string, hid: string, file: File) => {
     const fd = new FormData();
     fd.append("file", file);

@@ -45,11 +45,13 @@ export default function ClientGrid({
             <Card className="h-full p-6 transition-colors group-hover:border-indigo-600/70 group-hover:bg-slate-900">
               <div className="flex items-start gap-4">
                 {c.logo_path ? (
-                  <img
-                    src={api.logoUrl(String(c.id))}
-                    alt=""
-                    className="h-16 w-16 shrink-0 rounded-xl object-cover ring-1 ring-slate-700"
-                  />
+                  <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1.5 ring-1 ring-slate-700">
+                    <img
+                      src={api.logoUrl(String(c.id))}
+                      alt=""
+                      className="max-h-full max-w-full object-contain"
+                    />
+                  </div>
                 ) : (
                   <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-indigo-500/15 text-xl font-semibold text-indigo-200 ring-1 ring-inset ring-indigo-500/30">
                     {initials(c.name) || <IconClients width={24} height={24} />}

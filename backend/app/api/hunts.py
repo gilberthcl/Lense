@@ -99,10 +99,23 @@ async def upload_methodology(
         raise HTTPException(status_code=422, detail="No text could be extracted from the file")
 
     hunt.methodology_text = text
-    hunt.methodology_brief = None  # force re-comprehension
+    hunt.methodology_brief = None      # force re-comprehension
+    hunt.methodology_sections = None   # force re-parse
     db.commit()
     db.refresh(hunt)
     return hunt
+
+
+@router.delete("/{hunt_id}", status_code=204)
+def delete_hunt(
+    hunt_id: int,
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+):
+    """Delete a hunt and everything scoped to it (datasets, findings, jobs)."""
+    hunt = _resolve_hunt(db, tenant, hunt_id)
+    db.delete(hunt)
+    db.commit()
 
 
 @router.post("/{hunt_id}/methodology/analyze", response_model=JobOut, status_code=202)

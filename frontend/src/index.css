@@ -87,8 +87,15 @@ body,
   height: 100%;
 }
 
+/*
+  Consume the theme vars with PLAIN CSS (not @apply) so the base surface re-themes
+  even if Tailwind's utility CSS is being served stale from a Vite cache. The rest
+  of the app uses slate/indigo utilities which are var-backed in a clean build.
+*/
 body {
-  @apply bg-slate-950 text-slate-200 antialiased;
+  background-color: rgb(var(--c-slate-950));
+  color: rgb(var(--c-slate-200));
+  @apply antialiased;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 

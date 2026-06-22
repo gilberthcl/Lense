@@ -86,7 +86,9 @@ export default function ClientWorkspace({ moduleId }: { moduleId?: string } = {}
       {/* Hero strip */}
       <div className="mb-6 flex flex-wrap items-start gap-4 rounded-xl border border-slate-800 bg-slate-900/50 p-5">
         {client?.logo_path ? (
-          <img src={api.logoUrl(tid)} alt="" className="h-14 w-14 shrink-0 rounded-xl object-cover ring-1 ring-slate-700" />
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1.5 ring-1 ring-slate-700">
+            <img src={api.logoUrl(tid)} alt="" className="max-h-full max-w-full object-contain" />
+          </div>
         ) : (
           <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-indigo-500/15 text-lg font-semibold text-indigo-200 ring-1 ring-inset ring-indigo-500/30">
             {initials || <IconClients width={22} height={22} />}

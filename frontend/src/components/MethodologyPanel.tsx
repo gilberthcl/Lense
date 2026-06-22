@@ -1,15 +1,17 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { api, ApiError, pollJob } from "../lib/api";
-import type { Hunt, Job, QueryRow } from "../lib/types";
+import type { Hunt, Job, MethodologyBrief, QueryRow } from "../lib/types";
 import { useToast } from "./Toast";
+import { IconChevron } from "./icons";
 import { Badge, Button, Card, EmptyState, PanelHeader, Spinner } from "./ui";
 
-type SubTab = "description" | "plan" | "queries";
+type SubTab = "description" | "plan" | "queries" | "ai";
 
 const SUB_TABS: { id: SubTab; label: string }[] = [
   { id: "description", label: "Description" },
   { id: "plan", label: "Plan of Action" },
   { id: "queries", label: "Queries" },
+  { id: "ai", label: "AI Analysis" },
 ];
 
 function ProgressBar({ pct }: { pct: number }) {
@@ -57,12 +59,30 @@ export default function MethodologyPanel({
   const toast = useToast();
   const [job, setJob] = useState<Job | null>(null);
   const [running, setRunning] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [sub, setSub] = useState<SubTab>("description");
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const sections = hunt?.methodology_sections ?? null;
   const brief = hunt?.methodology_brief ?? null;
   const hasMethodology = !!hunt?.methodology_text?.trim();
+  const docChars = hunt?.methodology_text?.length ?? 0;
   const analyzed = !!(sections?.available || brief);
+
+  const uploadDoc = async (file?: File) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      await api.uploadMethodology(tid, hid, file);
+      toast.success(`Loaded ${file.name}. Click “Analyze” to comprehend it.`);
+      if (fileRef.current) fileRef.current.value = "";
+      onRefresh();
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const analyze = async () => {
     setRunning(true);
@@ -89,19 +109,31 @@ export default function MethodologyPanel({
         title="Hunt Methodology"
         subtitle="Comprehended and structured before any dataset is analyzed"
         right={
-          hasMethodology ? (
-            <Button variant={analyzed ? "ghost" : "primary"} onClick={analyze} disabled={running}>
-              {running ? (
-                <>
-                  <Spinner /> {job?.progress ?? 0}%
-                </>
-              ) : analyzed ? (
-                "Re-analyze"
-              ) : (
-                "Analyze"
-              )}
+          <div className="flex items-center gap-2">
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".docx,.txt,.md,.markdown"
+              className="hidden"
+              onChange={(e) => uploadDoc(e.target.files?.[0])}
+            />
+            <Button variant="ghost" onClick={() => fileRef.current?.click()} disabled={uploading || running}>
+              {uploading ? <Spinner /> : hasMethodology ? "Replace doc" : "Upload doc"}
             </Button>
-          ) : null
+            {hasMethodology && (
+              <Button variant={analyzed ? "ghost" : "primary"} onClick={analyze} disabled={running}>
+                {running ? (
+                  <>
+                    <Spinner /> {job?.progress ?? 0}%
+                  </>
+                ) : analyzed ? (
+                  "Re-analyze"
+                ) : (
+                  "Analyze"
+                )}
+              </Button>
+            )}
+          </div>
         }
       />
 
@@ -124,6 +156,24 @@ export default function MethodologyPanel({
                 {sections.stats.queries_with_results} with results
               </Badge>
             )}
+            <Badge
+              className={
+                hasMethodology
+                  ? "border border-emerald-800 bg-emerald-950 text-emerald-300"
+                  : "border border-slate-700 bg-slate-800 text-slate-400"
+              }
+            >
+              {hasMethodology ? `Doc loaded · ${docChars.toLocaleString()} chars` : "No doc"}
+            </Badge>
+            <Badge
+              className={
+                brief
+                  ? "border border-emerald-800 bg-emerald-950 text-emerald-300"
+                  : "border border-amber-800 bg-amber-950 text-amber-300"
+              }
+            >
+              {brief ? "AI analyzed ✓" : "Not AI-analyzed"}
+            </Badge>
           </div>
         )}
 
@@ -192,6 +242,7 @@ export default function MethodologyPanel({
             {sub === "description" && <DescriptionTab sections={sections} brief={brief} />}
             {sub === "plan" && <PlanTab sections={sections} />}
             {sub === "queries" && <QueriesTab sections={sections} />}
+            {sub === "ai" && <AiAnalysisTab brief={brief} onAnalyze={analyze} running={running} />}
           </>
         )}
       </div>
@@ -305,6 +356,141 @@ function PlanTab({ sections }: { sections: Hunt["methodology_sections"] }) {
   );
 }
 
+function AiBlock({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</p>
+      {children}
+    </div>
+  );
+}
+
+function AiAnalysisTab({
+  brief,
+  onAnalyze,
+  running,
+}: {
+  brief: MethodologyBrief | null | undefined;
+  onAnalyze: () => void;
+  running: boolean;
+}) {
+  if (!brief) {
+    return (
+      <div className="space-y-3">
+        <EmptyState>
+          The methodology hasn’t been analyzed by the AI yet. The model reads the full
+          methodology and explains what the hunt is about, what was covered, and which
+          queries returned results.
+        </EmptyState>
+        <Button variant="primary" onClick={onAnalyze} disabled={running}>
+          {running ? <Spinner /> : "Run AI analysis"}
+        </Button>
+      </div>
+    );
+  }
+
+  const topics = brief.topics ?? [];
+  const queries = brief.executed_queries ?? [];
+  const fps = brief.known_false_positives ?? [];
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-lg border border-indigo-500/20 bg-indigo-500/[0.04] p-3">
+        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-indigo-300/80">
+          What the model understood this hunt is about
+        </p>
+        {brief.hunt_overview ? (
+          <p className="text-sm leading-relaxed text-slate-300">{brief.hunt_overview}</p>
+        ) : (
+          <p className="text-sm italic text-slate-500">No overview returned.</p>
+        )}
+      </div>
+
+      {brief.scope && (
+        <AiBlock title="Scope">
+          <p className="text-sm text-slate-300">{brief.scope}</p>
+        </AiBlock>
+      )}
+      {brief.what_to_expect && (
+        <AiBlock title="What to expect in the datasets">
+          <p className="text-sm text-slate-300">{brief.what_to_expect}</p>
+        </AiBlock>
+      )}
+
+      {!!topics.length && (
+        <AiBlock title={`Topics the model identified (${topics.length})`}>
+          <ul className="space-y-2">
+            {topics.map((t, i) => (
+              <li key={i} className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium text-slate-200">
+                    {t.number ? `${t.number}. ` : ""}
+                    {t.name}
+                  </span>
+                  {(t.mitre ?? []).map((m, j) => (
+                    <span key={j} className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[11px] text-indigo-300">
+                      {m}
+                    </span>
+                  ))}
+                </div>
+                {t.objective && <p className="mt-1 text-xs text-slate-400">{t.objective}</p>}
+                {t.malicious_indicators && (
+                  <p className="mt-1 text-xs text-slate-400">
+                    <span className="text-red-400/80">Malicious: </span>
+                    {t.malicious_indicators}
+                  </p>
+                )}
+                {t.expected_benign && (
+                  <p className="mt-1 text-xs text-slate-400">
+                    <span className="text-emerald-400/80">Expected benign: </span>
+                    {t.expected_benign}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </AiBlock>
+      )}
+
+      {!!queries.length && (
+        <AiBlock title="Executed queries the model noted">
+          <ul className="space-y-1">
+            {queries.map((q, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm text-slate-300">
+                <Badge
+                  className={
+                    q.had_results
+                      ? "shrink-0 border border-emerald-800 bg-emerald-950 text-emerald-300"
+                      : "shrink-0 border border-slate-700 bg-slate-800 text-slate-400"
+                  }
+                >
+                  {q.had_results ? "results" : "no results"}
+                </Badge>
+                <span>
+                  {q.topic ? `[${q.topic}] ` : ""}
+                  {q.summary}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </AiBlock>
+      )}
+
+      {!!fps.length && (
+        <AiBlock title="Known false positives the model flagged">
+          <ul className="list-inside list-disc text-sm text-slate-300">
+            {fps.map((fp, i) => (
+              <li key={i}>{fp}</li>
+            ))}
+          </ul>
+        </AiBlock>
+      )}
+
+      {brief.note && <p className="text-xs italic text-amber-400/80">{brief.note}</p>}
+    </div>
+  );
+}
+
 function QueriesTab({ sections }: { sections: Hunt["methodology_sections"] }) {
   const [open, setOpen] = useState<string | null>(null);
   const topics = sections?.queries ?? [];
@@ -332,9 +518,14 @@ function QueriesTab({ sections }: { sections: Hunt["methodology_sections"] }) {
                   <div className="flex items-start justify-between gap-3">
                     <button
                       onClick={() => setOpen(isOpen ? null : key)}
-                      className="min-w-0 flex-1 text-left text-sm text-slate-300 hover:text-indigo-300"
+                      className="flex min-w-0 flex-1 items-start gap-2 text-left text-sm text-slate-300 hover:text-indigo-300"
                     >
-                      {r.name}
+                      <IconChevron
+                        width={14}
+                        height={14}
+                        className={`mt-0.5 shrink-0 text-slate-500 transition-transform ${isOpen ? "rotate-90" : ""}`}
+                      />
+                      <span className="min-w-0">{r.name}</span>
                     </button>
                     <QueryStatusBadge row={r} />
                   </div>

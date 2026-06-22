@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useLocation, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { api, ApiError } from "../lib/api";
 import type { Hunt, ReportLang, Tenant } from "../lib/types";
 import { useToast } from "../components/Toast";
@@ -14,7 +14,9 @@ import MethodologyPanel from "../components/MethodologyPanel";
 export default function HuntView() {
   const { tid, hid } = useParams<{ tid: string; hid: string }>();
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const toast = useToast();
+  const [deleting, setDeleting] = useState(false);
   // If we arrived under a module (e.g. /structured-hunts/clients/...), keep that context.
   const mod = pathname.startsWith("/structured-hunts/")
     ? getModule("structured-hunts")
@@ -38,6 +40,21 @@ export default function HuntView() {
       toast.error(e instanceof ApiError ? e.message : "Report generation failed.");
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const onDelete = async () => {
+    if (!tid || !hid) return;
+    if (!window.confirm(`Delete hunt "${hunt?.name ?? ""}"? This removes its datasets, findings, and jobs. This cannot be undone.`))
+      return;
+    setDeleting(true);
+    try {
+      await api.deleteHunt(tid, hid);
+      toast.success("Hunt deleted.");
+      navigate(`${clientBase}/${tid}`);
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Delete failed.");
+      setDeleting(false);
     }
   };
 
@@ -102,6 +119,14 @@ export default function HuntView() {
               disabled={downloading || !hunt}
             >
               {downloading ? <Spinner /> : "Generate Report (.docx)"}
+            </Button>
+            <Button
+              variant="danger"
+              onClick={onDelete}
+              disabled={deleting || !hunt}
+              title="Delete this hunt"
+            >
+              {deleting ? <Spinner /> : "Delete"}
             </Button>
           </div>
         </div>
