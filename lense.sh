@@ -149,6 +149,77 @@ stop_one() {  # $1=name $2=pidfile $3=port-pattern
   ok "$1 stopped"
 }
 
+check_prereqs() {
+  say "${bold}Prerequisites${rst}"
+  local all=1 c
+  for c in python3 node npm docker; do
+    if command -v "$c" >/dev/null 2>&1; then ok "$c"; else err "$c not found"; all=0; fi
+  done
+  command -v ollama >/dev/null 2>&1 && ok "ollama" || warn "ollama not found — install from https://ollama.com"
+  [ "$all" = 1 ] || { err "install the missing tool(s) above and re-run"; return 1; }
+}
+
+install_cli() {
+  say "${bold}CLI${rst}"
+  chmod +x "$ROOT/lense.sh" 2>/dev/null || true
+  if command -v lense >/dev/null 2>&1; then ok "'lense' already on PATH"; return 0; fi
+  local dir="/usr/local/bin"
+  if [ -w "$dir" ]; then
+    ln -sf "$ROOT/lense.sh" "$dir/lense" && { ok "installed 'lense' → $dir/lense"; return 0; }
+  fi
+  local rc="$HOME/.zshrc"; case "${SHELL:-}" in *bash*) rc="$HOME/.bashrc" ;; esac
+  if ! grep -q "alias lense=" "$rc" 2>/dev/null; then
+    printf 'alias lense="%s/lense.sh"\n' "$ROOT" >> "$rc"
+    ok "added alias to $rc"
+  else
+    ok "alias already in $rc"
+  fi
+  warn "run:  source $rc   (or open a new terminal) to use 'lense'"
+}
+
+pull_models() {
+  say "${bold}Pulling models${rst}"
+  command -v ollama >/dev/null 2>&1 || { warn "ollama not installed — skipping pulls"; return 0; }
+  local seen=" " m
+  for m in \
+      "$(env_or OLLAMA_ANALYST_MODEL gemma3:27b)" \
+      "$(env_or OLLAMA_REVIEWER_MODEL gpt-oss:20b)" \
+      "$(env_or OLLAMA_QA_MODEL gpt-oss:20b)" \
+      "$(env_or OLLAMA_EMBED_MODEL nomic-embed-text)"; do
+    case "$seen" in *" $m "*) continue ;; esac
+    seen="$seen$m "
+    say "  pulling $m …"; ollama pull "$m" || warn "pull failed: $m"
+  done
+}
+
+cmd_setup() {
+  say "${bold}Setting up LENS${rst} ${dim}($ROOT)${rst}"
+  check_prereqs || return 1
+
+  say "${bold}Config${rst}"
+  if [ ! -f "$ROOT/.env" ]; then
+    cp "$ROOT/.env.example" "$ROOT/.env" && ok "created .env from .env.example"
+  else ok ".env present"; fi
+
+  say "${bold}Backend deps${rst}"
+  if [ ! -f "$BACKEND/venv/bin/activate" ]; then
+    ( cd "$BACKEND" && python3 -m venv venv && source venv/bin/activate \
+        && pip install --quiet --upgrade pip && pip install -r requirements.txt ) \
+      && ok "venv created + requirements installed" || { err "backend setup failed"; return 1; }
+  else ok "venv present"; fi
+
+  say "${bold}Frontend deps${rst}"
+  if [ ! -d "$FRONTEND/node_modules" ]; then
+    ( cd "$FRONTEND" && npm install ) && ok "node_modules installed" || { err "npm install failed"; return 1; }
+  else ok "node_modules present"; fi
+
+  install_cli
+  [ "${1:-}" = "--pull-models" ] && pull_models
+
+  say ""
+  cmd_start
+}
+
 cmd_start() {
   say "${bold}Starting LENS${rst} ${dim}($ROOT)${rst}"
   ensure_db || true
@@ -194,11 +265,13 @@ cmd_logs() {
 }
 
 case "${1:-start}" in
+  setup|deploy) cmd_setup "${2:-}" ;;
   start)   cmd_start ;;
   fresh)   rm -rf "$FRONTEND/node_modules/.vite" && ok "cleared Vite cache"; cmd_start ;;
   stop)    cmd_stop "${2:-}" ;;
   restart) cmd_stop "${2:-}"; sleep 1; cmd_start ;;
   status)  cmd_status ;;
   logs)    cmd_logs "${2:-both}" ;;
-  *) say "usage: lense [start|fresh|stop [--all]|restart|status|logs [backend|frontend]]" ;;
+  pull)    pull_models ;;
+  *) say "usage: lense [setup [--pull-models] | start | fresh | stop [--all] | restart | status | logs [backend|frontend] | pull]" ;;
 esac
