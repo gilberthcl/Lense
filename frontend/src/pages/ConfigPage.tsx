@@ -131,7 +131,7 @@ export default function ConfigPage() {
 
   return (
     <div>
-      <Breadcrumbs items={[{ label: "Tenants", to: "/" }, { label: "Configuration" }]} />
+      <Breadcrumbs items={[{ label: "Structured Hunts", to: "/structured-hunts" }, { label: "Configuration" }]} />
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-slate-100">
           Structured Threat Hunt — Configuration

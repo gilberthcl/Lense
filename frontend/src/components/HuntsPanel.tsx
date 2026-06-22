@@ -87,7 +87,7 @@ export default function HuntsPanel({ tid }: { tid: string }) {
     <Card>
       <PanelHeader
         title="Hunts"
-        subtitle="Hypothesis-driven hunt runs scoped to this tenant"
+        subtitle="Hypothesis-driven hunt runs scoped to this client"
         right={
           <Button onClick={() => setShowForm((s) => !s)}>
             {showForm ? "Close" : "+ New Hunt"}
@@ -169,7 +169,7 @@ export default function HuntsPanel({ tid }: { tid: string }) {
               onChange={(e) =>
                 setForm((f) => ({ ...f, methodology_text: e.target.value }))
               }
-              placeholder="Paste the hunt methodology, or leave blank if uploading a file (or to inherit the tenant's methodology)."
+              placeholder="Paste the hunt methodology, or leave blank if uploading a file (or to inherit the client's methodology)."
               className="font-mono text-xs"
             />
           </div>
@@ -195,7 +195,7 @@ export default function HuntsPanel({ tid }: { tid: string }) {
             {hunts.map((h) => (
               <li key={h.id}>
                 <Link
-                  to={`/tenants/${tid}/hunts/${h.id}`}
+                  to={`/clients/${tid}/hunts/${h.id}`}
                   className="group block rounded border border-slate-800 bg-slate-950/40 px-3 py-2.5 transition-colors hover:border-indigo-700"
                 >
                   <div className="flex items-center justify-between gap-3">

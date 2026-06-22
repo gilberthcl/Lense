@@ -8,17 +8,17 @@ import { Card, Spinner } from "../components/ui";
 import KnowledgePanel from "../components/KnowledgePanel";
 import HuntsPanel from "../components/HuntsPanel";
 
-export default function TenantDashboard() {
+export default function ClientWorkspace() {
   const { tid } = useParams<{ tid: string }>();
   const toast = useToast();
-  const [tenant, setTenant] = useState<Tenant | null>(null);
+  const [client, setClient] = useState<Tenant | null>(null);
   const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
     if (!tid) return;
     api
       .getTenant(tid)
-      .then(setTenant)
+      .then(setClient)
       .catch((e: ApiError) => {
         if (e.status === 404) setNotFound(true);
         else toast.error(e.message);
@@ -27,36 +27,34 @@ export default function TenantDashboard() {
   }, [tid]);
 
   if (!tid) return null;
-  if (notFound)
-    return <div className="text-slate-500">Tenant not found.</div>;
+  if (notFound) return <div className="text-slate-500">Client not found.</div>;
 
   return (
     <div>
       <Breadcrumbs
         items={[
-          { label: "Tenants", to: "/" },
-          { label: tenant?.name ?? "…" },
+          { label: "Structured Hunts", to: "/structured-hunts" },
+          { label: "Clients", to: "/clients" },
+          { label: client?.name ?? "…" },
         ]}
       />
 
       <div className="mb-6 flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-semibold text-slate-100">
-          {tenant?.name ?? <Spinner />}
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-100">
+          {client?.name ?? <Spinner />}
         </h1>
-        {tenant && (
+        {client && (
           <span className="rounded bg-slate-800 px-2 py-0.5 font-mono text-xs text-slate-400">
-            {tenant.slug}
+            {client.slug}
           </span>
         )}
       </div>
 
-      {tenant?.context_notes && (
+      {client?.context_notes && (
         <Card className="mb-6 p-4">
-          <p className="text-xs uppercase tracking-wide text-slate-500">
-            Context
-          </p>
+          <p className="text-xs uppercase tracking-wide text-slate-500">Client context</p>
           <p className="mt-1 whitespace-pre-wrap text-sm text-slate-300">
-            {tenant.context_notes}
+            {client.context_notes}
           </p>
         </Card>
       )}

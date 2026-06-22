@@ -129,7 +129,7 @@ export default function DatasetsPanel({
     <Card>
       <PanelHeader
         title="Datasets"
-        subtitle="CSV evidence (max 20MB) — analyzed against the tenant constitution"
+        subtitle="CSV evidence (max 20MB) — analyzed against the methodology & client context"
         right={
           <div className="flex items-center gap-2">
             <Button

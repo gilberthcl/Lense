@@ -54,8 +54,9 @@ export default function HuntView() {
     <div>
       <Breadcrumbs
         items={[
-          { label: "Tenants", to: "/" },
-          { label: tenant?.name ?? "…", to: `/tenants/${tid}` },
+          { label: "Structured Hunts", to: "/structured-hunts" },
+          { label: "Clients", to: "/clients" },
+          { label: tenant?.name ?? "…", to: `/clients/${tid}` },
           { label: hunt?.name ?? "…" },
         ]}
       />

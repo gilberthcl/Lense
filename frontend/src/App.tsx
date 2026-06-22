@@ -1,25 +1,56 @@
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useParams } from "react-router-dom";
 import { Layout } from "./components/Layout";
-import TenantsPage from "./pages/TenantsPage";
-import TenantDashboard from "./pages/TenantDashboard";
+import ClientsPage from "./pages/ClientsPage";
+import ClientWorkspace from "./pages/ClientWorkspace";
+import StructuredHunts from "./pages/StructuredHunts";
 import HuntView from "./pages/HuntView";
 import ConfigPage from "./pages/ConfigPage";
+import ModulePlaceholder from "./pages/ModulePlaceholder";
 
 export default function App() {
   return (
     <Layout>
       <Routes>
-        <Route path="/" element={<TenantsPage />} />
+        <Route path="/" element={<Navigate to="/structured-hunts" replace />} />
+
+        {/* Live module */}
+        <Route path="/structured-hunts" element={<StructuredHunts />} />
+
+        {/* Global clients */}
+        <Route path="/clients" element={<ClientsPage />} />
+        <Route path="/clients/:tid" element={<ClientWorkspace />} />
+        <Route path="/clients/:tid/hunts/:hid" element={<HuntView />} />
+
+        {/* Future modules */}
+        <Route
+          path="/modules/unstructured-hunts"
+          element={<ModulePlaceholder moduleId="unstructured-hunts" />}
+        />
+        <Route
+          path="/modules/threat-reviews"
+          element={<ModulePlaceholder moduleId="threat-reviews" />}
+        />
+        <Route
+          path="/modules/intel-weekly"
+          element={<ModulePlaceholder moduleId="intel-weekly" />}
+        />
+
         <Route path="/config" element={<ConfigPage />} />
-        <Route path="/tenants/:tid" element={<TenantDashboard />} />
-        <Route path="/tenants/:tid/hunts/:hid" element={<HuntView />} />
+
+        {/* Legacy redirects */}
+        <Route path="/tenants" element={<Navigate to="/clients" replace />} />
+        <Route path="/tenants/:tid" element={<LegacyClientRedirect />} />
+
         <Route
           path="*"
-          element={
-            <div className="text-center text-slate-500">Page not found.</div>
-          }
+          element={<div className="text-center text-slate-500">Page not found.</div>}
         />
       </Routes>
     </Layout>
   );
+}
+
+function LegacyClientRedirect() {
+  const { tid } = useParams();
+  return <Navigate to={`/clients/${tid}`} replace />;
 }
