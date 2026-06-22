@@ -1,0 +1,45 @@
+# Local dev stack. Ollama intentionally runs on the HOST (not here) so it can
+# use the Mac's GPU/Metal and so no client data is ever proxied off-box.
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lens}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lens_dev_change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-lens}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - lens_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lens}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    env_file: .env
+    environment:
+      POSTGRES_HOST: db
+    # On macOS, host.docker.internal lets the container reach host Ollama.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - lens_uploads:/app/uploads
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+
+volumes:
+  lens_pgdata:
+  lens_uploads:

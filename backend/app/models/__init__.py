@@ -1,0 +1,172 @@
+"""
+SQLAlchemy models for the Threat Hunt Findings Engine.
+
+Isolation rule: every table below (except `tenants`) carries a `tenant_id`.
+All queries MUST filter by tenant_id — nothing crosses a tenant boundary.
+"""
+from datetime import datetime
+
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import (
+    Integer, String, Text, DateTime, ForeignKey, JSON, BigInteger, func,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.core.db import Base
+
+
+# ── Tenants (clients) ──────────────────────────────────────────────────────
+class Tenant(Base):
+    __tablename__ = "tenants"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    slug: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
+    context_notes: Mapped[str | None] = mapped_column(Text)  # baselines, env notes
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    hunts: Mapped[list["Hunt"]] = relationship(
+        back_populates="tenant", cascade="all, delete-orphan"
+    )
+
+
+# ── Knowledge base (per-tenant constitution + learning) ────────────────────
+# doc_type: methodology | finding_categories | finding_format |
+#           approved_software | report_standard | previous_report | validated_finding
+class KnowledgeDocument(Base):
+    __tablename__ = "knowledge_documents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    doc_type: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class KnowledgeChunk(Base):
+    """Chunked + embedded knowledge for retrieval (pgvector). Optional/RAG."""
+    __tablename__ = "knowledge_chunks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("knowledge_documents.id", ondelete="CASCADE"), index=True
+    )
+    chunk_text: Mapped[str] = mapped_column(Text, nullable=False)
+    # nomic-embed-text emits 768-dim vectors
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(768))
+
+
+# ── Hunts ──────────────────────────────────────────────────────────────────
+# status: created | analyzing | analyzed | reported
+class Hunt(Base):
+    __tablename__ = "hunts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(300), nullable=False)
+    objective: Mapped[str | None] = mapped_column(Text)
+    methodology_text: Mapped[str | None] = mapped_column(Text)  # snapshot for this hunt
+    status: Mapped[str] = mapped_column(String(30), default="created")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    tenant: Mapped["Tenant"] = relationship(back_populates="hunts")
+    datasets: Mapped[list["Dataset"]] = relationship(
+        back_populates="hunt", cascade="all, delete-orphan"
+    )
+    findings: Mapped[list["Finding"]] = relationship(
+        back_populates="hunt", cascade="all, delete-orphan"
+    )
+
+
+# ── Datasets (uploaded CSVs) ───────────────────────────────────────────────
+# status: uploaded | analyzing | analyzed | error
+class Dataset(Base):
+    __tablename__ = "datasets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    hunt_id: Mapped[int] = mapped_column(
+        ForeignKey("hunts.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    filename: Mapped[str] = mapped_column(String(400), nullable=False)
+    file_path: Mapped[str] = mapped_column(String(600), nullable=False)
+    file_size: Mapped[int] = mapped_column(BigInteger, default=0)
+    row_count: Mapped[int] = mapped_column(Integer, default=0)
+    col_count: Mapped[int] = mapped_column(Integer, default=0)
+    columns: Mapped[dict | None] = mapped_column(JSON)   # [{name, dtype}, ...]
+    stats: Mapped[dict | None] = mapped_column(JSON)      # computed statistics
+    status: Mapped[str] = mapped_column(String(30), default="uploaded")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    hunt: Mapped["Hunt"] = relationship(back_populates="datasets")
+    findings: Mapped[list["Finding"]] = relationship(
+        back_populates="dataset", cascade="all, delete-orphan"
+    )
+
+
+# ── Findings ───────────────────────────────────────────────────────────────
+# category: malicious | suspicious | risky | policy_violation | unconfirmed | no_finding
+# status:   draft | validated | rejected
+class Finding(Base):
+    __tablename__ = "findings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    hunt_id: Mapped[int] = mapped_column(
+        ForeignKey("hunts.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    dataset_id: Mapped[int | None] = mapped_column(
+        ForeignKey("datasets.id", ondelete="CASCADE"), index=True
+    )
+    finding_ref: Mapped[str] = mapped_column(String(40))   # e.g. F-001
+    title: Mapped[str] = mapped_column(String(400), nullable=False)
+    category: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    severity: Mapped[str | None] = mapped_column(String(20))   # info/low/med/high/crit
+    confidence: Mapped[str | None] = mapped_column(String(20))
+    summary: Mapped[str | None] = mapped_column(Text)
+    evidence: Mapped[dict | None] = mapped_column(JSON)        # verbatim rows/values
+    mitre: Mapped[dict | None] = mapped_column(JSON)           # techniques
+    affected_assets: Mapped[dict | None] = mapped_column(JSON)
+    affected_users: Mapped[dict | None] = mapped_column(JSON)
+    recommendations: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="draft")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    hunt: Mapped["Hunt"] = relationship(back_populates="findings")
+    dataset: Mapped["Dataset"] = relationship(back_populates="findings")
+
+
+# ── Analysis jobs (async per-dataset work) ─────────────────────────────────
+# phase: analysis | correlation | report   status: queued|running|done|error
+class AnalysisJob(Base):
+    __tablename__ = "analysis_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    hunt_id: Mapped[int] = mapped_column(
+        ForeignKey("hunts.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    dataset_id: Mapped[int | None] = mapped_column(
+        ForeignKey("datasets.id", ondelete="CASCADE")
+    )
+    phase: Mapped[str] = mapped_column(String(20), default="analysis")
+    status: Mapped[str] = mapped_column(String(20), default="queued")
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    current_task: Mapped[str | None] = mapped_column(String(300))
+    result: Mapped[dict | None] = mapped_column(JSON)
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

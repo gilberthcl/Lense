@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+*.egg-info/
+
+# Env / secrets
+.env
+.env.local
+
+# Node / frontend
+node_modules/
+dist/
+.vite/
+
+# Uploads & generated artifacts (NEVER commit client data)
+uploads/
+backend/uploads/
+*.docx
+instance/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
