@@ -15,7 +15,7 @@ import json
 
 import httpx
 
-from app.core.config import settings
+from app.services import global_config
 
 
 class OllamaError(RuntimeError):
@@ -23,9 +23,10 @@ class OllamaError(RuntimeError):
 
 
 def _post(path: str, payload: dict) -> dict:
-    url = f"{settings.ollama_base_url}{path}"
+    cfg = global_config.current_ai()
+    url = f"{cfg['base_url']}{path}"
     try:
-        with httpx.Client(timeout=settings.ollama_timeout) as client:
+        with httpx.Client(timeout=cfg["timeout"]) as client:
             resp = client.post(url, json=payload)
             resp.raise_for_status()
             return resp.json()
@@ -40,7 +41,8 @@ def generate(model: str, system: str, prompt: str, *, json_mode: bool = False) -
         "system": system,
         "prompt": prompt,
         "stream": False,
-        "options": {"temperature": 0.2},  # low temp — analytical, deterministic-ish
+        # low temp — analytical, deterministic-ish (editable in Global config)
+        "options": {"temperature": global_config.current_ai()["temperature"]},
     }
     if json_mode:
         payload["format"] = "json"
@@ -50,7 +52,8 @@ def generate(model: str, system: str, prompt: str, *, json_mode: bool = False) -
 
 def embed(text: str) -> list[float]:
     """Embed a single string with the configured embedding model."""
-    data = _post("/api/embeddings", {"model": settings.ollama_embed_model, "prompt": text})
+    model = global_config.current_ai()["embed_model"]
+    data = _post("/api/embeddings", {"model": model, "prompt": text})
     vec = data.get("embedding")
     if not vec:
         raise OllamaError("Ollama returned no embedding")
@@ -87,12 +90,12 @@ def parse_json_response(text: str) -> dict | list:
 
 # Convenience wrappers per agent role -----------------------------------------
 def analyst(system: str, prompt: str, *, json_mode: bool = True) -> str:
-    return generate(settings.ollama_analyst_model, system, prompt, json_mode=json_mode)
+    return generate(global_config.current_ai()["analyst_model"], system, prompt, json_mode=json_mode)
 
 
 def reviewer(system: str, prompt: str, *, json_mode: bool = True) -> str:
-    return generate(settings.ollama_reviewer_model, system, prompt, json_mode=json_mode)
+    return generate(global_config.current_ai()["reviewer_model"], system, prompt, json_mode=json_mode)
 
 
 def qa(system: str, prompt: str, *, json_mode: bool = True) -> str:
-    return generate(settings.ollama_qa_model, system, prompt, json_mode=json_mode)
+    return generate(global_config.current_ai()["qa_model"], system, prompt, json_mode=json_mode)

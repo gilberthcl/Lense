@@ -11,7 +11,7 @@ from app.api import (
 from app.core.config import settings
 from app.core.db import Base, SessionLocal, engine
 import app.models  # noqa: F401 — ensure models are registered on Base
-from app.services import config_store
+from app.services import config_store, global_config
 
 
 @asynccontextmanager
@@ -26,6 +26,7 @@ async def lifespan(app: FastAPI):
     db = SessionLocal()
     try:
         config_store.seed_defaults(db)
+        global_config.refresh(db)  # load editable AI-engine config into cache
     finally:
         db.close()
     yield

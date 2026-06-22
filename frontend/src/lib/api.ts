@@ -1,8 +1,12 @@
 // Typed fetch client for the Threat Hunt Findings Engine backend.
 import type {
+  AiEngineConfig,
   CategoryDef,
+  ClientOverview,
   CorrelationResult,
   CreateHuntInput,
+  GlobalConfig,
+  PlatformConfig,
   CreateKnowledgeInput,
   CreateTenantInput,
   Dataset,
@@ -86,6 +90,8 @@ export const api = {
   createTenant: (body: CreateTenantInput) =>
     request<Tenant>("/api/tenants", { method: "POST", body: JSON.stringify(body) }),
   getTenant: (tid: string) => request<Tenant>(`/api/tenants/${tid}`),
+  getClientOverview: (tid: string) =>
+    request<ClientOverview>(`/api/tenants/${tid}/overview`),
 
   // --- Knowledge base ---
   listKnowledge: (tid: string) =>
@@ -127,6 +133,19 @@ export const api = {
     request<{ categories: CategoryDef[] }>(
       "/api/config/structured-threat-hunt/categories",
     ),
+
+  // --- Global config (platform + AI engine) ---
+  getGlobalConfig: () => request<GlobalConfig>("/api/config/global"),
+  updateAiEngine: (patch: Partial<AiEngineConfig>) =>
+    request<AiEngineConfig>("/api/config/global/ai-engine", {
+      method: "PUT",
+      body: JSON.stringify(patch),
+    }),
+  updatePlatform: (patch: Partial<PlatformConfig>) =>
+    request<PlatformConfig>("/api/config/global/platform", {
+      method: "PUT",
+      body: JSON.stringify(patch),
+    }),
   updateConfig: (key: string, content: string) =>
     request<ModuleConfig>(`/api/config/structured-threat-hunt/${key}`, {
       method: "PUT",

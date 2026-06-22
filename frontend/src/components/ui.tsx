@@ -197,6 +197,39 @@ export function docTypeLabel(t: DocType): string {
   return DOC_TYPES.find((d) => d.value === t)?.label ?? t;
 }
 
+export function Tabs({
+  tabs,
+  active,
+  onChange,
+}: {
+  tabs: { id: string; label: string; badge?: ReactNode; disabled?: boolean }[];
+  active: string;
+  onChange: (id: string) => void;
+}) {
+  return (
+    <div className="mb-6 flex flex-wrap gap-1 border-b border-slate-800">
+      {tabs.map((t) => {
+        const isActive = t.id === active;
+        return (
+          <button
+            key={t.id}
+            disabled={t.disabled}
+            onClick={() => onChange(t.id)}
+            className={`-mb-px flex items-center gap-2 border-b-2 px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+              isActive
+                ? "border-indigo-400 text-indigo-200"
+                : "border-transparent text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            {t.label}
+            {t.badge}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function Spinner({ className = "" }: { className?: string }) {
   return (
     <span

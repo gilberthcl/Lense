@@ -80,6 +80,55 @@ export interface CategoryDef {
   color: string;
 }
 
+export interface AiEngineConfig {
+  base_url: string;
+  analyst_model: string;
+  reviewer_model: string;
+  qa_model: string;
+  embed_model: string;
+  temperature: number;
+  timeout: number;
+}
+
+export interface PlatformConfig {
+  platform_name: string;
+  default_report_language: string;
+}
+
+export interface GlobalConfig {
+  ai_engine: AiEngineConfig;
+  ai_defaults: AiEngineConfig;
+  platform: PlatformConfig;
+}
+
+// Client portal overview (aggregated)
+export interface ClientOverview {
+  client: { id: number; name: string; slug: string };
+  counts: { hunts: number; datasets: number; findings: number; validated: number };
+  risk: { score: number; label: string };
+  by_category: { key: string; label: string; count: number }[];
+  by_status: Record<string, number>;
+  recent_hunts: {
+    id: number;
+    name: string;
+    status: string;
+    report_language?: string;
+    edr?: string | null;
+    siem?: string | null;
+    created_at?: string | null;
+  }[];
+  recent_findings: {
+    id: number;
+    finding_ref: string;
+    title: string;
+    category: string;
+    severity?: string | null;
+    status: string;
+    hunt_id: number;
+    created_at?: string | null;
+  }[];
+}
+
 export type DatasetStatus = "uploaded" | "analyzing" | "analyzed" | "error" | string;
 
 export interface Dataset {
