@@ -2,8 +2,83 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+/*
+  Theme system. Each theme remaps the `slate` (structure) and `indigo` (accent)
+  scales used throughout the app. Values are space-separated "R G B" triplets.
+  Set via <html data-theme="..."> (see ThemeProvider).
+*/
+
+/* ── Midnight (default) — the original slate + indigo dark theme ── */
+:root,
+:root[data-theme="midnight"] {
   color-scheme: dark;
+  --c-slate-50: 248 250 252;
+  --c-slate-100: 241 245 249;
+  --c-slate-200: 226 232 240;
+  --c-slate-300: 203 213 225;
+  --c-slate-400: 148 163 184;
+  --c-slate-500: 100 116 139;
+  --c-slate-600: 71 85 105;
+  --c-slate-700: 51 65 85;
+  --c-slate-800: 30 41 59;
+  --c-slate-900: 15 23 42;
+  --c-slate-950: 2 6 23;
+  --c-indigo-100: 224 231 255;
+  --c-indigo-200: 199 210 254;
+  --c-indigo-300: 165 180 252;
+  --c-indigo-400: 129 140 248;
+  --c-indigo-500: 99 102 241;
+  --c-indigo-600: 79 70 229;
+  --c-indigo-700: 67 56 202;
+  --scrollbar: 51 65 85;
+}
+
+/* ── Graphite — neutral warm-gray dark theme with a teal accent ── */
+:root[data-theme="graphite"] {
+  color-scheme: dark;
+  --c-slate-50: 250 250 249;
+  --c-slate-100: 245 245 244;
+  --c-slate-200: 231 229 228;
+  --c-slate-300: 214 211 209;
+  --c-slate-400: 168 162 158;
+  --c-slate-500: 120 113 108;
+  --c-slate-600: 87 83 78;
+  --c-slate-700: 68 64 60;
+  --c-slate-800: 41 37 36;
+  --c-slate-900: 28 25 23;
+  --c-slate-950: 12 10 9;
+  --c-indigo-100: 204 251 241;
+  --c-indigo-200: 153 246 228;
+  --c-indigo-300: 94 234 212;
+  --c-indigo-400: 45 212 191;
+  --c-indigo-500: 20 184 166;
+  --c-indigo-600: 13 148 136;
+  --c-indigo-700: 15 118 110;
+  --scrollbar: 68 64 60;
+}
+
+/* ── Daybreak — light theme (slate scale inverted) ── */
+:root[data-theme="daybreak"] {
+  color-scheme: light;
+  --c-slate-50: 15 23 42;
+  --c-slate-100: 23 32 53;
+  --c-slate-200: 51 65 85;
+  --c-slate-300: 71 85 105;
+  --c-slate-400: 100 116 139;
+  --c-slate-500: 113 128 150;
+  --c-slate-600: 148 163 184;
+  --c-slate-700: 203 213 225;
+  --c-slate-800: 222 228 237;
+  --c-slate-900: 255 255 255;
+  --c-slate-950: 241 245 249;
+  --c-indigo-100: 224 231 255;
+  --c-indigo-200: 165 180 252;
+  --c-indigo-300: 79 70 229;
+  --c-indigo-400: 99 102 241;
+  --c-indigo-500: 99 102 241;
+  --c-indigo-600: 79 70 229;
+  --c-indigo-700: 67 56 202;
+  --scrollbar: 203 213 225;
 }
 
 html,
@@ -17,16 +92,16 @@ body {
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
-/* Thin scrollbars for the security-tooling aesthetic */
+/* Thin themed scrollbars */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #334155 transparent;
+  scrollbar-color: rgb(var(--scrollbar)) transparent;
 }
 *::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 *::-webkit-scrollbar-thumb {
-  background-color: #334155;
+  background-color: rgb(var(--scrollbar));
   border-radius: 4px;
 }
