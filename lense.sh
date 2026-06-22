@@ -90,10 +90,53 @@ start_frontend() {
   err "frontend did not come up — see .run/frontend.log"; return 1
 }
 
+ensure_migrations() {
+  say "${bold}Migrations${rst}"
+  if [ ! -f "$BACKEND/venv/bin/activate" ]; then
+    warn "no venv — skipping (the backend step will explain how to create it)"; return 0
+  fi
+  if ( cd "$BACKEND" && source venv/bin/activate && alembic upgrade head ) >>"$BE_LOG" 2>&1; then
+    ok "schema up to date (alembic upgrade head)"
+  else
+    warn "alembic upgrade failed — see .run/backend.log"
+    warn "if it says a table already exists, run once:  (cd backend && source venv/bin/activate && alembic stamp head)"
+  fi
+}
+
+# Read a value from .env, falling back to a default.
+env_or() {
+  local v=""
+  [ -f "$ROOT/.env" ] && v="$(grep -E "^$1=" "$ROOT/.env" | head -1 | cut -d= -f2- | cut -d'#' -f1 | tr -d ' \r')"
+  [ -n "$v" ] && printf "%s" "$v" || printf "%s" "$2"
+}
+
+check_models() {
+  local tags; tags="$(curl -sf "$OLLAMA_URL/api/tags" 2>/dev/null || true)"
+  [ -z "$tags" ] && return 0   # ollama unreachable — already warned by check_ollama
+  local seen=" " m miss=0
+  for m in \
+      "$(env_or OLLAMA_ANALYST_MODEL gemma3:27b)" \
+      "$(env_or OLLAMA_REVIEWER_MODEL gpt-oss:20b)" \
+      "$(env_or OLLAMA_QA_MODEL gpt-oss:20b)" \
+      "$(env_or OLLAMA_EMBED_MODEL nomic-embed-text)"; do
+    case "$seen" in *" $m "*) continue ;; esac   # dedupe (reviewer == qa)
+    seen="$seen$m "
+    if printf "%s" "$tags" | grep -qF "\"$m\""; then
+      ok "model present: $m"
+    else
+      warn "model MISSING: $m   → ollama pull $m"
+      miss=1
+    fi
+  done
+  [ "$miss" = 1 ] && warn "analysis will fail until the missing model(s) are pulled"
+  return 0
+}
+
 check_ollama() {
   say "${bold}Ollama${rst}"
   if curl -sf -o /dev/null "$OLLAMA_URL/api/tags"; then
     ok "reachable at $OLLAMA_URL"
+    check_models
   else
     warn "not reachable at $OLLAMA_URL — start it with:  ollama serve"
   fi
@@ -109,6 +152,7 @@ stop_one() {  # $1=name $2=pidfile $3=port-pattern
 cmd_start() {
   say "${bold}Starting LENS${rst} ${dim}($ROOT)${rst}"
   ensure_db || true
+  ensure_migrations || true
   start_backend || true
   start_frontend || true
   check_ollama
@@ -133,7 +177,12 @@ cmd_status() {
   ( cd "$ROOT" && docker compose ps db --status running 2>/dev/null | grep -q db ) && ok "database: running" || warn "database: stopped"
   port_up "$BACKEND_PORT/api/health" && ok "backend:  http://localhost:$BACKEND_PORT" || warn "backend:  down"
   port_up "$FRONTEND_PORT" && ok "frontend: http://localhost:$FRONTEND_PORT" || warn "frontend: down"
-  curl -sf -o /dev/null "$OLLAMA_URL/api/tags" && ok "ollama:   $OLLAMA_URL" || warn "ollama:   unreachable"
+  if curl -sf -o /dev/null "$OLLAMA_URL/api/tags"; then
+    ok "ollama:   $OLLAMA_URL"
+    check_models
+  else
+    warn "ollama:   unreachable"
+  fi
 }
 
 cmd_logs() {
