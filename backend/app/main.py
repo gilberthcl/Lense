@@ -8,12 +8,12 @@ from sqlalchemy import text
 
 from app.api import (
     auth as auth_api, config, correlations, datasets, findings, hunts,
-    knowledge, reports, tenants,
+    jobs as jobs_api, knowledge, reports, tenants,
 )
 from app.core.config import settings
 from app.core.db import Base, SessionLocal, engine
 import app.models  # noqa: F401 — ensure models are registered on Base
-from app.services import auth, config_store, global_config
+from app.services import auth, config_store, global_config, jobs
 
 
 @asynccontextmanager
@@ -30,6 +30,7 @@ async def lifespan(app: FastAPI):
         config_store.seed_defaults(db)
         global_config.refresh(db)  # load editable AI-engine config into cache
         auth.refresh(db)           # load cached access-PIN hash
+        jobs.cleanup_stale(db)     # fail jobs orphaned by a previous process
     finally:
         db.close()
     yield
@@ -70,6 +71,7 @@ async def access_pin_guard(request: Request, call_next):
 
 
 app.include_router(auth_api.router)
+app.include_router(jobs_api.router)
 app.include_router(config.router)
 app.include_router(tenants.router)
 app.include_router(knowledge.router)

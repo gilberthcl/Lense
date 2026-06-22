@@ -44,6 +44,26 @@ def update_sth_config(key: str, payload: ConfigUpdate, db: Session = Depends(get
     return config_store.upsert(db, key, payload.content)
 
 
+# ── Available Ollama models (for the model dropdowns) ──────────────────────
+@router.get("/ollama-models")
+def list_ollama_models(db: Session = Depends(get_db)):
+    """Names of models installed in the local Ollama (best-effort)."""
+    import httpx
+
+    base = global_config.get_ai(db)["base_url"]
+    try:
+        with httpx.Client(timeout=5) as client:
+            resp = client.get(f"{base}/api/tags")
+            resp.raise_for_status()
+            data = resp.json()
+        names = sorted(
+            m.get("name", "") for m in data.get("models", []) if m.get("name")
+        )
+        return {"models": names, "reachable": True}
+    except Exception:  # noqa: BLE001 — Ollama may be down; UI falls back to text
+        return {"models": [], "reachable": False}
+
+
 # ── Global config (platform + AI engine) ───────────────────────────────────
 @router.get("/global")
 def get_global(db: Session = Depends(get_db)):

@@ -10,7 +10,7 @@ from app.models import AnalysisJob, Hunt, KnowledgeDocument, Tenant
 from app.schemas import HuntCreate, HuntOut, JobOut
 import time
 
-from app.services import doc_loader, methodology, methodology_parser
+from app.services import doc_loader, jobs, methodology, methodology_parser
 from app.services.analysis_runner import ensure_methodology_brief
 
 router = APIRouter(prefix="/api/tenants/{tenant_id}/hunts", tags=["hunts"])
@@ -130,6 +130,10 @@ def analyze_methodology(
     if not (hunt.methodology_text or "").strip():
         raise HTTPException(status_code=422, detail="No methodology to analyze")
 
+    existing = jobs.active_job(db, tenant_id=tenant.id, hunt_id=hunt_id, phase="methodology")
+    if existing:
+        return existing
+
     job = AnalysisJob(
         tenant_id=tenant.id, hunt_id=hunt_id, dataset_id=None,
         phase="methodology", status="queued",
@@ -183,6 +187,7 @@ def analyze_methodology(
                         state["pct"] = min(88, state["pct"] + 4)
                         emit(j, f"{j.model} is reading… {state['tokens']} tokens generated",
                              state["pct"])
+                        jobs.raise_if_cancelled(task_db, job_id)
 
                 brief = methodology.comprehend_stream(
                     h.methodology_text or "", edr=h.edr, siem=h.siem,
@@ -199,6 +204,15 @@ def analyze_methodology(
                     "topics": topics,
                     "parsed": sections.get("stats") if sections.get("available") else None,
                 }
+                task_db.commit()
+            except jobs.JobCancelled:
+                task_db.rollback()
+                j = task_db.get(AnalysisJob, job_id)
+                j.status = "cancelled"
+                j.current_task = "Cancelled"
+                j.log = (j.log or []) + [
+                    {"at": round(time.monotonic() - t0, 1), "msg": "Cancelled by operator"}
+                ]
                 task_db.commit()
             except Exception as exc:  # noqa: BLE001
                 task_db.rollback()

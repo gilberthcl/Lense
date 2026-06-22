@@ -14,8 +14,8 @@ from app.models import (
     AnalysisJob, ClientApprovedSoftware, Dataset, Finding, Hunt, KnowledgeDocument,
 )
 from app.services import (
-    categories, config_store, csv_loader, findings_engine, knowledge, methodology,
-    methodology_parser,
+    categories, config_store, csv_loader, findings_engine, jobs, knowledge,
+    methodology, methodology_parser,
 )
 from app.services import ollama_client as ollama
 
@@ -200,6 +200,7 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
         job.current_task = "Running analyst → reviewer → QA"
         job.progress = 50
         db.commit()
+        jobs.raise_if_cancelled(db, job.id)
 
         result = findings_engine.analyze_dataset(
             dataset_name=dataset.filename,
@@ -248,6 +249,14 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
             "finding_count": len(result["findings"]),
             "trace": result["trace"],
         }
+        db.commit()
+    except jobs.JobCancelled:
+        db.rollback()
+        job = db.get(AnalysisJob, job_id)
+        job.status = "cancelled"
+        job.current_task = "Cancelled"
+        if dataset:
+            dataset.status = "uploaded"  # back to a re-runnable state
         db.commit()
     except Exception as exc:  # noqa: BLE001 — record any failure on the job
         db.rollback()

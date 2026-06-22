@@ -14,7 +14,7 @@ from app.core.config import settings
 from app.core.db import SessionLocal, get_db
 from app.models import AnalysisJob, Dataset, Hunt, Tenant
 from app.schemas import DatasetOut, JobOut
-from app.services import analysis_planner, csv_loader
+from app.services import analysis_planner, csv_loader, jobs
 from app.services.analysis_runner import run_dataset_analysis
 
 router = APIRouter(prefix="/api/tenants/{tenant_id}/hunts/{hunt_id}", tags=["datasets"])
@@ -136,6 +136,10 @@ def create_analysis_plan(
     if not db.query(Dataset).filter_by(hunt_id=hunt_id, tenant_id=tenant.id).first():
         raise HTTPException(status_code=422, detail="Upload datasets before planning")
 
+    existing = jobs.active_job(db, tenant_id=tenant.id, hunt_id=hunt_id, phase="plan")
+    if existing:
+        return existing
+
     job = AnalysisJob(
         tenant_id=tenant.id, hunt_id=hunt_id, dataset_id=None,
         phase="plan", status="queued",
@@ -173,6 +177,7 @@ def create_analysis_plan(
                         state["last"] = now
                         state["pct"] = min(90, state["pct"] + 5)
                         emit(j, f"{j.model} planning… {state['tok']} tokens", state["pct"])
+                        jobs.raise_if_cancelled(task_db, job_id)
 
                 plan = analysis_planner.plan_stream(h, metas, on_chunk=on_chunk)
                 h.analysis_plan = plan
@@ -182,6 +187,13 @@ def create_analysis_plan(
                 j.progress = 100
                 j.current_task = "Complete"
                 j.result = {"phases": len(plan.get("phases", []))}
+                task_db.commit()
+            except jobs.JobCancelled:
+                task_db.rollback()
+                j = task_db.get(AnalysisJob, job_id)
+                j.status = "cancelled"
+                j.current_task = "Cancelled"
+                j.log = (j.log or []) + [{"at": round(time.monotonic() - t0, 1), "msg": "Cancelled by operator"}]
                 task_db.commit()
             except Exception as exc:  # noqa: BLE001
                 task_db.rollback()
@@ -197,6 +209,37 @@ def create_analysis_plan(
     return job
 
 
+@router.get("/jobs", response_model=list[JobOut])
+def list_hunt_jobs(
+    hunt_id: int,
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+):
+    """Recent jobs for this hunt (active first) — used to re-attach the UI."""
+    _resolve_hunt(db, tenant, hunt_id)
+    return (
+        db.query(AnalysisJob)
+        .filter_by(tenant_id=tenant.id, hunt_id=hunt_id)
+        .order_by(AnalysisJob.created_at.desc())
+        .limit(30)
+        .all()
+    )
+
+
+@router.post("/jobs/{job_id}/cancel", response_model=JobOut)
+def cancel_hunt_job(
+    hunt_id: int,
+    job_id: int,
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+):
+    job = db.get(AnalysisJob, job_id)
+    if not job or job.tenant_id != tenant.id or job.hunt_id != hunt_id:
+        raise HTTPException(status_code=404, detail="Job not found")
+    jobs.cancel(db, job)
+    return job
+
+
 @router.post("/datasets/{dataset_id}/analyze", response_model=JobOut, status_code=202)
 def analyze_dataset_endpoint(
     hunt_id: int,
@@ -209,6 +252,14 @@ def analyze_dataset_endpoint(
     dataset = db.get(Dataset, dataset_id)
     if not dataset or dataset.tenant_id != tenant.id or dataset.hunt_id != hunt_id:
         raise HTTPException(status_code=404, detail="Dataset not found")
+
+    # Re-attach to an in-flight analysis for this dataset instead of starting a
+    # duplicate Ollama run.
+    existing = jobs.active_job(
+        db, tenant_id=tenant.id, hunt_id=hunt_id, phase="analysis", dataset_id=dataset_id
+    )
+    if existing:
+        return existing
 
     job = AnalysisJob(
         tenant_id=tenant.id, hunt_id=hunt_id, dataset_id=dataset_id,
