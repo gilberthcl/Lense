@@ -26,7 +26,14 @@ const EMPTY_FORM: CreateHuntInput = {
   siem: "",
 };
 
-export default function HuntsPanel({ tid }: { tid: string }) {
+export default function HuntsPanel({
+  tid,
+  clientBase = "/clients",
+}: {
+  tid: string;
+  /** Path prefix for in-context links, e.g. /clients or /structured-hunts/clients */
+  clientBase?: string;
+}) {
   const toast = useToast();
   const [hunts, setHunts] = useState<Hunt[] | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -195,7 +202,7 @@ export default function HuntsPanel({ tid }: { tid: string }) {
             {hunts.map((h) => (
               <li key={h.id}>
                 <Link
-                  to={`/clients/${tid}/hunts/${h.id}`}
+                  to={`${clientBase}/${tid}/hunts/${h.id}`}
                   className="group block rounded border border-slate-800 bg-slate-950/40 px-3 py-2.5 transition-colors hover:border-indigo-700"
                 >
                   <div className="flex items-center justify-between gap-3">

@@ -39,7 +39,13 @@ function Tile({
   );
 }
 
-export default function ClientOverview({ tid }: { tid: string }) {
+export default function ClientOverview({
+  tid,
+  clientBase = "/clients",
+}: {
+  tid: string;
+  clientBase?: string;
+}) {
   const toast = useToast();
   const [data, setData] = useState<Overview | null>(null);
 
@@ -106,7 +112,7 @@ export default function ClientOverview({ tid }: { tid: string }) {
                 {recent_hunts.map((h) => (
                   <li key={h.id}>
                     <Link
-                      to={`/clients/${tid}/hunts/${h.id}`}
+                      to={`${clientBase}/${tid}/hunts/${h.id}`}
                       className="flex items-center justify-between gap-3 rounded px-2 py-2.5 hover:bg-slate-800/40"
                     >
                       <div className="min-w-0">
@@ -139,7 +145,7 @@ export default function ClientOverview({ tid }: { tid: string }) {
                 {recent_findings.map((f) => (
                   <li key={f.id}>
                     <Link
-                      to={`/clients/${tid}/hunts/${f.hunt_id}`}
+                      to={`${clientBase}/${tid}/hunts/${f.hunt_id}`}
                       className="flex items-center justify-between gap-3 rounded px-2 py-2.5 hover:bg-slate-800/40"
                     >
                       <div className="min-w-0">

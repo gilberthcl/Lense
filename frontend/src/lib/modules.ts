@@ -10,6 +10,8 @@ export interface ModuleDef {
   tagline: string;
   description: string;
   capabilities: string[];
+  /** Portal tab a client opens on when entered from this module. */
+  primaryTab?: string;
 }
 
 export const MODULES: ModuleDef[] = [
@@ -30,6 +32,7 @@ export const MODULES: ModuleDef[] = [
       "Cross-dataset correlation & IOC tables",
       "Bilingual DOCX reports (EN/ES)",
     ],
+    primaryTab: "hunts",
   },
   {
     id: "unstructured-hunts",
@@ -82,3 +85,6 @@ export const MODULES: ModuleDef[] = [
 ];
 
 export const getModule = (id: string) => MODULES.find((m) => m.id === id);
+
+/** Base path for a client opened inside a module, e.g. /structured-hunts/clients */
+export const moduleClientBase = (mod: ModuleDef) => `${mod.path}/clients`;

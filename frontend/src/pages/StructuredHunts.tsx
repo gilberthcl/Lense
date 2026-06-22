@@ -79,6 +79,7 @@ export default function StructuredHunts() {
       </div>
       <ClientGrid
         clients={clients}
+        basePath="/structured-hunts/clients"
         emptyHint="No clients yet. Create one to start a structured hunt."
       />
     </div>

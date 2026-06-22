@@ -15,6 +15,12 @@ export default function App() {
 
         {/* Live module */}
         <Route path="/structured-hunts" element={<StructuredHunts />} />
+        {/* A client opened in the context of the Structured Hunts module */}
+        <Route
+          path="/structured-hunts/clients/:tid"
+          element={<ClientWorkspace moduleId="structured-hunts" />}
+        />
+        <Route path="/structured-hunts/clients/:tid/hunts/:hid" element={<HuntView />} />
 
         {/* Global clients */}
         <Route path="/clients" element={<ClientsPage />} />

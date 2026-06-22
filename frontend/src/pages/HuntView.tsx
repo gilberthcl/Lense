@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useLocation, useParams } from "react-router-dom";
 import { api, ApiError } from "../lib/api";
 import type { Hunt, ReportLang, Tenant } from "../lib/types";
 import { useToast } from "../components/Toast";
 import { Breadcrumbs } from "../components/Layout";
+import { getModule, moduleClientBase } from "../lib/modules";
 import { Badge, Button, Select, Spinner } from "../components/ui";
 import DatasetsPanel from "../components/DatasetsPanel";
 import FindingsPanel from "../components/FindingsPanel";
@@ -12,7 +13,13 @@ import MethodologyPanel from "../components/MethodologyPanel";
 
 export default function HuntView() {
   const { tid, hid } = useParams<{ tid: string; hid: string }>();
+  const { pathname } = useLocation();
   const toast = useToast();
+  // If we arrived under a module (e.g. /structured-hunts/clients/...), keep that context.
+  const mod = pathname.startsWith("/structured-hunts/")
+    ? getModule("structured-hunts")
+    : undefined;
+  const clientBase = mod ? moduleClientBase(mod) : "/clients";
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [hunt, setHunt] = useState<Hunt | null>(null);
   // Bumping this key tells the Findings/Correlations panels to reload.
@@ -53,12 +60,19 @@ export default function HuntView() {
   return (
     <div>
       <Breadcrumbs
-        items={[
-          { label: "Structured Hunts", to: "/structured-hunts" },
-          { label: "Clients", to: "/clients" },
-          { label: tenant?.name ?? "…", to: `/clients/${tid}` },
-          { label: hunt?.name ?? "…" },
-        ]}
+        items={
+          mod
+            ? [
+                { label: mod.name, to: mod.path },
+                { label: tenant?.name ?? "…", to: `${clientBase}/${tid}` },
+                { label: hunt?.name ?? "…" },
+              ]
+            : [
+                { label: "Clients", to: "/clients" },
+                { label: tenant?.name ?? "…", to: `/clients/${tid}` },
+                { label: hunt?.name ?? "…" },
+              ]
+        }
       />
 
       <div className="mb-6">

@@ -5,6 +5,7 @@ import type { Tenant } from "../lib/types";
 import { useToast } from "../components/Toast";
 import { Breadcrumbs } from "../components/Layout";
 import { IconClients } from "../components/icons";
+import { getModule, moduleClientBase } from "../lib/modules";
 import { Badge, Spinner, Tabs } from "../components/ui";
 import KnowledgePanel from "../components/KnowledgePanel";
 import HuntsPanel from "../components/HuntsPanel";
@@ -35,12 +36,14 @@ function contractBadge(end?: string | null) {
   return <Badge className="border border-slate-700 bg-slate-800 text-slate-400">Contract ends {end}</Badge>;
 }
 
-export default function ClientWorkspace() {
+export default function ClientWorkspace({ moduleId }: { moduleId?: string } = {}) {
   const { tid } = useParams<{ tid: string }>();
   const toast = useToast();
+  const mod = moduleId ? getModule(moduleId) : undefined;
+  const clientBase = mod ? moduleClientBase(mod) : "/clients";
   const [client, setClient] = useState<Tenant | null>(null);
   const [notFound, setNotFound] = useState(false);
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = useState(mod?.primaryTab ?? "overview");
 
   const load = () => {
     if (!tid) return;
@@ -73,11 +76,11 @@ export default function ClientWorkspace() {
   return (
     <div>
       <Breadcrumbs
-        items={[
-          { label: "Structured Hunts", to: "/structured-hunts" },
-          { label: "Clients", to: "/clients" },
-          { label: client?.name ?? "…" },
-        ]}
+        items={
+          mod
+            ? [{ label: mod.name, to: mod.path }, { label: client?.name ?? "…" }]
+            : [{ label: "Clients", to: "/clients" }, { label: client?.name ?? "…" }]
+        }
       />
 
       {/* Hero strip */}
@@ -96,6 +99,9 @@ export default function ClientWorkspace() {
             </h1>
             {client && (
               <span className="rounded bg-slate-800 px-2 py-0.5 font-mono text-xs text-slate-400">{client.slug}</span>
+            )}
+            {mod && (
+              <Badge className="border border-indigo-700 bg-indigo-950 text-indigo-300">{mod.name}</Badge>
             )}
             {contractBadge(client?.contract_end)}
           </div>
@@ -124,8 +130,8 @@ export default function ClientWorkspace() {
 
       <Tabs tabs={TABS} active={tab} onChange={setTab} />
 
-      {tab === "overview" && <ClientOverview tid={tid} />}
-      {tab === "hunts" && <HuntsPanel tid={tid} />}
+      {tab === "overview" && <ClientOverview tid={tid} clientBase={clientBase} />}
+      {tab === "hunts" && <HuntsPanel tid={tid} clientBase={clientBase} />}
       {tab === "knowledge" && <KnowledgePanel tid={tid} />}
       {tab === "environment" && <ClientEnvironment tid={tid} />}
       {tab === "contacts" && <ClientContacts tid={tid} />}
