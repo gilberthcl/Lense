@@ -111,11 +111,16 @@ ensure_migrations() {
   if [ ! -f "$BACKEND/venv/bin/activate" ]; then
     warn "no venv — skipping (the backend step will explain how to create it)"; return 0
   fi
-  if ( cd "$BACKEND" && source venv/bin/activate && alembic upgrade head ) >>"$BE_LOG" 2>&1; then
+  printf "  ${dim}… running 'alembic upgrade head' (15s lock timeout)${rst}\n"
+  # lock_timeout makes a blocked ALTER (e.g. a leftover connection holding a lock)
+  # fail fast instead of hanging forever; statement_timeout bounds slow DDL.
+  if ( cd "$BACKEND" && source venv/bin/activate \
+        && PGOPTIONS='-c lock_timeout=15000 -c statement_timeout=300000' alembic upgrade head ) >>"$BE_LOG" 2>&1; then
     ok "schema up to date (alembic upgrade head)"
   else
-    warn "alembic upgrade failed — see .run/backend.log"
-    warn "if it says a table already exists, run once:  (cd backend && source venv/bin/activate && alembic stamp head)"
+    warn "alembic upgrade failed or timed out — see .run/backend.log"
+    warn "a lock from a previous run can cause this — try:  lense stop --all && lense"
+    warn "if it says a table already exists:  (cd backend && source venv/bin/activate && alembic stamp head)"
   fi
 }
 
