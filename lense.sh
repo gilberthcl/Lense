@@ -78,15 +78,23 @@ start_backend() {
     say "      cd '$BACKEND' && python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt"
     return 1
   fi
+  if lsof -i ":$BACKEND_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+    err "port $BACKEND_PORT is already in use — stop the other process (lsof -i :$BACKEND_PORT) or 'lense stop'"
+    return 1
+  fi
   ( cd "$BACKEND" && source venv/bin/activate && exec uvicorn app.main:app --reload --port "$BACKEND_PORT" ) \
       >"$BE_LOG" 2>&1 &
   echo $! > "$BE_PID"
+  printf "  ${dim}… waiting for the backend (first start can take ~15s)${rst}\n"
   local i
-  for i in $(seq 1 30); do
+  for i in $(seq 1 60); do
     port_up "$BACKEND_PORT/api/health" && { ok "http://localhost:$BACKEND_PORT  (logs: .run/backend.log)"; return 0; }
+    pid_alive "$BE_PID" || break   # process exited early → show the error
     sleep 1
   done
-  err "backend did not come up — see .run/backend.log"; return 1
+  err "backend did not come up — last lines of .run/backend.log:"
+  tail -n 15 "$BE_LOG" 2>/dev/null | sed 's/^/      /'
+  return 1
 }
 
 start_frontend() {
@@ -99,11 +107,14 @@ start_frontend() {
   ( cd "$FRONTEND" && exec npm run dev ) >"$FE_LOG" 2>&1 &
   echo $! > "$FE_PID"
   local i
-  for i in $(seq 1 30); do
+  for i in $(seq 1 60); do
     port_up "$FRONTEND_PORT" && { ok "http://localhost:$FRONTEND_PORT  (logs: .run/frontend.log)"; return 0; }
+    pid_alive "$FE_PID" || break
     sleep 1
   done
-  err "frontend did not come up — see .run/frontend.log"; return 1
+  err "frontend did not come up — last lines of .run/frontend.log:"
+  tail -n 15 "$FE_LOG" 2>/dev/null | sed 's/^/      /'
+  return 1
 }
 
 ensure_migrations() {
