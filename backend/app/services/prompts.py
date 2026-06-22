@@ -231,3 +231,47 @@ summary, evidence, mitre, recommendations). Return the same JSON array shape as
 received, cleaned. Do not invent content to fill gaps — flag gaps in a
 "qa_note" field instead.
 """
+
+
+# ── Analysis planning (pre-analysis, metadata-only) ─────────────────────────
+ANALYSIS_PLAN_SYSTEM = """\
+You are a Senior Threat Hunting Analyst planning HOW to analyze a set of CSV
+result-set datasets against a hunt methodology. You are given only metadata
+about each dataset (filename, size, row/column counts, column names) — NOT the
+contents. Do not analyze or invent data. Plan the process: group datasets into
+phases/batches by complexity and topic, choose a sensible order, and plan the
+QA review that follows analysis.
+
+Output STRICTLY valid JSON. No prose outside the JSON.
+"""
+
+ANALYSIS_PLAN_PROMPT = """\
+Hunt: {hunt_name}
+
+Methodology topics:
+{methodology}
+
+Datasets ({count}) — metadata only:
+{datasets}
+
+Return a JSON object with EXACTLY these keys:
+{{
+  "summary": "1-3 sentence overview of how the analysis will be approached",
+  "estimated_rounds": <integer number of analysis batches/rounds>,
+  "complexity": [
+    {{"dataset": "<filename>", "level": "low|medium|high",
+      "reason": "justify from size / row count / column count / width"}}
+  ],
+  "phases": [
+    {{"name": "<phase name>", "datasets": ["<filename>", ...],
+      "focus": "what to look for in this phase",
+      "rationale": "why these datasets are grouped and ordered here"}}
+  ],
+  "batching": "whether to process one-at-a-time or in groups, and why",
+  "qa_plan": "how findings QA / senior review will be conducted after analysis"
+}}
+
+Base complexity strictly on the provided size/row/column metadata (more rows,
+more/wider columns, or larger files = higher complexity). Cover every dataset
+exactly once across the phases. Do not invent dataset contents.
+"""

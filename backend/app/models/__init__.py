@@ -144,6 +144,8 @@ class Hunt(Base):
     methodology_brief: Mapped[dict | None] = mapped_column(JSON)
     # Deterministically-parsed sections: description, plan_of_action, queries.
     methodology_sections: Mapped[dict | None] = mapped_column(JSON)
+    # LLM pre-analysis plan (phases/batches/complexity/QA) over dataset metadata.
+    analysis_plan: Mapped[dict | None] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(30), default="created")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 

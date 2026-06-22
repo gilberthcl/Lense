@@ -1,5 +1,6 @@
-"""Dataset upload + per-dataset analysis trigger."""
+"""Dataset upload + preview + per-dataset analysis + pre-analysis planning."""
 import re
+import time
 import uuid
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from app.core.config import settings
 from app.core.db import SessionLocal, get_db
 from app.models import AnalysisJob, Dataset, Hunt, Tenant
 from app.schemas import DatasetOut, JobOut
+from app.services import analysis_planner, csv_loader
 from app.services.analysis_runner import run_dataset_analysis
 
 router = APIRouter(prefix="/api/tenants/{tenant_id}/hunts/{hunt_id}", tags=["datasets"])
@@ -64,18 +66,135 @@ async def upload_dataset(
     dest = dest_dir / f"{uuid.uuid4().hex}_{safe}"
     dest.write_bytes(data)
 
+    # Cheap metadata pass so the table + analysis plan have real numbers
+    # (full statistics are computed later during analysis). Never fail upload.
+    row_count = col_count = 0
+    columns = None
+    try:
+        df = csv_loader.load_csv(dest, settings.max_upload_bytes)
+        row_count = int(df.shape[0])
+        col_count = int(df.shape[1])
+        columns = [{"name": str(c)} for c in df.columns]
+    except Exception:  # noqa: BLE001 — metadata is best-effort
+        pass
+
     dataset = Dataset(
         tenant_id=tenant.id,
         hunt_id=hunt.id,
         filename=file.filename,
         file_path=str(dest),
         file_size=len(data),
+        row_count=row_count,
+        col_count=col_count,
+        columns=columns,
         status="uploaded",
     )
     db.add(dataset)
     db.commit()
     db.refresh(dataset)
     return dataset
+
+
+@router.get("/datasets/{dataset_id}/preview")
+def preview_dataset(
+    hunt_id: int,
+    dataset_id: int,
+    rows: int = 20,
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+):
+    """Return the column list and first N rows of a dataset (capped at 50)."""
+    _resolve_hunt(db, tenant, hunt_id)
+    dataset = db.get(Dataset, dataset_id)
+    if not dataset or dataset.tenant_id != tenant.id or dataset.hunt_id != hunt_id:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    try:
+        df = csv_loader.load_csv(dataset.file_path, settings.max_upload_bytes)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=422, detail=f"Could not read CSV: {exc}")
+    n = max(1, min(rows, 50))
+    head = df.head(n)
+    return {
+        "filename": dataset.filename,
+        "row_count": int(df.shape[0]),
+        "col_count": int(df.shape[1]),
+        "columns": [str(c) for c in df.columns],
+        "rows": [[("" if v is None else str(v)) for v in rec]
+                 for rec in head.itertuples(index=False, name=None)],
+    }
+
+
+@router.post("/analysis-plan", response_model=JobOut, status_code=202)
+def create_analysis_plan(
+    hunt_id: int,
+    background: BackgroundTasks,
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+):
+    """Plan the analysis (phases/batches/complexity/QA) from dataset metadata."""
+    _resolve_hunt(db, tenant, hunt_id)
+    if not db.query(Dataset).filter_by(hunt_id=hunt_id, tenant_id=tenant.id).first():
+        raise HTTPException(status_code=422, detail="Upload datasets before planning")
+
+    job = AnalysisJob(
+        tenant_id=tenant.id, hunt_id=hunt_id, dataset_id=None,
+        phase="plan", status="queued",
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+
+    def _task(job_id: int, h_id: int, t_id: int):
+        task_db = SessionLocal()
+        t0 = time.monotonic()
+
+        def emit(j: AnalysisJob, msg: str, pct: int | None = None) -> None:
+            j.log = (j.log or []) + [{"at": round(time.monotonic() - t0, 1), "msg": msg}]
+            if pct is not None:
+                j.progress = pct
+            task_db.commit()
+
+        try:
+            j = task_db.get(AnalysisJob, job_id)
+            h = task_db.get(Hunt, h_id)
+            try:
+                j.status = "running"
+                j.model = analysis_planner.planner_model()
+                emit(j, "Collecting dataset metadata…", 10)
+                metas = analysis_planner.dataset_meta(task_db, h_id, t_id)
+                emit(j, f"Planning across {len(metas)} datasets with {j.model}…", 20)
+
+                state = {"last": time.monotonic(), "pct": 20, "tok": 0}
+
+                def on_chunk(_t: str) -> None:
+                    state["tok"] += 1
+                    now = time.monotonic()
+                    if now - state["last"] >= 1.3:
+                        state["last"] = now
+                        state["pct"] = min(90, state["pct"] + 5)
+                        emit(j, f"{j.model} planning… {state['tok']} tokens", state["pct"])
+
+                plan = analysis_planner.plan_stream(h, metas, on_chunk=on_chunk)
+                h.analysis_plan = plan
+                emit(j, f"Plan ready — {len(plan.get('phases', []))} phases, "
+                        f"{plan.get('estimated_rounds', '?')} rounds.", 98)
+                j.status = "done"
+                j.progress = 100
+                j.current_task = "Complete"
+                j.result = {"phases": len(plan.get("phases", []))}
+                task_db.commit()
+            except Exception as exc:  # noqa: BLE001
+                task_db.rollback()
+                j = task_db.get(AnalysisJob, job_id)
+                j.status = "error"
+                j.error = str(exc)
+                j.log = (j.log or []) + [{"at": round(time.monotonic() - t0, 1), "msg": f"Error: {exc}"}]
+                task_db.commit()
+        finally:
+            task_db.close()
+
+    background.add_task(_task, job.id, hunt_id, tenant.id)
+    return job
 
 
 @router.post("/datasets/{dataset_id}/analyze", response_model=JobOut, status_code=202)
