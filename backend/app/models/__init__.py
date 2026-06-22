@@ -87,6 +87,9 @@ class Tenant(Base):
     calendar_events: Mapped[list["ClientCalendarEvent"]] = relationship(
         back_populates="tenant", cascade="all, delete-orphan"
     )
+    approved_software: Mapped[list["ClientApprovedSoftware"]] = relationship(
+        back_populates="tenant", cascade="all, delete-orphan"
+    )
 
 
 # ── Knowledge base (per-tenant constitution + learning) ────────────────────
@@ -248,6 +251,26 @@ class ClientCalendarEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     tenant: Mapped["Tenant"] = relationship(back_populates="calendar_events")
+
+
+# ── Client approved-software baseline (environment context) ────────────────
+# Feeds the analyst: approved entries reduce false positives; non-approved
+# entries flag policy violations / unapproved software.
+class ClientApprovedSoftware(Base):
+    __tablename__ = "client_approved_software"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(300), nullable=False)
+    vendor: Mapped[str | None] = mapped_column(String(200))
+    category: Mapped[str | None] = mapped_column(String(120))
+    notes: Mapped[str | None] = mapped_column(Text)
+    is_approved: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    tenant: Mapped["Tenant"] = relationship(back_populates="approved_software")
 
 
 # ── Analysis jobs (async per-dataset work) ─────────────────────────────────

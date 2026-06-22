@@ -83,6 +83,25 @@ export interface CreateCalendarInput {
   notes?: string;
 }
 
+export interface ApprovedSoftware {
+  id: number;
+  tenant_id: number;
+  name: string;
+  vendor?: string | null;
+  category?: string | null;
+  notes?: string | null;
+  is_approved: boolean;
+  created_at: string;
+}
+
+export interface CreateApprovedSoftwareInput {
+  name: string;
+  vendor?: string;
+  category?: string;
+  notes?: string;
+  is_approved?: boolean;
+}
+
 export type DocType =
   | "methodology"
   | "finding_categories"

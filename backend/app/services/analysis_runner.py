@@ -10,11 +10,45 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.models import AnalysisJob, Dataset, Finding, Hunt, KnowledgeDocument
+from app.models import (
+    AnalysisJob, ClientApprovedSoftware, Dataset, Finding, Hunt, KnowledgeDocument,
+)
 from app.services import (
     categories, config_store, csv_loader, findings_engine, knowledge, methodology,
 )
 from app.services import ollama_client as ollama
+
+
+def _approved_software_context(db: Session, tenant_id: int) -> str:
+    """Render the structured approved-software baseline for the analyst."""
+    rows = db.query(ClientApprovedSoftware).filter_by(tenant_id=tenant_id).all()
+    if not rows:
+        return ""
+    approved = [r for r in rows if r.is_approved]
+    denied = [r for r in rows if not r.is_approved]
+
+    def _fmt(r: ClientApprovedSoftware) -> str:
+        bits = [r.name]
+        if r.vendor:
+            bits.append(f"({r.vendor})")
+        if r.category:
+            bits.append(f"[{r.category}]")
+        return " ".join(bits)
+
+    out = []
+    if approved:
+        out.append(
+            "[approved_software_baseline] The following software is APPROVED in "
+            "this environment — do NOT flag it as a policy violation or treat it as "
+            "inherently suspicious:\n- " + "\n- ".join(_fmt(r) for r in approved)
+        )
+    if denied:
+        out.append(
+            "[unapproved_software] The following software is explicitly NOT approved "
+            "— its presence is a policy violation:\n- "
+            + "\n- ".join(_fmt(r) for r in denied)
+        )
+    return "\n\n".join(out)
 
 
 def _tenant_context(db: Session, tenant_id: int) -> str:
@@ -24,6 +58,9 @@ def _tenant_context(db: Session, tenant_id: int) -> str:
             tenant_id=tenant_id, doc_type=dt
         ):
             parts.append(f"[{dt}] {doc.title}\n{doc.content}")
+    sw = _approved_software_context(db, tenant_id)
+    if sw:
+        parts.append(sw)
     return "\n\n".join(parts)
 
 

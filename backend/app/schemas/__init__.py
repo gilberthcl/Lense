@@ -215,6 +215,31 @@ class FindingBulkUpdate(BaseModel):
     status: str  # validated | rejected | draft
 
 
+# ── Approved software ──────────────────────────────────────────────────────
+class ApprovedSoftwareCreate(BaseModel):
+    name: str
+    vendor: str | None = None
+    category: str | None = None
+    notes: str | None = None
+    is_approved: bool = True
+
+
+class ApprovedSoftwareBulk(BaseModel):
+    names: list[str]
+    is_approved: bool = True
+
+
+class ApprovedSoftwareOut(ORMModel):
+    id: int
+    tenant_id: int
+    name: str
+    vendor: str | None
+    category: str | None
+    notes: str | None
+    is_approved: bool
+    created_at: datetime
+
+
 # ── Jobs ───────────────────────────────────────────────────────────────────
 class JobOut(ORMModel):
     id: int

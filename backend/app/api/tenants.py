@@ -8,9 +8,11 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.models import (
-    ClientCalendarEvent, ClientContact, Dataset, Finding, Hunt, Tenant,
+    ClientApprovedSoftware, ClientCalendarEvent, ClientContact, Dataset,
+    Finding, Hunt, Tenant,
 )
 from app.schemas import (
+    ApprovedSoftwareBulk, ApprovedSoftwareCreate, ApprovedSoftwareOut,
     CalendarCreate, CalendarOut, ContactCreate, ContactOut, TenantCreate,
     TenantOut, TenantUpdate,
 )
@@ -177,6 +179,54 @@ def delete_event(tenant_id: int, event_id: int, db: Session = Depends(get_db)):
     if not event or event.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="Event not found")
     db.delete(event)
+    db.commit()
+
+
+# ── Approved software (environment baseline) ───────────────────────────────
+@router.get("/{tenant_id}/approved-software", response_model=list[ApprovedSoftwareOut])
+def list_approved_software(tenant_id: int, db: Session = Depends(get_db)):
+    _resolve(db, tenant_id)
+    return (
+        db.query(ClientApprovedSoftware)
+        .filter_by(tenant_id=tenant_id)
+        .order_by(desc(ClientApprovedSoftware.is_approved), ClientApprovedSoftware.name)
+        .all()
+    )
+
+
+@router.post("/{tenant_id}/approved-software", response_model=ApprovedSoftwareOut, status_code=201)
+def create_approved_software(tenant_id: int, payload: ApprovedSoftwareCreate, db: Session = Depends(get_db)):
+    _resolve(db, tenant_id)
+    sw = ClientApprovedSoftware(tenant_id=tenant_id, **payload.model_dump())
+    db.add(sw)
+    db.commit()
+    db.refresh(sw)
+    return sw
+
+
+@router.post("/{tenant_id}/approved-software/bulk", response_model=list[ApprovedSoftwareOut], status_code=201)
+def bulk_approved_software(tenant_id: int, payload: ApprovedSoftwareBulk, db: Session = Depends(get_db)):
+    _resolve(db, tenant_id)
+    created = []
+    for raw in payload.names:
+        name = raw.strip()
+        if not name:
+            continue
+        sw = ClientApprovedSoftware(tenant_id=tenant_id, name=name, is_approved=payload.is_approved)
+        db.add(sw)
+        created.append(sw)
+    db.commit()
+    for sw in created:
+        db.refresh(sw)
+    return created
+
+
+@router.delete("/{tenant_id}/approved-software/{sw_id}", status_code=204)
+def delete_approved_software(tenant_id: int, sw_id: int, db: Session = Depends(get_db)):
+    sw = db.get(ClientApprovedSoftware, sw_id)
+    if not sw or sw.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    db.delete(sw)
     db.commit()
 
 

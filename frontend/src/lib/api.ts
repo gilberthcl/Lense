@@ -1,11 +1,13 @@
 // Typed fetch client for the Threat Hunt Findings Engine backend.
 import type {
   AiEngineConfig,
+  ApprovedSoftware,
   CalendarEvent,
   CategoryDef,
   ClientOverview,
   Contact,
   CorrelationResult,
+  CreateApprovedSoftwareInput,
   CreateCalendarInput,
   CreateContactInput,
   CreateHuntInput,
@@ -125,6 +127,22 @@ export const api = {
     request<CalendarEvent>(`/api/tenants/${tid}/calendar`, { method: "POST", body: JSON.stringify(body) }),
   deleteEvent: (tid: string, eid: number) =>
     request<void>(`/api/tenants/${tid}/calendar/${eid}`, { method: "DELETE" }),
+
+  // --- Approved software (environment baseline) ---
+  listApprovedSoftware: (tid: string) =>
+    request<ApprovedSoftware[]>(`/api/tenants/${tid}/approved-software`),
+  createApprovedSoftware: (tid: string, body: CreateApprovedSoftwareInput) =>
+    request<ApprovedSoftware>(`/api/tenants/${tid}/approved-software`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  bulkApprovedSoftware: (tid: string, names: string[], is_approved = true) =>
+    request<ApprovedSoftware[]>(`/api/tenants/${tid}/approved-software/bulk`, {
+      method: "POST",
+      body: JSON.stringify({ names, is_approved }),
+    }),
+  deleteApprovedSoftware: (tid: string, sid: number) =>
+    request<void>(`/api/tenants/${tid}/approved-software/${sid}`, { method: "DELETE" }),
 
   // --- Knowledge base ---
   listKnowledge: (tid: string) =>

@@ -11,12 +11,14 @@ import HuntsPanel from "../components/HuntsPanel";
 import ClientOverview from "../components/client/ClientOverview";
 import ClientContacts from "../components/client/ClientContacts";
 import ClientCalendar from "../components/client/ClientCalendar";
+import ClientEnvironment from "../components/client/ClientEnvironment";
 import ClientSettings from "../components/client/ClientSettings";
 
 const TABS = [
   { id: "overview", label: "Overview" },
   { id: "hunts", label: "Hunts" },
   { id: "knowledge", label: "Knowledge Base" },
+  { id: "environment", label: "Environment" },
   { id: "contacts", label: "Contacts" },
   { id: "calendar", label: "Calendar" },
   { id: "settings", label: "Settings" },
@@ -125,6 +127,7 @@ export default function ClientWorkspace() {
       {tab === "overview" && <ClientOverview tid={tid} />}
       {tab === "hunts" && <HuntsPanel tid={tid} />}
       {tab === "knowledge" && <KnowledgePanel tid={tid} />}
+      {tab === "environment" && <ClientEnvironment tid={tid} />}
       {tab === "contacts" && <ClientContacts tid={tid} />}
       {tab === "calendar" && <ClientCalendar tid={tid} />}
       {tab === "settings" && client && <ClientSettings client={client} onUpdated={setClient} />}
