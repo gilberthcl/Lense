@@ -2,10 +2,8 @@ import { useEffect, useState, type ComponentType, type SVGProps } from "react";
 import { NavLink } from "react-router-dom";
 import { api, API_BASE } from "../lib/api";
 import { MODULES } from "../lib/modules";
-import { ThemeSwitcher } from "./Theme";
 import {
   IconClients,
-  IconConfig,
   IconIntel,
   IconLogo,
   IconReviews,
@@ -110,12 +108,7 @@ export default function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="space-y-1 border-t border-slate-800/80 p-3">
-        <ThemeSwitcher />
-        <NavLink to="/config" className={({ isActive }) => navClass(isActive)}>
-          <IconConfig className="shrink-0 text-current opacity-80" />
-          <span>Configuration</span>
-        </NavLink>
+      <div className="border-t border-slate-800/80 p-3">
         <HealthDot />
       </div>
     </aside>

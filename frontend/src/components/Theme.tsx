@@ -43,37 +43,30 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
 export const useTheme = () => useContext(ThemeCtx);
 
-export function ThemeSwitcher() {
+/** Compact, text-free theme picker: one colored ball per theme. */
+export function ThemeBalls() {
   const { theme, setTheme } = useTheme();
   return (
-    <div className="px-3 py-2">
-      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-600">
-        Theme
-      </p>
-      <div className="flex gap-1.5">
-        {THEMES.map((t) => {
-          const active = t.id === theme;
-          return (
-            <button
-              key={t.id}
-              onClick={() => setTheme(t.id)}
-              title={t.label}
-              aria-label={`${t.label} theme`}
-              className={`flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md border text-[11px] transition-colors ${
-                active
-                  ? "border-indigo-500/50 bg-indigo-500/10 text-indigo-200"
-                  : "border-slate-700 text-slate-400 hover:bg-slate-800/60"
-              }`}
-            >
-              <span
-                className="h-3 w-3 rounded-full ring-1 ring-inset ring-black/20"
-                style={{ backgroundColor: t.swatch }}
-              />
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
+    <div className="flex items-center gap-2" role="radiogroup" aria-label="Theme">
+      {THEMES.map((t) => {
+        const active = t.id === theme;
+        return (
+          <button
+            key={t.id}
+            onClick={() => setTheme(t.id)}
+            title={t.label}
+            aria-label={`${t.label} theme`}
+            aria-checked={active}
+            role="radio"
+            className={`h-5 w-5 rounded-full ring-1 ring-inset ring-black/30 transition-transform hover:scale-110 ${
+              active
+                ? "ring-2 ring-indigo-400 ring-offset-2 ring-offset-slate-950"
+                : "opacity-70 hover:opacity-100"
+            }`}
+            style={{ backgroundColor: t.swatch }}
+          />
+        );
+      })}
     </div>
   );
 }

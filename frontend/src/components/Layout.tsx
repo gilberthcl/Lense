@@ -1,13 +1,47 @@
 import { type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
 import Sidebar from "./Sidebar";
-import { IconChevron } from "./icons";
+import { ThemeBalls } from "./Theme";
+import { lockApp } from "./PinGate";
+import { IconChevron, IconConfig, IconLock } from "./icons";
+
+function Topbar() {
+  return (
+    <header className="sticky top-0 z-10 flex items-center justify-end gap-4 border-b border-slate-800/70 bg-slate-950/80 px-8 py-2.5 backdrop-blur">
+      <ThemeBalls />
+      <span className="h-5 w-px bg-slate-800" />
+      <NavLink
+        to="/config"
+        title="Configuration"
+        aria-label="Configuration"
+        className={({ isActive }) =>
+          `flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
+            isActive
+              ? "bg-indigo-500/10 text-indigo-300 ring-1 ring-inset ring-indigo-500/30"
+              : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
+          }`
+        }
+      >
+        <IconConfig width={18} height={18} />
+      </NavLink>
+      <button
+        onClick={lockApp}
+        title="Lock"
+        aria-label="Lock"
+        className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-800/60 hover:text-slate-200"
+      >
+        <IconLock width={17} height={17} />
+      </button>
+    </header>
+  );
+}
 
 export function Layout({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-full bg-slate-950">
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
+        <Topbar />
         <main className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-6xl px-8 py-8">{children}</div>
         </main>

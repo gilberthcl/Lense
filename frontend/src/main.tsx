@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { ToastProvider } from "./components/Toast";
 import { ThemeProvider } from "./components/Theme";
+import { PinGate } from "./components/PinGate";
 import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -11,7 +12,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <BrowserRouter>
       <ThemeProvider>
         <ToastProvider>
-          <App />
+          <PinGate>
+            <App />
+          </PinGate>
         </ToastProvider>
       </ThemeProvider>
     </BrowserRouter>
