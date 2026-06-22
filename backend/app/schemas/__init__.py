@@ -8,11 +8,42 @@ class ORMModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-# ── Tenants ────────────────────────────────────────────────────────────────
-class TenantCreate(BaseModel):
+# ── Tenants (Clients) ──────────────────────────────────────────────────────
+class ClientProfile(BaseModel):
+    """Shared optional client fields (create + update)."""
+    context_notes: str | None = None
+    sector: str | None = None
+    industries: list[str] | None = None
+    country: str | None = None
+    city: str | None = None
+    is_global: bool | None = None
+    internal_domain: str | None = None
+    edr_platform: str | None = None
+    siem_platform: str | None = None
+    xdr_platform: str | None = None
+    other_tech: str | None = None
+    dpe_name: str | None = None
+    dpe_email: str | None = None
+    pm_name: str | None = None
+    pm_email: str | None = None
+    acct_other_name: str | None = None
+    acct_other_role: str | None = None
+    acct_other_email: str | None = None
+    stakeholders: list[dict] | None = None
+    contracted_services: list[str] | None = None
+    sla_hours: int | None = None
+    hunt_maturity: int | None = None
+    contract_start: str | None = None
+    contract_end: str | None = None
+
+
+class TenantCreate(ClientProfile):
     name: str
     slug: str
-    context_notes: str | None = None
+
+
+class TenantUpdate(ClientProfile):
+    name: str | None = None
 
 
 class TenantOut(ORMModel):
@@ -20,6 +51,69 @@ class TenantOut(ORMModel):
     name: str
     slug: str
     context_notes: str | None
+    sector: str | None
+    industries: list | None
+    country: str | None
+    city: str | None
+    is_global: bool
+    internal_domain: str | None
+    edr_platform: str | None
+    siem_platform: str | None
+    xdr_platform: str | None
+    other_tech: str | None
+    dpe_name: str | None
+    dpe_email: str | None
+    pm_name: str | None
+    pm_email: str | None
+    acct_other_name: str | None
+    acct_other_role: str | None
+    acct_other_email: str | None
+    stakeholders: list | None
+    contracted_services: list | None
+    sla_hours: int
+    hunt_maturity: int
+    logo_path: str | None
+    contract_path: str | None
+    contract_start: str | None
+    contract_end: str | None
+    created_at: datetime
+
+
+# ── Contacts ───────────────────────────────────────────────────────────────
+class ContactCreate(BaseModel):
+    name: str
+    title: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    is_primary: bool = False
+
+
+class ContactOut(ORMModel):
+    id: int
+    tenant_id: int
+    name: str
+    title: str | None
+    email: str | None
+    phone: str | None
+    is_primary: bool
+    created_at: datetime
+
+
+# ── Calendar ───────────────────────────────────────────────────────────────
+class CalendarCreate(BaseModel):
+    title: str
+    event_type: str = "other"
+    event_date: str | None = None
+    notes: str | None = None
+
+
+class CalendarOut(ORMModel):
+    id: int
+    tenant_id: int
+    title: str
+    event_type: str
+    event_date: str | None
+    notes: str | None
     created_at: datetime
 
 

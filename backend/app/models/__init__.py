@@ -9,7 +9,7 @@ from datetime import datetime
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     Integer, String, Text, DateTime, ForeignKey, JSON, BigInteger, func,
-    UniqueConstraint,
+    UniqueConstraint, Boolean,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -42,9 +42,49 @@ class Tenant(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     slug: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
     context_notes: Mapped[str | None] = mapped_column(Text)  # baselines, env notes
+
+    # ── Profile / location ──
+    sector: Mapped[str | None] = mapped_column(String(120))
+    industries: Mapped[list | None] = mapped_column(JSON)        # up to 3 tags
+    country: Mapped[str | None] = mapped_column(String(80))
+    city: Mapped[str | None] = mapped_column(String(120))
+    is_global: Mapped[bool] = mapped_column(Boolean, default=False)
+    internal_domain: Mapped[str | None] = mapped_column(String(300))
+
+    # ── Technology stack ──
+    edr_platform: Mapped[str | None] = mapped_column(String(120))
+    siem_platform: Mapped[str | None] = mapped_column(String(120))
+    xdr_platform: Mapped[str | None] = mapped_column(String(120))
+    other_tech: Mapped[str | None] = mapped_column(Text)
+
+    # ── Account management ──
+    dpe_name: Mapped[str | None] = mapped_column(String(160))
+    dpe_email: Mapped[str | None] = mapped_column(String(200))
+    pm_name: Mapped[str | None] = mapped_column(String(160))
+    pm_email: Mapped[str | None] = mapped_column(String(200))
+    acct_other_name: Mapped[str | None] = mapped_column(String(160))
+    acct_other_role: Mapped[str | None] = mapped_column(String(120))
+    acct_other_email: Mapped[str | None] = mapped_column(String(200))
+    stakeholders: Mapped[list | None] = mapped_column(JSON)       # [{name,title,email}]
+    contracted_services: Mapped[list | None] = mapped_column(JSON)
+    sla_hours: Mapped[int] = mapped_column(Integer, default=72)
+    hunt_maturity: Mapped[int] = mapped_column(Integer, default=3)  # 1-5
+
+    # ── Assets / contract ──
+    logo_path: Mapped[str | None] = mapped_column(String(600))
+    contract_path: Mapped[str | None] = mapped_column(String(600))
+    contract_start: Mapped[str | None] = mapped_column(String(20))  # ISO date
+    contract_end: Mapped[str | None] = mapped_column(String(20))
+
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     hunts: Mapped[list["Hunt"]] = relationship(
+        back_populates="tenant", cascade="all, delete-orphan"
+    )
+    contacts: Mapped[list["ClientContact"]] = relationship(
+        back_populates="tenant", cascade="all, delete-orphan"
+    )
+    calendar_events: Mapped[list["ClientCalendarEvent"]] = relationship(
         back_populates="tenant", cascade="all, delete-orphan"
     )
 
@@ -172,6 +212,42 @@ class Finding(Base):
 
     hunt: Mapped["Hunt"] = relationship(back_populates="findings")
     dataset: Mapped["Dataset"] = relationship(back_populates="findings")
+
+
+# ── Client contacts ────────────────────────────────────────────────────────
+class ClientContact(Base):
+    __tablename__ = "client_contacts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    title: Mapped[str | None] = mapped_column(String(160))
+    email: Mapped[str | None] = mapped_column(String(200))
+    phone: Mapped[str | None] = mapped_column(String(60))
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    tenant: Mapped["Tenant"] = relationship(back_populates="contacts")
+
+
+# ── Client calendar ────────────────────────────────────────────────────────
+# event_type: pre_hunt | hunt | post_hunt | planning | review | other
+class ClientCalendarEvent(Base):
+    __tablename__ = "client_calendar"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(30), default="other")
+    event_date: Mapped[str | None] = mapped_column(String(20))   # ISO date
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    tenant: Mapped["Tenant"] = relationship(back_populates="calendar_events")
 
 
 # ── Analysis jobs (async per-dataset work) ─────────────────────────────────
