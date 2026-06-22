@@ -1,12 +1,17 @@
 // Typed fetch client for the Threat Hunt Findings Engine backend.
 import type {
   AiEngineConfig,
+  CalendarEvent,
   CategoryDef,
   ClientOverview,
+  Contact,
   CorrelationResult,
+  CreateCalendarInput,
+  CreateContactInput,
   CreateHuntInput,
   GlobalConfig,
   PlatformConfig,
+  UpdateTenantInput,
   CreateKnowledgeInput,
   CreateTenantInput,
   Dataset,
@@ -90,8 +95,36 @@ export const api = {
   createTenant: (body: CreateTenantInput) =>
     request<Tenant>("/api/tenants", { method: "POST", body: JSON.stringify(body) }),
   getTenant: (tid: string) => request<Tenant>(`/api/tenants/${tid}`),
+  updateClient: (tid: string, body: UpdateTenantInput) =>
+    request<Tenant>(`/api/tenants/${tid}`, { method: "PUT", body: JSON.stringify(body) }),
   getClientOverview: (tid: string) =>
     request<ClientOverview>(`/api/tenants/${tid}/overview`),
+  logoUrl: (tid: string) => `${API_BASE}/api/tenants/${tid}/logo`,
+  contractUrl: (tid: string) => `${API_BASE}/api/tenants/${tid}/contract`,
+  uploadLogo: (tid: string, file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request<Tenant>(`/api/tenants/${tid}/logo`, { method: "POST", body: fd });
+  },
+  uploadContract: (tid: string, file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request<Tenant>(`/api/tenants/${tid}/contract`, { method: "POST", body: fd });
+  },
+
+  // --- Contacts ---
+  listContacts: (tid: string) => request<Contact[]>(`/api/tenants/${tid}/contacts`),
+  createContact: (tid: string, body: CreateContactInput) =>
+    request<Contact>(`/api/tenants/${tid}/contacts`, { method: "POST", body: JSON.stringify(body) }),
+  deleteContact: (tid: string, cid: number) =>
+    request<void>(`/api/tenants/${tid}/contacts/${cid}`, { method: "DELETE" }),
+
+  // --- Calendar ---
+  listCalendar: (tid: string) => request<CalendarEvent[]>(`/api/tenants/${tid}/calendar`),
+  createEvent: (tid: string, body: CreateCalendarInput) =>
+    request<CalendarEvent>(`/api/tenants/${tid}/calendar`, { method: "POST", body: JSON.stringify(body) }),
+  deleteEvent: (tid: string, eid: number) =>
+    request<void>(`/api/tenants/${tid}/calendar/${eid}`, { method: "DELETE" }),
 
   // --- Knowledge base ---
   listKnowledge: (tid: string) =>

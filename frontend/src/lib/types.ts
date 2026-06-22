@@ -1,11 +1,86 @@
 // Centralized type definitions mirroring the backend API contract.
 
+export interface Stakeholder {
+  name?: string;
+  title?: string;
+  email?: string;
+}
+
 export interface Tenant {
   id: string;
   name: string;
   slug: string;
   context_notes?: string | null;
+  sector?: string | null;
+  industries?: string[] | null;
+  country?: string | null;
+  city?: string | null;
+  is_global?: boolean;
+  internal_domain?: string | null;
+  edr_platform?: string | null;
+  siem_platform?: string | null;
+  xdr_platform?: string | null;
+  other_tech?: string | null;
+  dpe_name?: string | null;
+  dpe_email?: string | null;
+  pm_name?: string | null;
+  pm_email?: string | null;
+  acct_other_name?: string | null;
+  acct_other_role?: string | null;
+  acct_other_email?: string | null;
+  stakeholders?: Stakeholder[] | null;
+  contracted_services?: string[] | null;
+  sla_hours?: number;
+  hunt_maturity?: number;
+  logo_path?: string | null;
+  contract_path?: string | null;
+  contract_start?: string | null;
+  contract_end?: string | null;
   created_at: string;
+}
+
+export interface Contact {
+  id: number;
+  tenant_id: number;
+  name: string;
+  title?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  is_primary: boolean;
+  created_at: string;
+}
+
+export interface CreateContactInput {
+  name: string;
+  title?: string;
+  email?: string;
+  phone?: string;
+  is_primary?: boolean;
+}
+
+export type CalendarEventType =
+  | "pre_hunt"
+  | "hunt"
+  | "post_hunt"
+  | "planning"
+  | "review"
+  | "other";
+
+export interface CalendarEvent {
+  id: number;
+  tenant_id: number;
+  title: string;
+  event_type: CalendarEventType | string;
+  event_date?: string | null;
+  notes?: string | null;
+  created_at: string;
+}
+
+export interface CreateCalendarInput {
+  title: string;
+  event_type: string;
+  event_date?: string;
+  notes?: string;
 }
 
 export type DocType =
@@ -217,7 +292,32 @@ export interface CreateTenantInput {
   name: string;
   slug: string;
   context_notes?: string;
+  sector?: string;
+  industries?: string[];
+  country?: string;
+  city?: string;
+  is_global?: boolean;
+  internal_domain?: string;
+  edr_platform?: string;
+  siem_platform?: string;
+  xdr_platform?: string;
+  other_tech?: string;
+  dpe_name?: string;
+  dpe_email?: string;
+  pm_name?: string;
+  pm_email?: string;
+  acct_other_name?: string;
+  acct_other_role?: string;
+  acct_other_email?: string;
+  stakeholders?: Stakeholder[];
+  contracted_services?: string[];
+  sla_hours?: number;
+  hunt_maturity?: number;
+  contract_start?: string;
+  contract_end?: string;
 }
+
+export type UpdateTenantInput = Partial<CreateTenantInput> & { name?: string };
 
 export interface CreateKnowledgeInput {
   doc_type: DocType;
