@@ -174,6 +174,24 @@ export interface MethodologySections {
   stats?: { topic_count: number; query_count: number; queries_with_results: number };
 }
 
+export interface AnalysisPlan {
+  summary?: string;
+  estimated_rounds?: number;
+  complexity?: { dataset: string; level: string; reason?: string }[];
+  phases?: { name: string; datasets?: string[]; focus?: string; rationale?: string }[];
+  batching?: string;
+  qa_plan?: string;
+  [key: string]: unknown;
+}
+
+export interface DatasetPreview {
+  filename: string;
+  row_count: number;
+  col_count: number;
+  columns: string[];
+  rows: string[][];
+}
+
 export interface Hunt {
   id: string;
   tenant_id: string;
@@ -186,6 +204,7 @@ export interface Hunt {
   methodology_text?: string | null;
   methodology_brief?: MethodologyBrief | null;
   methodology_sections?: MethodologySections | null;
+  analysis_plan?: AnalysisPlan | null;
   created_at: string;
 }
 

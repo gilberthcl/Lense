@@ -11,6 +11,7 @@ import type {
   CreateCalendarInput,
   CreateContactInput,
   CreateHuntInput,
+  DatasetPreview,
   GlobalConfig,
   PlatformConfig,
   UpdateTenantInput,
@@ -260,6 +261,10 @@ export const api = {
     request<Job>(`/api/tenants/${tid}/hunts/${hid}/datasets/${did}/analyze`, {
       method: "POST",
     }),
+  previewDataset: (tid: string, hid: string, did: string) =>
+    request<DatasetPreview>(`/api/tenants/${tid}/hunts/${hid}/datasets/${did}/preview`),
+  analysisPlan: (tid: string, hid: string) =>
+    request<Job>(`/api/tenants/${tid}/hunts/${hid}/analysis-plan`, { method: "POST" }),
   getJob: (tid: string, hid: string, jobId: string) =>
     request<Job>(`/api/tenants/${tid}/hunts/${hid}/jobs/${jobId}`),
 

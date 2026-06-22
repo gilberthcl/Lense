@@ -153,6 +153,8 @@ export default function HuntView() {
         <DatasetsPanel
           tid={tid}
           hid={hid}
+          hunt={hunt}
+          onHuntRefresh={loadHunt}
           onAnalysisComplete={() => setFindingsKey((k) => k + 1)}
         />
       )}
