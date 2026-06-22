@@ -51,21 +51,41 @@ def analyze_dataset(
     evidence_package: dict[str, Any],
     methodology: str,
     finding_format: str | None = None,
+    finding_categories: str | None = None,
+    analysis_instructions: str | None = None,
+    methodology_brief: dict[str, Any] | str | None = None,
+    hunt_name: str = "Threat Hunt",
+    language: str = "English",
+    edr: str | None = None,
+    siem: str | None = None,
     tenant_context: str | None = None,
     run_reviewer: bool = True,
     run_qa: bool = True,
 ) -> dict[str, Any]:
     """Run the full pipeline. Returns {dataset_assessment, findings, trace}."""
     finding_format = finding_format or DEFAULT_FINDING_FORMAT
+    finding_categories = finding_categories or prompts.DEFAULT_CATEGORIES
+    analysis_instructions = analysis_instructions or "Follow standard evidence-based threat-hunting practice."
     tenant_context = tenant_context or "No additional tenant context provided."
+    if isinstance(methodology_brief, dict):
+        brief_text = json.dumps(methodology_brief, ensure_ascii=False, indent=2, default=str)
+    else:
+        brief_text = methodology_brief or "No methodology brief available."
     evidence_json = json.dumps(evidence_package, ensure_ascii=False, default=str)
     trace: dict[str, Any] = {}
 
     # ── Phase 1: Analyst ───────────────────────────────────────────────────
     sys = prompts.ANALYST_SYSTEM.format(
-        guardrails=prompts.GUARDRAILS, categories=prompts.DEFAULT_CATEGORIES
+        analysis_instructions=analysis_instructions,
+        guardrails=prompts.GUARDRAILS,
+        categories=finding_categories,
     )
     user = prompts.ANALYST_PROMPT.format(
+        hunt_name=hunt_name,
+        edr=edr or "unspecified",
+        siem=siem or "unspecified",
+        language=language or "English",
+        methodology_brief=brief_text,
         methodology=methodology,
         finding_format=finding_format,
         tenant_context=tenant_context,

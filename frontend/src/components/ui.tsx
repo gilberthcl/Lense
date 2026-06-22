@@ -133,17 +133,26 @@ export function Badge({
   );
 }
 
-const categoryClasses: Record<string, string> = {
-  malicious: "bg-red-950 text-red-300 border border-red-800",
-  suspicious: "bg-amber-950 text-amber-300 border border-amber-800",
-  risky: "bg-orange-950 text-orange-300 border border-orange-800",
-  policy_violation: "bg-blue-950 text-blue-300 border border-blue-800",
-  unconfirmed: "bg-slate-800 text-slate-300 border border-slate-700",
-};
+// Match on keyword so both the short keys (malicious) and the full configured
+// outcome phrases ("Malicious Activity Identified") are coloured consistently.
+const CATEGORY_RULES: { match: string; cls: string }[] = [
+  { match: "malicious", cls: "bg-red-950 text-red-300 border border-red-800" },
+  { match: "suspicious", cls: "bg-amber-950 text-amber-300 border border-amber-800" },
+  { match: "risky", cls: "bg-orange-950 text-orange-300 border border-orange-800" },
+  { match: "risk", cls: "bg-orange-950 text-orange-300 border border-orange-800" },
+  { match: "policy", cls: "bg-blue-950 text-blue-300 border border-blue-800" },
+  { match: "vulnerable", cls: "bg-purple-950 text-purple-300 border border-purple-800" },
+  { match: "hunting opportunity", cls: "bg-teal-950 text-teal-300 border border-teal-800" },
+  { match: "baseline", cls: "bg-cyan-950 text-cyan-300 border border-cyan-800" },
+  { match: "unconfirmed", cls: "bg-slate-800 text-slate-300 border border-slate-700" },
+  { match: "informational", cls: "bg-slate-800 text-slate-300 border border-slate-700" },
+];
 
 export function CategoryBadge({ category }: { category: FindingCategory }) {
+  const key = String(category).toLowerCase();
   const cls =
-    categoryClasses[category] ?? "bg-slate-800 text-slate-300 border border-slate-700";
+    CATEGORY_RULES.find((r) => key.includes(r.match))?.cls ??
+    "bg-slate-800 text-slate-300 border border-slate-700";
   return <Badge className={cls}>{String(category).replace(/_/g, " ")}</Badge>;
 }
 

@@ -4,10 +4,11 @@ import { api, ApiError } from "../lib/api";
 import type { Hunt, ReportLang, Tenant } from "../lib/types";
 import { useToast } from "../components/Toast";
 import { Breadcrumbs } from "../components/Layout";
-import { Badge, Button, Card, Select, Spinner } from "../components/ui";
+import { Badge, Button, Select, Spinner } from "../components/ui";
 import DatasetsPanel from "../components/DatasetsPanel";
 import FindingsPanel from "../components/FindingsPanel";
 import CorrelationsPanel from "../components/CorrelationsPanel";
+import MethodologyPanel from "../components/MethodologyPanel";
 
 export default function HuntView() {
   const { tid, hid } = useParams<{ tid: string; hid: string }>();
@@ -32,13 +33,18 @@ export default function HuntView() {
     }
   };
 
-  useEffect(() => {
+  const loadHunt = () => {
     if (!tid || !hid) return;
-    api.getTenant(tid).then(setTenant).catch(() => undefined);
     api
       .getHunt(tid, hid)
       .then(setHunt)
       .catch((e: ApiError) => toast.error(e.message));
+  };
+
+  useEffect(() => {
+    if (!tid || !hid) return;
+    api.getTenant(tid).then(setTenant).catch(() => undefined);
+    loadHunt();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tid, hid]);
 
@@ -88,18 +94,8 @@ export default function HuntView() {
         )}
       </div>
 
-      {hunt?.methodology_text && (
-        <Card className="mb-6 p-4">
-          <p className="text-xs uppercase tracking-wide text-slate-500">
-            Methodology override
-          </p>
-          <pre className="mt-1 whitespace-pre-wrap font-mono text-xs text-slate-300">
-            {hunt.methodology_text}
-          </pre>
-        </Card>
-      )}
-
       <div className="grid grid-cols-1 gap-6">
+        <MethodologyPanel tid={tid} hid={hid} hunt={hunt} onRefresh={loadHunt} />
         <DatasetsPanel
           tid={tid}
           hid={hid}

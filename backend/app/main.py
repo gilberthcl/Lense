@@ -5,10 +5,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from app.api import correlations, datasets, findings, hunts, knowledge, reports, tenants
+from app.api import (
+    config, correlations, datasets, findings, hunts, knowledge, reports, tenants,
+)
 from app.core.config import settings
-from app.core.db import Base, engine
+from app.core.db import Base, SessionLocal, engine
 import app.models  # noqa: F401 — ensure models are registered on Base
+from app.services import config_store
 
 
 @asynccontextmanager
@@ -19,6 +22,12 @@ async def lifespan(app: FastAPI):
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
     if settings.db_auto_create:
         Base.metadata.create_all(bind=engine)
+    # Seed the Structured Threat Hunt module config from version-controlled defaults.
+    db = SessionLocal()
+    try:
+        config_store.seed_defaults(db)
+    finally:
+        db.close()
     yield
 
 
@@ -32,6 +41,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(config.router)
 app.include_router(tenants.router)
 app.include_router(knowledge.router)
 app.include_router(hunts.router)

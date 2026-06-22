@@ -38,11 +38,28 @@ class KnowledgeOut(ORMModel):
     created_at: datetime
 
 
+# ── Module configuration (global) ──────────────────────────────────────────
+class ConfigOut(ORMModel):
+    id: int
+    module: str
+    key: str
+    title: str
+    content: str
+    updated_at: datetime
+
+
+class ConfigUpdate(BaseModel):
+    content: str
+
+
 # ── Hunts ──────────────────────────────────────────────────────────────────
 class HuntCreate(BaseModel):
     name: str
     objective: str | None = None
     methodology_text: str | None = None
+    report_language: str = "English"
+    edr: str | None = None
+    siem: str | None = None
 
 
 class HuntOut(ORMModel):
@@ -50,6 +67,11 @@ class HuntOut(ORMModel):
     tenant_id: int
     name: str
     objective: str | None
+    report_language: str
+    edr: str | None
+    siem: str | None
+    methodology_text: str | None
+    methodology_brief: dict | None
     status: str
     created_at: datetime
 

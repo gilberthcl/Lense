@@ -10,6 +10,7 @@ import type {
   Hunt,
   Job,
   KnowledgeDoc,
+  ModuleConfig,
   ReportLang,
   Tenant,
 } from "./types";
@@ -105,6 +106,27 @@ export const api = {
     }),
   getHunt: (tid: string, hid: string) =>
     request<Hunt>(`/api/tenants/${tid}/hunts/${hid}`),
+  uploadMethodology: (tid: string, hid: string, file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request<Hunt>(`/api/tenants/${tid}/hunts/${hid}/methodology`, {
+      method: "POST",
+      body: fd,
+    });
+  },
+  analyzeMethodology: (tid: string, hid: string) =>
+    request<Job>(`/api/tenants/${tid}/hunts/${hid}/methodology/analyze`, {
+      method: "POST",
+    }),
+
+  // --- Global module configuration (Structured Threat Hunt) ---
+  listConfig: () =>
+    request<ModuleConfig[]>("/api/config/structured-threat-hunt"),
+  updateConfig: (key: string, content: string) =>
+    request<ModuleConfig>(`/api/config/structured-threat-hunt/${key}`, {
+      method: "PUT",
+      body: JSON.stringify({ content }),
+    }),
 
   // --- Datasets ---
   listDatasets: (tid: string, hid: string) =>

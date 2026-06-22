@@ -9,10 +9,29 @@ from datetime import datetime
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     Integer, String, Text, DateTime, ForeignKey, JSON, BigInteger, func,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
+
+
+# ── Module configuration (global, not tenant-scoped) ───────────────────────
+# Editable guides/standards for a LENS module. The "Structured Threat Hunt"
+# module stores: analysis_instructions, finding_format, finding_categories.
+# Designed generically so future modules can register their own config keys.
+class ModuleConfig(Base):
+    __tablename__ = "module_config"
+    __table_args__ = (UniqueConstraint("module", "key", name="uq_module_config_key"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    module: Mapped[str] = mapped_column(String(60), nullable=False, index=True)
+    key: Mapped[str] = mapped_column(String(60), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
 
 
 # ── Tenants (clients) ──────────────────────────────────────────────────────
@@ -74,6 +93,12 @@ class Hunt(Base):
     name: Mapped[str] = mapped_column(String(300), nullable=False)
     objective: Mapped[str | None] = mapped_column(Text)
     methodology_text: Mapped[str | None] = mapped_column(Text)  # snapshot for this hunt
+    # Hunt session parameters captured at start.
+    report_language: Mapped[str] = mapped_column(String(40), default="English")
+    edr: Mapped[str | None] = mapped_column(String(120))   # e.g. CrowdStrike Falcon
+    siem: Mapped[str | None] = mapped_column(String(120))  # e.g. IBM QRadar
+    # Cached LLM comprehension of the methodology (plan of action, queries, scope).
+    methodology_brief: Mapped[dict | None] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(30), default="created")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 

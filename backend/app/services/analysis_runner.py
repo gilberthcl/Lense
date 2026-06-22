@@ -11,7 +11,8 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models import AnalysisJob, Dataset, Finding, Hunt, KnowledgeDocument
-from app.services import csv_loader, findings_engine
+from app.services import config_store, csv_loader, findings_engine, methodology
+from app.services import ollama_client as ollama
 
 
 def _tenant_context(db: Session, tenant_id: int) -> str:
@@ -24,14 +25,37 @@ def _tenant_context(db: Session, tenant_id: int) -> str:
     return "\n\n".join(parts)
 
 
-def _finding_format(db: Session, tenant_id: int) -> str | None:
+def _finding_format(db: Session, tenant_id: int) -> str:
+    """Per-tenant override of the finding format, else the global config default."""
     doc = (
         db.query(KnowledgeDocument)
         .filter_by(tenant_id=tenant_id, doc_type="finding_format")
         .order_by(KnowledgeDocument.created_at.desc())
         .first()
     )
-    return doc.content if doc else None
+    if doc and doc.content:
+        return doc.content
+    return config_store.get_value(db, "finding_format")
+
+
+def ensure_methodology_brief(db: Session, hunt: Hunt) -> dict | None:
+    """Lazily compute + cache the hunt's methodology brief (comprehension pass)."""
+    if hunt.methodology_brief:
+        return hunt.methodology_brief
+    if not (hunt.methodology_text or "").strip():
+        return None
+    try:
+        brief = methodology.comprehend(
+            hunt.methodology_text,
+            edr=hunt.edr,
+            siem=hunt.siem,
+            language=hunt.report_language,
+        )
+    except ollama.OllamaError:
+        return None
+    hunt.methodology_brief = brief
+    db.commit()
+    return brief
 
 
 def run_dataset_analysis(db: Session, job_id: int) -> None:
@@ -48,6 +72,12 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
         dataset.status = "analyzing"
         db.commit()
 
+        # Phase 1 of the protocol: comprehend the methodology before any data.
+        job.current_task = "Comprehending hunt methodology"
+        job.progress = 20
+        db.commit()
+        brief = ensure_methodology_brief(db, hunt)
+
         df = csv_loader.load_csv(dataset.file_path, settings.max_upload_bytes)
         evidence = csv_loader.build_evidence_package(df)
 
@@ -57,7 +87,7 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
         dataset.columns = evidence["schema"]
         dataset.stats = evidence["stats"]
         job.current_task = "Running analyst → reviewer → QA"
-        job.progress = 40
+        job.progress = 45
         db.commit()
 
         result = findings_engine.analyze_dataset(
@@ -65,6 +95,13 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
             evidence_package=evidence,
             methodology=hunt.methodology_text or "No methodology document provided.",
             finding_format=_finding_format(db, job.tenant_id),
+            finding_categories=config_store.get_value(db, "finding_categories"),
+            analysis_instructions=config_store.get_value(db, "analysis_instructions"),
+            methodology_brief=brief,
+            hunt_name=hunt.name,
+            language=hunt.report_language or "English",
+            edr=hunt.edr,
+            siem=hunt.siem,
             tenant_context=_tenant_context(db, job.tenant_id),
         )
 

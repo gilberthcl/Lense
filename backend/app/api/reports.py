@@ -1,6 +1,8 @@
 """DOCX report generation endpoint (tenant-scoped, bilingual)."""
 from datetime import datetime, timezone
 
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
@@ -54,16 +56,24 @@ def _latest_assessments(db: Session, tenant_id: int, hunt_id: int) -> dict[int, 
     return out
 
 
+def _lang_from_hunt(hunt: Hunt) -> str:
+    """Map the hunt's report_language to the report's en/es switch."""
+    lang = (hunt.report_language or "").strip().lower()
+    return "es" if lang.startswith(("es", "spa", "español", "espanol")) else "en"
+
+
 @router.get("")
 def generate_report(
     hunt_id: int,
-    lang: str = Query("en", pattern="^(en|es)$"),
+    lang: Optional[str] = Query(None, pattern="^(en|es)$"),
     tenant: Tenant = Depends(get_tenant),
     db: Session = Depends(get_db),
 ):
     hunt = db.get(Hunt, hunt_id)
     if not hunt or hunt.tenant_id != tenant.id:
         raise HTTPException(status_code=404, detail="Hunt not found")
+    # Default to the hunt's configured report language unless overridden.
+    lang = lang or _lang_from_hunt(hunt)
 
     findings = (
         db.query(Finding)

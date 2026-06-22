@@ -3,12 +3,14 @@ import { Layout } from "./components/Layout";
 import TenantsPage from "./pages/TenantsPage";
 import TenantDashboard from "./pages/TenantDashboard";
 import HuntView from "./pages/HuntView";
+import ConfigPage from "./pages/ConfigPage";
 
 export default function App() {
   return (
     <Layout>
       <Routes>
         <Route path="/" element={<TenantsPage />} />
+        <Route path="/config" element={<ConfigPage />} />
         <Route path="/tenants/:tid" element={<TenantDashboard />} />
         <Route path="/tenants/:tid/hunts/:hid" element={<HuntView />} />
         <Route

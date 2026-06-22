@@ -48,7 +48,15 @@ export function Layout({ children }: { children: ReactNode }) {
               Threat Hunt Findings Engine
             </span>
           </Link>
-          <HealthDot />
+          <div className="flex items-center gap-5">
+            <Link
+              to="/config"
+              className="text-xs font-medium uppercase tracking-wide text-slate-400 hover:text-indigo-300"
+            >
+              Configuration
+            </Link>
+            <HealthDot />
+          </div>
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>

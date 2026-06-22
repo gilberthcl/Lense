@@ -122,6 +122,8 @@ structure exactly.
 
 ```
 GET    /api/health
+GET    /api/config/structured-threat-hunt           (global guides/standards)
+PUT    /api/config/structured-threat-hunt/{key}     {content}   key ∈ {analysis_instructions, finding_format, finding_categories}
 GET    /api/tenants
 POST   /api/tenants                         {name, slug, context_notes?}
 GET    /api/tenants/{tid}
@@ -129,19 +131,37 @@ GET    /api/tenants/{tid}/knowledge
 POST   /api/tenants/{tid}/knowledge         {doc_type, title, content}
 DELETE /api/tenants/{tid}/knowledge/{docId}
 GET    /api/tenants/{tid}/hunts
-POST   /api/tenants/{tid}/hunts             {name, objective?, methodology_text?}
+POST   /api/tenants/{tid}/hunts             {name, objective?, methodology_text?, report_language?, edr?, siem?}
 GET    /api/tenants/{tid}/hunts/{hid}
+POST   /api/tenants/{tid}/hunts/{hid}/methodology         (multipart: file=*.docx|.txt|.md) -> Hunt
+POST   /api/tenants/{tid}/hunts/{hid}/methodology/analyze -> job (202, comprehension)
 GET    /api/tenants/{tid}/hunts/{hid}/datasets
 POST   /api/tenants/{tid}/hunts/{hid}/datasets            (multipart: file=*.csv)
 POST   /api/tenants/{tid}/hunts/{hid}/datasets/{did}/analyze   -> job (202)
 GET    /api/tenants/{tid}/hunts/{hid}/jobs/{jobId}            (poll progress)
 GET    /api/tenants/{tid}/hunts/{hid}/findings
 PATCH  /api/tenants/{tid}/hunts/{hid}/findings/{fid}     {status}
+GET    /api/tenants/{tid}/hunts/{hid}/correlations
+GET    /api/tenants/{tid}/hunts/{hid}/report?lang=en|es   (defaults to hunt language)
 ```
 doc_type ∈ {methodology, finding_categories, finding_format, approved_software,
-report_standard, previous_report, validated_finding}.
-finding category ∈ {malicious, suspicious, risky, policy_violation, unconfirmed,
-no_finding}. finding status ∈ {draft, validated, rejected}.
+report_standard, previous_report, validated_finding}. finding status ∈
+{draft, validated, rejected}. Finding **categories are data-driven** — defined by
+the editable Finding Categorization config (Configuration page), not a fixed enum.
+
+### Structured Threat Hunt module (config + hunt session)
+- **Global Configuration** (`/config` in the UI): three editable guides seeded
+  from version-controlled defaults in `backend/app/seeds/` —
+  Investigation Protocol (`analysis_instructions`), Finding Format
+  (`finding_format`), Finding Categorization (`finding_categories`). Stored in
+  the `module_config` table (module = `structured_threat_hunt`); NOT tenant-scoped.
+- **Hunt session**: a hunt now captures name, report language, EDR, SIEM, and a
+  methodology (uploaded `.docx`/`.txt`/`.md` — tables preserved — or pasted).
+  Before any dataset is analyzed, `services/methodology.py` runs an LLM
+  **comprehension pass** over the methodology (plan of action, topics, executed
+  queries / which had results, MITRE) and caches a structured brief on the hunt
+  (`Hunt.methodology_brief`). The brief + protocol + format + categories +
+  language + EDR/SIEM are injected into every dataset analysis.
 
 ## 8. How to run (dev)
 

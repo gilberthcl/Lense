@@ -28,14 +28,48 @@ export interface KnowledgeDoc {
 
 export type HuntStatus = string;
 
+export interface MethodologyTopic {
+  number?: string;
+  name?: string;
+  objective?: string;
+  mitre?: string[];
+  expected_benign?: string;
+  malicious_indicators?: string;
+}
+
+export interface MethodologyBrief {
+  hunt_overview?: string;
+  scope?: string;
+  topics?: MethodologyTopic[];
+  executed_queries?: { topic?: string; summary?: string; had_results?: boolean }[];
+  known_false_positives?: string[];
+  what_to_expect?: string;
+  note?: string;
+  [key: string]: unknown;
+}
+
 export interface Hunt {
   id: string;
   tenant_id: string;
   name: string;
   objective?: string | null;
   status: HuntStatus;
+  report_language?: string;
+  edr?: string | null;
+  siem?: string | null;
   methodology_text?: string | null;
+  methodology_brief?: MethodologyBrief | null;
   created_at: string;
+}
+
+// Global module configuration (Structured Threat Hunt)
+export interface ModuleConfig {
+  id: number;
+  module: string;
+  key: string;
+  title: string;
+  content: string;
+  updated_at: string;
 }
 
 export type DatasetStatus = "uploaded" | "analyzing" | "analyzed" | "error" | string;
@@ -137,4 +171,7 @@ export interface CreateHuntInput {
   name: string;
   objective?: string;
   methodology_text?: string;
+  report_language?: string;
+  edr?: string;
+  siem?: string;
 }
