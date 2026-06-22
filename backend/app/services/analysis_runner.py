@@ -15,8 +15,48 @@ from app.models import (
 )
 from app.services import (
     categories, config_store, csv_loader, findings_engine, knowledge, methodology,
+    methodology_parser,
 )
 from app.services import ollama_client as ollama
+
+
+def ensure_methodology_sections(db: Session, hunt: Hunt) -> dict | None:
+    """Lazily compute + cache the deterministic methodology sections."""
+    if hunt.methodology_sections:
+        return hunt.methodology_sections
+    if not (hunt.methodology_text or "").strip():
+        return None
+    sections = methodology_parser.parse_methodology(hunt.methodology_text)
+    hunt.methodology_sections = sections
+    db.commit()
+    return sections
+
+
+def _methodology_sections_context(sections: dict | None) -> str:
+    """Compact, evidence-grounded summary of the methodology for the analyst."""
+    if not sections or not sections.get("available"):
+        return ""
+    lines = ["[methodology_plan] Hunt topics and their detection focus:"]
+    poa = sections.get("plan_of_action", {})
+    for t in poa.get("topics", []):
+        mitre = f" ({t['mitre']})" if t.get("mitre") else ""
+        lines.append(f"- {t['name']}{mitre}")
+        for ind in t.get("indicators", [])[:6]:
+            lines.append(f"    • {ind}")
+    # Which queries already returned results worth prioritising in the data.
+    hot = [
+        f"{r['name'].split(' Covers:')[0].strip()} ({r['result_count']} events)"
+        for tq in sections.get("queries", [])
+        for r in tq.get("rows", [])
+        if r.get("status") == "results"
+    ]
+    if hot:
+        lines.append(
+            "[methodology_queries_with_results] These hunt queries already "
+            "returned events — corroborate or refute them in the datasets:\n  - "
+            + "\n  - ".join(hot[:40])
+        )
+    return "\n".join(lines)
 
 
 def _approved_software_context(db: Session, tenant_id: int) -> str:
@@ -132,6 +172,7 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
         job.progress = 20
         db.commit()
         brief = ensure_methodology_brief(db, hunt)
+        sections = ensure_methodology_sections(db, hunt)
 
         df = csv_loader.load_csv(dataset.file_path, settings.max_upload_bytes)
         evidence = csv_loader.build_evidence_package(df)
@@ -149,7 +190,11 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
             db, job.tenant_id, _retrieval_query(hunt, dataset, evidence)
         )
         tenant_context = "\n\n".join(
-            c for c in (_tenant_context(db, job.tenant_id), knowledge.format_context(retrieved)) if c
+            c for c in (
+                _tenant_context(db, job.tenant_id),
+                _methodology_sections_context(sections),
+                knowledge.format_context(retrieved),
+            ) if c
         )
 
         job.current_task = "Running analyst → reviewer → QA"

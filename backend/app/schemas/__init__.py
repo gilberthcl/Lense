@@ -166,6 +166,7 @@ class HuntOut(ORMModel):
     siem: str | None
     methodology_text: str | None
     methodology_brief: dict | None
+    methodology_sections: dict | None
     status: str
     created_at: datetime
 
@@ -249,5 +250,7 @@ class JobOut(ORMModel):
     status: str
     progress: int
     current_task: str | None
+    model: str | None = None
+    log: list | None = None
     error: str | None
     created_at: datetime

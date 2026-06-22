@@ -50,6 +50,53 @@ def generate(model: str, system: str, prompt: str, *, json_mode: bool = False) -
     return data.get("response", "")
 
 
+def generate_stream(
+    model: str,
+    system: str,
+    prompt: str,
+    *,
+    on_chunk=None,
+    json_mode: bool = False,
+) -> str:
+    """
+    Streaming generation. Calls `on_chunk(token)` as tokens arrive (for live
+    progress/log feedback) and returns the full concatenated response text.
+    """
+    cfg = global_config.current_ai()
+    url = f"{cfg['base_url']}/api/generate"
+    payload: dict = {
+        "model": model,
+        "system": system,
+        "prompt": prompt,
+        "stream": True,
+        "options": {"temperature": cfg["temperature"]},
+    }
+    if json_mode:
+        payload["format"] = "json"
+    parts: list[str] = []
+    try:
+        with httpx.Client(timeout=cfg["timeout"]) as client:
+            with client.stream("POST", url, json=payload) as resp:
+                resp.raise_for_status()
+                for line in resp.iter_lines():
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    tok = obj.get("response", "")
+                    if tok:
+                        parts.append(tok)
+                        if on_chunk:
+                            on_chunk(tok)
+                    if obj.get("done"):
+                        break
+    except httpx.HTTPError as exc:
+        raise OllamaError(f"Ollama stream failed (/api/generate): {exc}") from exc
+    return "".join(parts)
+
+
 def embed(text: str) -> list[float]:
     """Embed a single string with the configured embedding model."""
     model = global_config.current_ai()["embed_model"]

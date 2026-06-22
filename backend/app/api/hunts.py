@@ -8,7 +8,9 @@ from app.core.config import settings
 from app.core.db import SessionLocal, get_db
 from app.models import AnalysisJob, Hunt, KnowledgeDocument, Tenant
 from app.schemas import HuntCreate, HuntOut, JobOut
-from app.services import doc_loader
+import time
+
+from app.services import doc_loader, methodology, methodology_parser
 from app.services.analysis_runner import ensure_methodology_brief
 
 router = APIRouter(prefix="/api/tenants/{tenant_id}/hunts", tags=["hunts"])
@@ -125,25 +127,75 @@ def analyze_methodology(
 
     def _task(job_id: int, h_id: int):
         task_db = SessionLocal()
+        t0 = time.monotonic()
+
+        def emit(j: AnalysisJob, msg: str, pct: int | None = None) -> None:
+            j.log = (j.log or []) + [{"at": round(time.monotonic() - t0, 1), "msg": msg}]
+            if pct is not None:
+                j.progress = pct
+            task_db.commit()
+
         try:
             j = task_db.get(AnalysisJob, job_id)
             h = task_db.get(Hunt, h_id)
             try:
                 j.status = "running"
-                j.current_task = "Comprehending hunt methodology"
-                j.progress = 30
-                task_db.commit()
+                j.model = methodology.analyst_model()
+                j.current_task = "Parsing methodology structure"
+                emit(j, "Parsing methodology structure (deterministic)…", 8)
+
+                # 1) Deterministic structural parse — always available, no LLM.
+                sections = methodology_parser.parse_methodology(h.methodology_text or "")
+                h.methodology_sections = sections
+                if sections.get("available"):
+                    st = sections["stats"]
+                    emit(j, f"Parsed {st['topic_count']} topics and {st['query_count']} "
+                            f"queries ({st['queries_with_results']} returned results).", 18)
+                else:
+                    emit(j, "Document structure not recognized; using raw text.", 18)
+
+                # 2) LLM comprehension (streamed) for the "understanding" layer.
+                j.current_task = f"Comprehending with {j.model}"
+                emit(j, f"Sending methodology to {j.model} for comprehension…", 22)
                 h.methodology_brief = None
-                brief = ensure_methodology_brief(task_db, h)
+                task_db.commit()
+
+                state = {"tokens": 0, "last": time.monotonic(), "pct": 22}
+
+                def on_chunk(_tok: str) -> None:
+                    state["tokens"] += 1
+                    now = time.monotonic()
+                    if now - state["last"] >= 1.3:
+                        state["last"] = now
+                        state["pct"] = min(88, state["pct"] + 4)
+                        emit(j, f"{j.model} is reading… {state['tokens']} tokens generated",
+                             state["pct"])
+
+                brief = methodology.comprehend_stream(
+                    h.methodology_text or "", edr=h.edr, siem=h.siem,
+                    language=h.report_language, on_chunk=on_chunk,
+                )
+                h.methodology_brief = brief
+                topics = len((brief or {}).get("topics", []))
+                emit(j, f"Comprehension complete — model understood {topics} topics.", 96)
+
                 j.status = "done"
                 j.progress = 100
                 j.current_task = "Complete"
-                j.result = {"topics": len((brief or {}).get("topics", []))}
+                j.result = {
+                    "topics": topics,
+                    "parsed": sections.get("stats") if sections.get("available") else None,
+                }
                 task_db.commit()
             except Exception as exc:  # noqa: BLE001
                 task_db.rollback()
+                j = task_db.get(AnalysisJob, job_id)
                 j.status = "error"
                 j.error = str(exc)
+                j.log = (j.log or []) + [
+                    {"at": round(time.monotonic() - t0, 1), "msg": f"Error: {exc}"}
+                ]
+                # The deterministic sections (committed above) remain available.
                 task_db.commit()
         finally:
             task_db.close()

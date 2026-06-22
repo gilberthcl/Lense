@@ -142,6 +142,8 @@ class Hunt(Base):
     siem: Mapped[str | None] = mapped_column(String(120))  # e.g. IBM QRadar
     # Cached LLM comprehension of the methodology (plan of action, queries, scope).
     methodology_brief: Mapped[dict | None] = mapped_column(JSON)
+    # Deterministically-parsed sections: description, plan_of_action, queries.
+    methodology_sections: Mapped[dict | None] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(30), default="created")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
@@ -292,6 +294,8 @@ class AnalysisJob(Base):
     status: Mapped[str] = mapped_column(String(20), default="queued")
     progress: Mapped[int] = mapped_column(Integer, default=0)
     current_task: Mapped[str | None] = mapped_column(String(300))
+    model: Mapped[str | None] = mapped_column(String(120))  # LLM used for this job
+    log: Mapped[list | None] = mapped_column(JSON)          # live progress log lines
     result: Mapped[dict | None] = mapped_column(JSON)
     error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
