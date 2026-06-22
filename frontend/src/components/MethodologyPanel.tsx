@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, ApiError, pollJob } from "../lib/api";
 import type { Hunt, Job, MethodologyBrief, QueryRow } from "../lib/types";
 import { useToast } from "./Toast";
@@ -84,24 +84,63 @@ export default function MethodologyPanel({
     }
   };
 
-  const analyze = async () => {
+  const watch = async (jobId: string) => {
     setRunning(true);
-    setJob({ id: "", status: "queued", progress: 0 });
     try {
-      const started = await api.analyzeMethodology(tid, hid);
-      const final = await pollJob(tid, hid, started.id, (j) => setJob(j));
-      if (final.status === "error") {
-        toast.error("Analysis failed — see the log below.");
-      } else {
+      const final = await pollJob(tid, hid, jobId, (j) => setJob(j));
+      if (final.status === "error") toast.error("Analysis failed — see the log below.");
+      else if (final.status === "cancelled") toast.info("Analysis cancelled.");
+      else {
         toast.success("Methodology analyzed.");
+        onRefresh();
       }
-      onRefresh();
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Analysis failed.");
     } finally {
       setRunning(false);
     }
   };
+
+  const analyze = async () => {
+    setJob({ id: "", status: "queued", progress: 0 });
+    try {
+      const started = await api.analyzeMethodology(tid, hid);
+      await watch(started.id);
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Analysis failed.");
+      setRunning(false);
+    }
+  };
+
+  const cancel = async () => {
+    if (!job?.id) return;
+    try {
+      await api.cancelHuntJob(tid, hid, job.id);
+    } catch {
+      /* polling will reflect the final state */
+    }
+  };
+
+  // Re-attach to an in-progress methodology analysis after a tab switch / reload.
+  useEffect(() => {
+    let dead = false;
+    api
+      .listHuntJobs(tid, hid)
+      .then((js) => {
+        const a = js.find(
+          (j) => j.phase === "methodology" && (j.status === "running" || j.status === "queued"),
+        );
+        if (a && !dead) {
+          setJob(a);
+          watch(a.id);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      dead = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tid, hid]);
 
   return (
     <Card>
@@ -184,11 +223,20 @@ export default function MethodologyPanel({
               <span className="text-slate-300">
                 {job?.status === "error"
                   ? "Analysis failed"
-                  : job?.current_task ?? "Starting…"}
+                  : job?.status === "cancelled"
+                    ? "Cancelled"
+                    : job?.current_task ?? "Starting…"}
               </span>
-              <span className="font-mono text-slate-500">
-                {job?.model ? `model: ${job.model}` : ""} {job?.progress != null ? `· ${job.progress}%` : ""}
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="font-mono text-slate-500">
+                  {job?.model ? `model: ${job.model}` : ""} {job?.progress != null ? `· ${job.progress}%` : ""}
+                </span>
+                {running && (job?.status === "running" || job?.status === "queued") && (
+                  <button onClick={cancel} className="text-red-400 hover:text-red-300">
+                    Cancel
+                  </button>
+                )}
+              </div>
             </div>
             <ProgressBar pct={job?.progress ?? 0} />
             {!!job?.log?.length && (

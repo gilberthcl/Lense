@@ -23,7 +23,12 @@ export default function GlobalConfig() {
   const [savingAi, setSavingAi] = useState(false);
   const [savingPlatform, setSavingPlatform] = useState(false);
   const [logoVer, setLogoVer] = useState(0);
+  const [models, setModels] = useState<string[]>([]);
   const logoRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    api.ollamaModels().then((r) => setModels(r.models)).catch(() => undefined);
+  }, []);
 
   // Change-PIN state
   const [curPin, setCurPin] = useState("");
@@ -168,17 +173,36 @@ export default function GlobalConfig() {
           }
         />
         <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2">
-          {AI_FIELDS.map((f) => (
-            <div key={f.key}>
-              <Label>{f.label}</Label>
-              <Input
-                value={String(ai[f.key])}
-                onChange={(e) => setAi({ ...ai, [f.key]: e.target.value })}
-                className="font-mono"
-              />
-              {f.hint && <p className="mt-1 text-xs text-slate-600">{f.hint}</p>}
-            </div>
-          ))}
+          {AI_FIELDS.map((f) => {
+            const val = String(ai[f.key] ?? "");
+            const isModel = f.key.endsWith("_model");
+            const opts = isModel ? Array.from(new Set([val, ...models].filter(Boolean))) : [];
+            return (
+              <div key={f.key}>
+                <Label>{f.label}</Label>
+                {isModel && models.length > 0 ? (
+                  <Select
+                    value={val}
+                    onChange={(e) => setAi({ ...ai, [f.key]: e.target.value })}
+                    className="font-mono"
+                  >
+                    {opts.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </Select>
+                ) : (
+                  <Input
+                    value={val}
+                    onChange={(e) => setAi({ ...ai, [f.key]: e.target.value })}
+                    className="font-mono"
+                  />
+                )}
+                {f.hint && <p className="mt-1 text-xs text-slate-600">{f.hint}</p>}
+              </div>
+            );
+          })}
           <div>
             <Label>Temperature</Label>
             <Input

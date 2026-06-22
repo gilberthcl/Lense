@@ -68,6 +68,50 @@ export default function DatasetsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tid, hid]);
 
+  // Re-attach to in-progress plan / dataset-analysis jobs after a tab switch.
+  useEffect(() => {
+    let dead = false;
+    api
+      .listHuntJobs(tid, hid)
+      .then((js) => {
+        const planA = js.find((j) => j.phase === "plan" && (j.status === "running" || j.status === "queued"));
+        if (planA && !dead) {
+          setPlanning(true);
+          setPlanJob(planA);
+          pollJob(tid, hid, planA.id, (j) => setPlanJob(j)).then((f) => {
+            if (dead) return;
+            setPlanning(false);
+            if (f.status === "done") onHuntRefresh();
+          });
+        }
+        const anA = js.find((j) => j.phase === "analysis" && (j.status === "running" || j.status === "queued"));
+        if (anA && !dead) {
+          const dsId = String(anA.dataset_id ?? "");
+          setActive({ datasetId: dsId, job: anA });
+          pollJob(tid, hid, anA.id, (j) => setActive({ datasetId: dsId, job: j })).then((f) => {
+            if (dead) return;
+            setActive(null);
+            load();
+            if (f.status === "done") onAnalysisComplete();
+          });
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      dead = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tid, hid]);
+
+  const cancelJob = async (jobId?: string) => {
+    if (!jobId) return;
+    try {
+      await api.cancelHuntJob(tid, hid, jobId);
+    } catch {
+      /* polling reflects the final state */
+    }
+  };
+
   // Upload one or many files, sequentially.
   const onUploadMany = async (files: FileList) => {
     const list = Array.from(files);
@@ -205,11 +249,22 @@ export default function DatasetsPanel({
             <div className="mb-3 rounded-lg border border-slate-800 bg-slate-950/60 p-3">
               <div className="mb-1.5 flex items-center justify-between text-xs">
                 <span className="text-slate-300">
-                  {planJob?.status === "error" ? "Planning failed" : planJob?.current_task ?? "Starting…"}
+                  {planJob?.status === "error"
+                    ? "Planning failed"
+                    : planJob?.status === "cancelled"
+                      ? "Cancelled"
+                      : planJob?.current_task ?? "Starting…"}
                 </span>
-                <span className="font-mono text-slate-500">
-                  {planJob?.model ? `model: ${planJob.model}` : ""} {planJob?.progress != null ? `· ${planJob.progress}%` : ""}
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className="font-mono text-slate-500">
+                    {planJob?.model ? `model: ${planJob.model}` : ""} {planJob?.progress != null ? `· ${planJob.progress}%` : ""}
+                  </span>
+                  {planning && (planJob?.status === "running" || planJob?.status === "queued") && (
+                    <button onClick={() => cancelJob(planJob?.id)} className="text-red-400 hover:text-red-300">
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="h-1.5 w-full overflow-hidden rounded bg-slate-800">
                 <div className="h-full bg-indigo-500 transition-all" style={{ width: `${Math.max(3, planJob?.progress ?? 0)}%` }} />
@@ -272,7 +327,12 @@ export default function DatasetsPanel({
           <div className="border-b border-slate-800 bg-slate-950/40 px-4 py-3">
             <div className="mb-1.5 flex items-center justify-between text-xs">
               <span className="text-slate-300">{active.job.current_task ?? "Analyzing…"}</span>
-              <span className="font-mono text-slate-500">{Math.round(active.job.progress ?? 0)}%</span>
+              <div className="flex items-center gap-3">
+                <span className="font-mono text-slate-500">{Math.round(active.job.progress ?? 0)}%</span>
+                <button onClick={() => cancelJob(active.job.id)} className="text-red-400 hover:text-red-300">
+                  Cancel
+                </button>
+              </div>
             </div>
             <div className="h-1.5 w-full overflow-hidden rounded bg-slate-800">
               <div className="h-full bg-indigo-500 transition-all duration-300" style={{ width: `${Math.max(2, active.job.progress ?? 0)}%` }} />
@@ -342,7 +402,7 @@ export default function DatasetsPanel({
                                   <Spinner className="h-3 w-3" /> loading preview…
                                 </div>
                               ) : (
-                                <PreviewTable data={preview} />
+                                <PreviewTable data={preview} onClose={() => togglePreview(ds)} />
                               )}
                             </td>
                           </tr>
@@ -360,12 +420,17 @@ export default function DatasetsPanel({
   );
 }
 
-function PreviewTable({ data }: { data: DatasetPreview }) {
+function PreviewTable({ data, onClose }: { data: DatasetPreview; onClose: () => void }) {
   return (
     <div>
-      <p className="mb-2 text-xs text-slate-500">
-        {data.row_count.toLocaleString()} rows · {data.col_count} columns · showing first {data.rows.length}
-      </p>
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-xs text-slate-500">
+          {data.row_count.toLocaleString()} rows · {data.col_count} columns · showing first {data.rows.length}
+        </p>
+        <button onClick={onClose} className="text-xs text-slate-400 hover:text-slate-200">
+          ✕ Close preview
+        </button>
+      </div>
       <div className="max-h-72 overflow-auto rounded border border-slate-800">
         <table className="w-full text-xs">
           <thead className="sticky top-0 bg-slate-900">

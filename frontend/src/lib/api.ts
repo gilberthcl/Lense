@@ -13,6 +13,7 @@ import type {
   CreateHuntInput,
   DatasetPreview,
   GlobalConfig,
+  GlobalJob,
   PlatformConfig,
   UpdateTenantInput,
   CreateKnowledgeInput,
@@ -267,6 +268,18 @@ export const api = {
     request<Job>(`/api/tenants/${tid}/hunts/${hid}/analysis-plan`, { method: "POST" }),
   getJob: (tid: string, hid: string, jobId: string) =>
     request<Job>(`/api/tenants/${tid}/hunts/${hid}/jobs/${jobId}`),
+  listHuntJobs: (tid: string, hid: string) =>
+    request<Job[]>(`/api/tenants/${tid}/hunts/${hid}/jobs`),
+  cancelHuntJob: (tid: string, hid: string, jobId: string) =>
+    request<Job>(`/api/tenants/${tid}/hunts/${hid}/jobs/${jobId}/cancel`, { method: "POST" }),
+
+  // --- Global jobs (Config → Jobs) ---
+  listAllJobs: (active = false) =>
+    request<GlobalJob[]>(`/api/jobs?active=${active}`),
+  cancelJob: (jobId: number) =>
+    request<{ id: number; status: string }>(`/api/jobs/${jobId}/cancel`, { method: "POST" }),
+  ollamaModels: () =>
+    request<{ models: string[]; reachable: boolean }>(`/api/config/ollama-models`),
 
   // --- Findings ---
   listFindings: (tid: string, hid: string) =>

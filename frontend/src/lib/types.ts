@@ -295,9 +295,26 @@ export interface JobLogEntry {
   msg: string;
 }
 
+export interface GlobalJob {
+  id: number;
+  tenant_id: number;
+  tenant_name?: string | null;
+  hunt_id: number;
+  hunt_name?: string | null;
+  dataset_id?: number | null;
+  phase: string;
+  status: JobStatus;
+  progress?: number;
+  current_task?: string | null;
+  model?: string | null;
+  error?: string | null;
+  created_at?: string | null;
+}
+
 export interface Job {
   id: string;
   phase?: string;
+  dataset_id?: number | null;
   status: JobStatus;
   progress?: number; // 0..100
   current_task?: string | null;
