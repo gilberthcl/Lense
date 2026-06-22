@@ -142,6 +142,38 @@ export interface MethodologyBrief {
   [key: string]: unknown;
 }
 
+// Deterministically-parsed methodology sections (the 3 sub-tabs).
+export interface MitreCoverage {
+  technique: string;
+  tactic: string;
+}
+export interface PlanTopic {
+  name: string;
+  mitre?: string;
+  indicators: string[];
+}
+export interface QueryRow {
+  name: string;
+  query: string;
+  outcome: string;
+  result_count: number | null;
+  status: "results" | "no_results" | "pending" | "unknown" | string;
+}
+export interface QueryTopic {
+  number: number;
+  name: string;
+  mitre: string;
+  rows: QueryRow[];
+}
+export interface MethodologySections {
+  available: boolean;
+  mitre_coverage?: MitreCoverage[];
+  description?: string;
+  plan_of_action?: { intro: string; topics: PlanTopic[]; closing: string };
+  queries?: QueryTopic[];
+  stats?: { topic_count: number; query_count: number; queries_with_results: number };
+}
+
 export interface Hunt {
   id: string;
   tenant_id: string;
@@ -153,6 +185,7 @@ export interface Hunt {
   siem?: string | null;
   methodology_text?: string | null;
   methodology_brief?: MethodologyBrief | null;
+  methodology_sections?: MethodologySections | null;
   created_at: string;
 }
 
@@ -238,12 +271,19 @@ export interface Dataset {
 
 export type JobStatus = "queued" | "running" | "done" | "error" | string;
 
+export interface JobLogEntry {
+  at: number; // seconds since job start
+  msg: string;
+}
+
 export interface Job {
   id: string;
   phase?: string;
   status: JobStatus;
   progress?: number; // 0..100
   current_task?: string | null;
+  model?: string | null;
+  log?: JobLogEntry[] | null;
   error?: string | null;
 }
 

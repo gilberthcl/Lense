@@ -5,7 +5,7 @@ import type { Hunt, ReportLang, Tenant } from "../lib/types";
 import { useToast } from "../components/Toast";
 import { Breadcrumbs } from "../components/Layout";
 import { getModule, moduleClientBase } from "../lib/modules";
-import { Badge, Button, Select, Spinner } from "../components/ui";
+import { Badge, Button, Select, Spinner, Tabs } from "../components/ui";
 import DatasetsPanel from "../components/DatasetsPanel";
 import FindingsPanel from "../components/FindingsPanel";
 import CorrelationsPanel from "../components/CorrelationsPanel";
@@ -26,6 +26,7 @@ export default function HuntView() {
   const [findingsKey, setFindingsKey] = useState(0);
   const [reportLang, setReportLang] = useState<ReportLang>("en");
   const [downloading, setDownloading] = useState(false);
+  const [tab, setTab] = useState("methodology");
 
   const onGenerateReport = async () => {
     if (!tid || !hid) return;
@@ -109,16 +110,31 @@ export default function HuntView() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-6">
+      <Tabs
+        tabs={[
+          { id: "methodology", label: "Methodology" },
+          { id: "datasets", label: "Datasets" },
+          { id: "findings", label: "Findings" },
+          { id: "correlations", label: "Correlations" },
+        ]}
+        active={tab}
+        onChange={setTab}
+      />
+
+      {tab === "methodology" && (
         <MethodologyPanel tid={tid} hid={hid} hunt={hunt} onRefresh={loadHunt} />
+      )}
+      {tab === "datasets" && (
         <DatasetsPanel
           tid={tid}
           hid={hid}
           onAnalysisComplete={() => setFindingsKey((k) => k + 1)}
         />
-        <FindingsPanel tid={tid} hid={hid} reloadKey={findingsKey} />
+      )}
+      {tab === "findings" && <FindingsPanel tid={tid} hid={hid} reloadKey={findingsKey} />}
+      {tab === "correlations" && (
         <CorrelationsPanel tid={tid} hid={hid} reloadKey={findingsKey} />
-      </div>
+      )}
     </div>
   );
 }
