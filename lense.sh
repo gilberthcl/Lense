@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+#
+# LENS — local dev launcher.
+#
+#   lense              start everything (db + backend + frontend)
+#   lense start        same as above
+#   lense fresh        clear the Vite cache first, then start (fixes stale theme/CSS)
+#   lense stop         stop backend + frontend (leaves Postgres running)
+#   lense stop --all   stop backend + frontend AND the Postgres container
+#   lense restart      stop then start
+#   lense status       show what's up (db, backend, frontend, ollama)
+#   lense logs         tail backend + frontend logs
+#   lense logs backend|frontend
+#
+# Ollama is expected to run on the host already (it powers the analysis).
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BACKEND="$ROOT/backend"
+FRONTEND="$ROOT/frontend"
+RUN_DIR="$ROOT/.run"
+mkdir -p "$RUN_DIR"
+BE_LOG="$RUN_DIR/backend.log"; BE_PID="$RUN_DIR/backend.pid"
+FE_LOG="$RUN_DIR/frontend.log"; FE_PID="$RUN_DIR/frontend.pid"
+
+BACKEND_PORT=8000
+FRONTEND_PORT=5173
+OLLAMA_URL="${OLLAMA_BASE_URL:-http://localhost:11434}"
+
+bold=$'\033[1m'; dim=$'\033[2m'; grn=$'\033[32m'; ylw=$'\033[33m'; red=$'\033[31m'; rst=$'\033[0m'
+say()  { printf "%s\n" "$*"; }
+ok()   { printf "  ${grn}✓${rst} %s\n" "$*"; }
+warn() { printf "  ${ylw}!${rst} %s\n" "$*"; }
+err()  { printf "  ${red}✗${rst} %s\n" "$*"; }
+
+pid_alive() { [ -f "$1" ] && kill -0 "$(cat "$1")" 2>/dev/null; }
+port_up()   { curl -sf -o /dev/null "http://localhost:$1" 2>/dev/null; }
+
+ensure_db() {
+  if ! command -v docker >/dev/null 2>&1; then
+    err "docker not found — start Docker Desktop, or run Postgres yourself on :5432"
+    return 1
+  fi
+  say "${bold}Postgres${rst}"
+  ( cd "$ROOT" && docker compose up -d db >/dev/null 2>&1 ) || { err "could not start the db container"; return 1; }
+  # wait for readiness (up to ~30s)
+  local i
+  for i in $(seq 1 30); do
+    if ( cd "$ROOT" && docker compose exec -T db pg_isready -U "${POSTGRES_USER:-lens}" >/dev/null 2>&1 ); then
+      ok "database ready on :${POSTGRES_PORT:-5432}"; return 0
+    fi
+    sleep 1
+  done
+  warn "database not confirmed ready — continuing anyway"
+}
+
+start_backend() {
+  say "${bold}Backend${rst}"
+  if pid_alive "$BE_PID" || port_up "$BACKEND_PORT/api/health"; then ok "already running on :$BACKEND_PORT"; return 0; fi
+  if [ ! -f "$BACKEND/venv/bin/activate" ]; then
+    err "no venv at backend/venv — create it once:"
+    say "      cd '$BACKEND' && python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt"
+    return 1
+  fi
+  ( cd "$BACKEND" && source venv/bin/activate && exec uvicorn app.main:app --reload --port "$BACKEND_PORT" ) \
+      >"$BE_LOG" 2>&1 &
+  echo $! > "$BE_PID"
+  local i
+  for i in $(seq 1 30); do
+    port_up "$BACKEND_PORT/api/health" && { ok "http://localhost:$BACKEND_PORT  (logs: .run/backend.log)"; return 0; }
+    sleep 1
+  done
+  err "backend did not come up — see .run/backend.log"; return 1
+}
+
+start_frontend() {
+  say "${bold}Frontend${rst}"
+  if pid_alive "$FE_PID" || port_up "$FRONTEND_PORT"; then ok "already running on :$FRONTEND_PORT"; return 0; fi
+  if [ ! -d "$FRONTEND/node_modules" ]; then
+    warn "installing frontend deps (first run)…"
+    ( cd "$FRONTEND" && npm install ) || { err "npm install failed"; return 1; }
+  fi
+  ( cd "$FRONTEND" && exec npm run dev ) >"$FE_LOG" 2>&1 &
+  echo $! > "$FE_PID"
+  local i
+  for i in $(seq 1 30); do
+    port_up "$FRONTEND_PORT" && { ok "http://localhost:$FRONTEND_PORT  (logs: .run/frontend.log)"; return 0; }
+    sleep 1
+  done
+  err "frontend did not come up — see .run/frontend.log"; return 1
+}
+
+check_ollama() {
+  say "${bold}Ollama${rst}"
+  if curl -sf -o /dev/null "$OLLAMA_URL/api/tags"; then
+    ok "reachable at $OLLAMA_URL"
+  else
+    warn "not reachable at $OLLAMA_URL — start it with:  ollama serve"
+  fi
+}
+
+stop_one() {  # $1=name $2=pidfile $3=port-pattern
+  if pid_alive "$2"; then kill "$(cat "$2")" 2>/dev/null || true; fi
+  rm -f "$2"
+  pkill -f "$3" 2>/dev/null || true
+  ok "$1 stopped"
+}
+
+cmd_start() {
+  say "${bold}Starting LENS${rst} ${dim}($ROOT)${rst}"
+  ensure_db || true
+  start_backend || true
+  start_frontend || true
+  check_ollama
+  say ""
+  say "${grn}${bold}LENS is up →${rst} ${bold}http://localhost:$FRONTEND_PORT${rst}"
+  say "${dim}stop with: lense stop   ·   logs: lense logs${rst}"
+}
+
+cmd_stop() {
+  say "${bold}Stopping LENS${rst}"
+  stop_one "frontend" "$FE_PID" "vite"
+  stop_one "backend"  "$BE_PID" "uvicorn app.main"
+  if [ "${1:-}" = "--all" ]; then
+    ( cd "$ROOT" && docker compose stop db >/dev/null 2>&1 ) && ok "database stopped" || true
+  else
+    say "${dim}(Postgres left running — use 'lense stop --all' to stop it too)${rst}"
+  fi
+}
+
+cmd_status() {
+  say "${bold}LENS status${rst}"
+  ( cd "$ROOT" && docker compose ps db --status running 2>/dev/null | grep -q db ) && ok "database: running" || warn "database: stopped"
+  port_up "$BACKEND_PORT/api/health" && ok "backend:  http://localhost:$BACKEND_PORT" || warn "backend:  down"
+  port_up "$FRONTEND_PORT" && ok "frontend: http://localhost:$FRONTEND_PORT" || warn "frontend: down"
+  curl -sf -o /dev/null "$OLLAMA_URL/api/tags" && ok "ollama:   $OLLAMA_URL" || warn "ollama:   unreachable"
+}
+
+cmd_logs() {
+  case "${1:-both}" in
+    backend)  tail -f "$BE_LOG" ;;
+    frontend) tail -f "$FE_LOG" ;;
+    *)        tail -f "$BE_LOG" "$FE_LOG" ;;
+  esac
+}
+
+case "${1:-start}" in
+  start)   cmd_start ;;
+  fresh)   rm -rf "$FRONTEND/node_modules/.vite" && ok "cleared Vite cache"; cmd_start ;;
+  stop)    cmd_stop "${2:-}" ;;
+  restart) cmd_stop "${2:-}"; sleep 1; cmd_start ;;
+  status)  cmd_status ;;
+  logs)    cmd_logs "${2:-both}" ;;
+  *) say "usage: lense [start|fresh|stop [--all]|restart|status|logs [backend|frontend]]" ;;
+esac
