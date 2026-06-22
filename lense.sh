@@ -36,13 +36,29 @@ err()  { printf "  ${red}✗${rst} %s\n" "$*"; }
 pid_alive() { [ -f "$1" ] && kill -0 "$(cat "$1")" 2>/dev/null; }
 port_up()   { curl -sf -o /dev/null "http://localhost:$1" 2>/dev/null; }
 
+ensure_env() {
+  if [ ! -f "$ROOT/.env" ]; then
+    cp "$ROOT/.env.example" "$ROOT/.env" && ok "created .env from .env.example"
+  fi
+}
+
 ensure_db() {
+  say "${bold}Postgres${rst}"
   if ! command -v docker >/dev/null 2>&1; then
-    err "docker not found — start Docker Desktop, or run Postgres yourself on :5432"
+    err "docker not found — install Docker Desktop (or run Postgres yourself on :5432)"
     return 1
   fi
-  say "${bold}Postgres${rst}"
-  ( cd "$ROOT" && docker compose up -d db >/dev/null 2>&1 ) || { err "could not start the db container"; return 1; }
+  if ! docker info >/dev/null 2>&1; then
+    err "Docker isn't running — open Docker Desktop, wait for it to start, then run 'lense'"
+    return 1
+  fi
+  ensure_env
+  local out
+  if ! out="$( cd "$ROOT" && docker compose up -d db 2>&1 )"; then
+    err "could not start the db container:"
+    printf "%s\n" "$out" | sed 's/^/      /'
+    return 1
+  fi
   # wait for readiness (up to ~30s)
   local i
   for i in $(seq 1 30); do
@@ -242,7 +258,11 @@ cmd_setup() {
 
 cmd_start() {
   say "${bold}Starting LENS${rst} ${dim}($ROOT)${rst}"
-  ensure_db || true
+  ensure_env
+  if ! ensure_db; then
+    err "Postgres is not up — skipping migrations/backend (fix the above, then 'lense')"
+    return 1
+  fi
   ensure_migrations || true
   start_backend || true
   start_frontend || true
