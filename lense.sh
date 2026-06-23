@@ -272,6 +272,24 @@ cmd_setup() {
   cmd_start
 }
 
+cmd_up() {
+  # Bulletproof bring-up: clear any stray backend, ensure Docker, then start.
+  say "${bold}Bringing up LENS${rst}"
+  local stray; stray="$(lsof -ti ":$BACKEND_PORT" 2>/dev/null || true)"
+  if [ -n "$stray" ]; then
+    echo "$stray" | xargs kill -9 2>/dev/null || true
+    ok "cleared stray process on :$BACKEND_PORT"
+  fi
+  if ! docker info >/dev/null 2>&1; then
+    say "  ${dim}starting Docker Desktop…${rst}"
+    open -a Docker >/dev/null 2>&1 || true
+    local i; for i in $(seq 1 60); do docker info >/dev/null 2>&1 && break; sleep 2; done
+  fi
+  cmd_start
+  say ""
+  printf "  build: "; curl -s "http://localhost:$BACKEND_PORT/api/health" 2>/dev/null; echo
+}
+
 cmd_start() {
   say "${bold}Starting LENS${rst} ${dim}($ROOT)${rst}"
   ensure_env
@@ -368,6 +386,7 @@ case "${1:-start}" in
   setup|deploy) cmd_setup "${2:-}" ;;
   install)      cmd_install ;;
   start)   cmd_start ;;
+  up)      cmd_up ;;
   fresh)   rm -rf "$FRONTEND/node_modules/.vite" && ok "cleared Vite cache"; cmd_start ;;
   stop)    cmd_stop "${2:-}" ;;
   restart) cmd_stop "${2:-}"; sleep 1; cmd_start ;;
@@ -375,5 +394,5 @@ case "${1:-start}" in
   logs)    cmd_logs "${2:-both}" ;;
   pull)    pull_models ;;
   ollama)  cmd_ollama "${2:-status}" ;;
-  *) say "usage: lense [setup [--pull-models] | install | start | fresh | stop [--all] | restart | status | logs [backend|frontend] | pull | ollama [status|stop|restart]]" ;;
+  *) say "usage: lense [up | setup [--pull-models] | install | start | fresh | stop [--all] | restart | status | logs [backend|frontend] | pull | ollama [status|stop|restart]]" ;;
 esac
