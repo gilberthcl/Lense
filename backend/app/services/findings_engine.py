@@ -28,7 +28,12 @@ def _flatten_evidence_values(evidence_package: dict[str, Any]) -> set[str]:
         values.update(str(v).lower() for v in vals)
     for col_vals in evidence_package.get("stats", {}).get("top_values", {}).values():
         values.update(str(item["value"]).lower() for item in col_vals)
-    for row in evidence_package.get("sample_rows", []):
+    for hit in evidence_package.get("offensive_tool_hits", []):
+        values.add(str(hit.get("value", "")).lower())
+        values.add(str(hit.get("tool", "")).lower())
+    for sig in evidence_package.get("suspicious_signals", []):
+        values.add(str(sig.get("example", "")).lower())
+    for row in evidence_package.get("sample_rows", []) + evidence_package.get("targeted_rows", []):
         values.update(str(v).lower() for v in row.values())
     return values
 
@@ -94,13 +99,23 @@ def analyze_dataset(
     brief_text = brief_text[:2500]
     methodology = (methodology or "No methodology document provided.")[:10000]
     evidence_json = json.dumps(evidence_package, ensure_ascii=False, default=str)
-    if len(evidence_json) > 9000:
-        # Wide dataset — drop the bulky per-column top-values, keep schema/sample/stats.
+    if len(evidence_json) > 13000:
+        # Wide/large dataset — shrink the bulky parts but ALWAYS keep the
+        # high-signal evidence (tool hits, suspicious signals, targeted rows, the
+        # entity/stat summary). Those are exactly where findings come from.
         slim = dict(evidence_package)
         stats = dict(slim.get("stats", {}))
-        stats.pop("top_values", None)
+        # Keep only the most informative top-value columns.
+        tv = stats.get("top_values", {})
+        if isinstance(tv, dict) and len(tv) > 12:
+            stats["top_values"] = dict(list(tv.items())[:12])
         slim["stats"] = stats
-        evidence_json = json.dumps(slim, ensure_ascii=False, default=str)[:9000]
+        slim["sample_rows"] = slim.get("sample_rows", [])[:8]
+        evidence_json = json.dumps(slim, ensure_ascii=False, default=str)
+        if len(evidence_json) > 13000:  # still huge — drop top_values entirely, keep signals
+            stats.pop("top_values", None)
+            slim["stats"] = stats
+            evidence_json = json.dumps(slim, ensure_ascii=False, default=str)[:13000]
     trace: dict[str, Any] = {}
 
     # ── Stage 1: Extractor — investigate the data, extract every finding ────

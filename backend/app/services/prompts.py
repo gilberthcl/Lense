@@ -110,6 +110,30 @@ the categories defined here — do not invent categories):
 {categories}
 ---
 
+ANALYST METHOD — apply this to every dataset (non-negotiable):
+1. LEGITIMACY FIRST. For each anomaly, first try to explain it as legitimate
+   (known parent process, named service account, official SDK/tool user-agent,
+   internal IP range, volume/schedule consistent with a declared function, or a
+   pattern the methodology lists as expected baseline). If it is explainable →
+   it is baseline, NOT a finding.
+2. UNUSUAL ≠ MALICIOUS. "Unusual" only becomes a finding when combined with at
+   least one of: a named offensive tool, correlation with other signals forming
+   a recognizable attack pattern, or explicit alignment with a methodology TTP.
+3. OFFENSIVE TOOLS ARE THE CONTEXT. If the evidence's `offensive_tool_hits` (or
+   the data) shows a known offensive tool by name (ropci, TeamFiltration,
+   AADInternals, o365spray, Mimikatz, Impacket, Cobalt Strike, rclone, etc.),
+   that is an immediate High/Critical finding — no debate about legitimacy.
+4. PARENT PROCESS IS DECISIVE in endpoint/EDR data. A legitimate parent (IDE,
+   browser, corporate app, approved automation) can explain almost any child
+   process. Always weigh the parent before writing an endpoint finding.
+5. USE THE COMPUTED EVIDENCE. The evidence package already contains the
+   distributions (`stats.top_values`), cardinalities (`stats.entity_counts`),
+   time range (`stats.time_range`), scanned tool hits and suspicious signals you
+   would otherwise compute yourself. Reason over them; cite exact values/counts.
+6. VERBATIM + CALCULATED. Every value you cite must appear verbatim in the
+   evidence; every number must come from the provided statistics — never
+   estimate or invent.
+
 YOUR JOB IN THIS STAGE:
 Investigate thoroughly and EXTRACT EVERY finding the evidence supports. Do not
 stop after the first one — a single dataset can yield several distinct findings
@@ -117,7 +141,8 @@ stop after the first one — a single dataset can yield several distinct finding
 all relevant verbatim values, the affected assets/users, the MITRE mapping, and
 your false-positive reasoning. A separate writer will later format these into
 the client report, so focus on COMPLETENESS and EVIDENCE here, not on prose
-polish. If the data is genuinely clean, return an empty findings array.
+polish. If the data is genuinely clean, return an empty findings array (a clean
+dataset is a valid, valuable result).
 """
 
 ANALYST_PROMPT = """\
@@ -153,8 +178,13 @@ rule out known-good activity and avoid false positives):
 
 DATASET: {dataset_name}
 
-EVIDENCE PACKAGE (the ONLY facts you may cite — schema, statistics, extracted
-entities, and sample rows):
+EVIDENCE PACKAGE — your deterministic view of the WHOLE dataset (the only facts
+you may cite). Keys: `schema`; `stats` (row/col counts, per-column `unique`
+cardinality, `time_range`, `entity_counts`, and `top_values` = the value-count
+distributions); `entities` (verbatim hosts/users/ips/processes/…);
+`offensive_tool_hits` (known-tool matches found by scanning the data — treat as
+high priority); `suspicious_signals` (heuristic flags to confirm); `sample_rows`
+(verbatim rows); `targeted_rows` (the actual rows behind the tool hits):
 ---
 {evidence_json}
 ---
@@ -163,6 +193,8 @@ TASK:
 1. First confirm which methodology query/topic this dataset corresponds to (see
    THIS DATASET'S METHODOLOGY FOCUS above) and recall its objective and the
    indicators the methodology says to look for.
+   Check `offensive_tool_hits` and `suspicious_signals` first — they point
+   straight at the highest-value findings.
 2. Then investigate this dataset as a threat hunter, following the protocol and
    methodology, hunting the data specifically against that query's objective.
 Relate the data to the relevant hunt topic(s). Extract EVERY finding the evidence
