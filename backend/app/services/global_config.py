@@ -41,6 +41,10 @@ def ai_defaults() -> dict:
         "single_model_pipeline": True,
         "num_predict": 4096,    # cap output so JSON can't run to the context limit
         "keep_alive": "30m",    # keep the model warm between datasets
+        # Each stage is a separate generation. On a slow box, turning Reviewer/QA
+        # off runs a single analyst pass (≈3× faster) at some FP-reduction cost.
+        "enable_reviewer": True,
+        "enable_qa": True,
     }
 
 
@@ -108,6 +112,9 @@ def _validate_ai(patch: dict) -> dict:
         out["num_predict"] = max(256, min(int(out["num_predict"]), 16384))
     if "single_model_pipeline" in out:
         out["single_model_pipeline"] = bool(out["single_model_pipeline"])
+    for k in ("enable_reviewer", "enable_qa"):
+        if k in out:
+            out[k] = bool(out[k])
     return out
 
 

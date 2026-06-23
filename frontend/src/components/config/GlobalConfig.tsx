@@ -300,6 +300,29 @@ export default function GlobalConfig() {
               </span>
             </label>
           </div>
+          <div className="sm:col-span-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <label className="flex items-center gap-2 rounded border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                checked={ai.enable_reviewer ?? true}
+                onChange={(e) => setAi({ ...ai, enable_reviewer: e.target.checked })}
+              />
+              <span>Reviewer stage <span className="text-slate-500">(false-positive reduction)</span></span>
+            </label>
+            <label className="flex items-center gap-2 rounded border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                checked={ai.enable_qa ?? true}
+                onChange={(e) => setAi({ ...ai, enable_qa: e.target.checked })}
+              />
+              <span>QA stage <span className="text-slate-500">(format normalization)</span></span>
+            </label>
+            <p className="sm:col-span-2 text-xs text-slate-600">
+              Each stage is a separate generation. Turning both off runs a single analyst pass — about
+              3× faster on a slow box, at some quality cost. Use the per-dataset timing in the log to
+              decide.
+            </p>
+          </div>
           <div className="sm:col-span-2">
             <div className="mb-3 rounded border border-amber-500/20 bg-amber-500/[0.04] px-3 py-2 text-xs text-amber-300/90">
               Local-only compliance: <code>*-cloud</code> models are rejected, and

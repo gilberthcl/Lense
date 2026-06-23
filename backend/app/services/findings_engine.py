@@ -9,6 +9,7 @@ code-level anti-hallucination gate independent of model behavior.
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 
 from app.services import ollama_client as ollama
@@ -101,8 +102,11 @@ def analyze_dataset(
         dataset_name=dataset_name,
         evidence_json=evidence_json,
     )
-    stage("Analyst: reading evidence", 55)
+    stage(f"Analyst reading evidence (~{len(user) // 4} prompt tokens)…", 55)
+    _t = time.perf_counter()
     raw = ollama.analyst(sys, user)
+    trace["analyst_secs"] = round(time.perf_counter() - _t, 1)
+    stage(f"Analyst finished in {trace['analyst_secs']}s (~{len(raw) // 4} tokens out)", 68)
     try:
         analyst_out = ollama.parse_json_response(raw)
     except ollama.OllamaError:
@@ -115,14 +119,17 @@ def analyze_dataset(
 
     # ── Phase 2: Reviewer (false-positive reduction) ───────────────────────
     if run_reviewer and findings:
-        stage("Reviewer: reducing false positives", 72)
+        stage(f"Reviewer checking {len(findings)} findings…", 72)
         r_sys = prompts.REVIEWER_SYSTEM.format(guardrails=prompts.GUARDRAILS)
         r_user = prompts.REVIEWER_PROMPT.format(
             evidence_json=evidence_json,
             findings_json=json.dumps(findings, ensure_ascii=False, default=str),
         )
         try:
+            _t = time.perf_counter()
             reviewed = ollama.parse_json_response(ollama.reviewer(r_sys, r_user))
+            trace["reviewer_secs"] = round(time.perf_counter() - _t, 1)
+            stage(f"Reviewer finished in {trace['reviewer_secs']}s", 80)
             if isinstance(reviewed, dict):
                 kept = reviewed.get("reviewed_findings", findings)
                 findings = [f for f in kept if f.get("review_decision") != "reject"]
@@ -137,14 +144,17 @@ def analyze_dataset(
 
     # ── Phase 3: QA (format normalization) ─────────────────────────────────
     if run_qa and findings:
-        stage("QA: normalizing format", 88)
+        stage("QA normalizing format…", 88)
         q_sys = prompts.QA_SYSTEM.format(guardrails=prompts.GUARDRAILS)
         q_user = prompts.QA_PROMPT.format(
             finding_format=finding_format,
             findings_json=json.dumps(findings, ensure_ascii=False, default=str),
         )
         try:
+            _t = time.perf_counter()
             normalized = ollama.parse_json_response(ollama.qa(q_sys, q_user))
+            trace["qa_secs"] = round(time.perf_counter() - _t, 1)
+            stage(f"QA finished in {trace['qa_secs']}s", 94)
             if isinstance(normalized, list):
                 findings = normalized
             elif isinstance(normalized, dict) and "findings" in normalized:

@@ -252,6 +252,8 @@ export interface AiEngineConfig {
   single_model_pipeline?: boolean;
   num_predict?: number;
   keep_alive?: string;
+  enable_reviewer?: boolean;
+  enable_qa?: boolean;
 }
 
 export interface PlatformConfig {

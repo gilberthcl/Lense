@@ -7,6 +7,8 @@ once). Each call handles a single dataset.
 """
 from __future__ import annotations
 
+import time
+
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -14,8 +16,8 @@ from app.models import (
     AnalysisJob, ClientApprovedSoftware, Dataset, Finding, Hunt, KnowledgeDocument,
 )
 from app.services import (
-    categories, config_store, csv_loader, findings_engine, jobs, knowledge,
-    methodology, methodology_parser,
+    categories, config_store, csv_loader, findings_engine, global_config, jobs,
+    knowledge, methodology, methodology_parser,
 )
 from app.services import ollama_client as ollama
 
@@ -160,10 +162,12 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
         return
     dataset = db.get(Dataset, job.dataset_id)
     hunt = db.get(Hunt, job.hunt_id)
+    t0 = time.monotonic()
     try:
         job.status = "running"
         job.current_task = "Loading dataset"
         job.progress = 10
+        job.log = []
         dataset.status = "analyzing"
         db.commit()
 
@@ -208,10 +212,14 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
             jobs.raise_if_cancelled(db, job.id)
             job.current_task = name
             job.progress = pct
+            job.log = (job.log or []) + [{"at": round(time.monotonic() - t0, 1), "msg": name}]
             db.commit()
 
+        ai = global_config.current_ai()
         result = findings_engine.analyze_dataset(
             on_stage=_stage,
+            run_reviewer=ai.get("enable_reviewer", True),
+            run_qa=ai.get("enable_qa", True),
             dataset_name=dataset.filename,
             evidence_package=evidence,
             methodology=hunt.methodology_text or "No methodology document provided.",

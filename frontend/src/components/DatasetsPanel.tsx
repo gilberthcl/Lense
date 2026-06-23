@@ -689,6 +689,15 @@ function PlanView({
                             style={{ width: `${Math.max(4, activeJob.progress ?? 0)}%` }}
                           />
                         </div>
+                        {!!activeJob.log?.length && (
+                          <div className="mt-2 max-h-28 overflow-y-auto rounded bg-black/30 p-1.5 font-mono text-[10px] leading-relaxed text-slate-400">
+                            {activeJob.log.slice(-6).map((l, k) => (
+                              <div key={k}>
+                                <span className="text-slate-600">{l.at.toFixed(1)}s</span> · {l.msg}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                     {p.focus && <p className="mt-1 text-xs text-slate-400">{p.focus}</p>}
