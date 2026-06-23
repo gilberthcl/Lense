@@ -143,7 +143,7 @@ def extract_entities(df: pd.DataFrame, max_per_type: int = 80) -> dict[str, list
     # IP fallback: regex-scan the whole frame if no IP column matched
     if "ips" not in entities:
         found = set()
-        for col in columns:
+        for col in df.columns:
             for v in df[col].astype(str):
                 found.update(IPV4_RE.findall(v))
         if found:
