@@ -15,6 +15,7 @@ import type {
   DbHealth,
   GlobalConfig,
   GlobalJob,
+  OllamaStatus,
   PlatformConfig,
   UpdateTenantInput,
   CreateKnowledgeInput,
@@ -293,6 +294,11 @@ export const api = {
     request<{ id: number; status: string }>(`/api/jobs/${jobId}/cancel`, { method: "POST" }),
   ollamaModels: () =>
     request<{ models: string[]; reachable: boolean }>(`/api/config/ollama-models`),
+  ollamaStatus: () => request<OllamaStatus>(`/api/config/ollama-status`),
+  ollamaUnload: () =>
+    request<{ unloaded: string[]; cancelled_jobs: number }>(`/api/config/ollama-unload`, {
+      method: "POST",
+    }),
 
   // --- DB / storage maintenance ---
   dbHealthScan: () => request<DbHealth>(`/api/config/db-health`),

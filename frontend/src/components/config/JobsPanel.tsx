@@ -1,8 +1,87 @@
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../../lib/api";
-import type { GlobalJob } from "../../lib/types";
+import type { GlobalJob, OllamaStatus } from "../../lib/types";
 import { useToast } from "../Toast";
-import { Badge, Button, Card, EmptyState, fmtDate, PanelHeader, Spinner } from "../ui";
+import { Badge, Button, Card, EmptyState, fmtBytes, fmtDate, PanelHeader, Spinner } from "../ui";
+
+function OllamaCard() {
+  const toast = useToast();
+  const [status, setStatus] = useState<OllamaStatus | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [stopping, setStopping] = useState(false);
+
+  const refresh = () => {
+    setLoading(true);
+    api.ollamaStatus().then(setStatus).catch(() => setStatus(null)).finally(() => setLoading(false));
+  };
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  const stopAll = async () => {
+    if (!window.confirm("Unload all models from memory and cancel any running analysis jobs? This frees RAM if your machine is bogged down."))
+      return;
+    setStopping(true);
+    try {
+      const r = await api.ollamaUnload();
+      toast.success(`Stopped ${r.unloaded.length} model(s), cancelled ${r.cancelled_jobs} job(s).`);
+      refresh();
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Could not reach Ollama.");
+    } finally {
+      setStopping(false);
+    }
+  };
+
+  return (
+    <Card className="mb-4">
+      <PanelHeader
+        title="Ollama Runtime"
+        subtitle="Models loaded in memory — free RAM if the machine is slow"
+        right={
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={refresh} disabled={loading}>
+              {loading ? <Spinner /> : "Refresh"}
+            </Button>
+            <Button variant="danger" onClick={stopAll} disabled={stopping}>
+              {stopping ? <Spinner /> : "Stop models & cancel jobs"}
+            </Button>
+          </div>
+        }
+      />
+      <div className="p-4 text-sm">
+        {status === null ? (
+          <span className="text-slate-500">Checking…</span>
+        ) : !status.reachable ? (
+          <Badge className="border border-red-800 bg-red-950 text-red-300">
+            Unreachable at {status.base_url}
+          </Badge>
+        ) : status.models.length === 0 ? (
+          <Badge className="border border-emerald-800 bg-emerald-950 text-emerald-300">
+            ✓ Reachable · no models loaded
+          </Badge>
+        ) : (
+          <div className="space-y-1.5">
+            <Badge className="border border-indigo-800 bg-indigo-950 text-indigo-300">
+              {status.models.length} model(s) loaded
+            </Badge>
+            <ul className="mt-1 space-y-1">
+              {status.models.map((m) => (
+                <li key={m.name} className="flex justify-between rounded border border-slate-800 bg-slate-950/40 px-3 py-1.5">
+                  <span className="font-mono text-xs text-slate-200">{m.name}</span>
+                  <span className="font-mono text-xs text-slate-500">{fmtBytes(m.size_vram || m.size)} in memory</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <p className="mt-2 text-xs text-slate-600">
+          For a full Ollama restart (kills genuinely stuck generations), run <code>lense ollama restart</code>.
+        </p>
+      </div>
+    </Card>
+  );
+}
 
 const STATUS_COLOR: Record<string, string> = {
   running: "border border-indigo-800 bg-indigo-950 text-indigo-300",
@@ -50,7 +129,9 @@ export default function JobsPanel() {
   const activeCount = (jobs ?? []).filter((j) => ACTIVE.has(j.status)).length;
 
   return (
-    <Card>
+    <>
+      <OllamaCard />
+      <Card>
       <PanelHeader
         title="AI Jobs"
         subtitle="Background analysis jobs across all clients — running first"
@@ -122,6 +203,7 @@ export default function JobsPanel() {
           </div>
         )}
       </div>
-    </Card>
+      </Card>
+    </>
   );
 }

@@ -184,6 +184,12 @@ export interface AnalysisPlan {
   [key: string]: unknown;
 }
 
+export interface OllamaStatus {
+  reachable: boolean;
+  base_url: string;
+  models: { name: string; size_vram: number; size: number }[];
+}
+
 export interface DbHealth {
   counts: { clients: number; hunts: number; datasets: number; findings: number; jobs: number };
   orphan_files: { count: number; bytes: number; sample: string[] };

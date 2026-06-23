@@ -14,12 +14,74 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
+from app.models import AnalysisJob
 from app.schemas import ConfigOut, ConfigUpdate
-from app.services import categories, config_store, db_health, global_config
+from app.services import categories, config_store, db_health, global_config, jobs
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
 UPLOAD_ROOT = Path("uploads")
+
+
+# ── Ollama runtime health + recovery ───────────────────────────────────────
+@router.get("/ollama-status")
+def ollama_status(db: Session = Depends(get_db)):
+    """Reachability + models currently loaded in memory (Ollama /api/ps)."""
+    import httpx
+
+    base = global_config.get_ai(db)["base_url"]
+    try:
+        with httpx.Client(timeout=5) as client:
+            resp = client.get(f"{base}/api/ps")
+            resp.raise_for_status()
+            data = resp.json()
+        models = [
+            {"name": m.get("name"), "size_vram": m.get("size_vram", 0), "size": m.get("size", 0)}
+            for m in data.get("models", [])
+        ]
+        return {"reachable": True, "base_url": base, "models": models}
+    except Exception:  # noqa: BLE001
+        return {"reachable": False, "base_url": base, "models": []}
+
+
+@router.post("/ollama-unload")
+def ollama_unload(db: Session = Depends(get_db)):
+    """Free memory: unload all loaded models and cancel active analysis jobs.
+
+    (The backend talks to Ollama over HTTP, so it can unload models and stop
+    LENS jobs — for a full server restart use `lense ollama restart`.)
+    """
+    import httpx
+
+    base = global_config.get_ai(db)["base_url"]
+    unloaded: list[str] = []
+    try:
+        with httpx.Client(timeout=15) as client:
+            loaded = client.get(f"{base}/api/ps").json().get("models", [])
+            for m in loaded:
+                name = m.get("name")
+                if not name:
+                    continue
+                try:
+                    # keep_alive=0 evicts the model from memory immediately.
+                    client.post(
+                        f"{base}/api/generate",
+                        json={"model": name, "prompt": "", "keep_alive": 0, "stream": False},
+                    )
+                    unloaded.append(name)
+                except Exception:  # noqa: BLE001
+                    pass
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Ollama not reachable: {exc}")
+
+    cancelled = (
+        db.query(AnalysisJob)
+        .filter(AnalysisJob.status.in_(jobs.ACTIVE))
+        .update({"status": "cancelled", "error": "stopped via Ollama reset"}, synchronize_session=False)
+    )
+    db.commit()
+    return {"unloaded": unloaded, "cancelled_jobs": cancelled}
+
 
 
 # ── Structured Threat Hunt module config ───────────────────────────────────
