@@ -44,15 +44,36 @@ ensure_env() {
 
 ensure_db() {
   say "${bold}Postgres${rst}"
+  ensure_env
+  # Self-bootstrapping: the DB runs in the tested pgvector/pgvector:pg16 image.
+  # If the docker binary is missing, install Docker Desktop via Homebrew; if it's
+  # installed but the daemon is down, start it. Then bring up the db container.
   if ! command -v docker >/dev/null 2>&1; then
-    err "docker not found — install Docker Desktop (or run Postgres yourself on :5432)"
-    return 1
+    if command -v brew >/dev/null 2>&1; then
+      say "  ${dim}… docker not found — installing Docker Desktop via Homebrew (first run, large download)${rst}"
+      if ! brew install --cask docker >/dev/null 2>&1; then
+        err "couldn't install Docker Desktop automatically."
+        err "install it from https://www.docker.com/products/docker-desktop then re-run 'lense'"
+        return 1
+      fi
+    else
+      err "docker not found and Homebrew isn't installed."
+      err "install Docker Desktop (https://www.docker.com/products/docker-desktop) then re-run 'lense'"
+      return 1
+    fi
+  fi
+  # Ensure the daemon is up (Docker Desktop first launch needs a GUI consent).
+  if ! docker info >/dev/null 2>&1; then
+    say "  ${dim}… starting Docker Desktop (waiting up to 90s — accept any first-run prompt)${rst}"
+    open -a Docker >/dev/null 2>&1 || true
+    local i
+    for i in $(seq 1 45); do docker info >/dev/null 2>&1 && break; sleep 2; done
   fi
   if ! docker info >/dev/null 2>&1; then
-    err "Docker isn't running — open Docker Desktop, wait for it to start, then run 'lense'"
+    err "Docker is installed but the daemon didn't come up — open Docker Desktop, finish its"
+    err "first-run setup, wait for the whale icon, then run 'lense' again"
     return 1
   fi
-  ensure_env
   local out
   if ! out="$( cd "$ROOT" && docker compose up -d db 2>&1 )"; then
     err "could not start the db container:"
@@ -68,6 +89,31 @@ ensure_db() {
     sleep 1
   done
   warn "database not confirmed ready — continuing anyway"
+}
+
+# Create backend/venv and install deps if absent, so migrations/backend can run
+# without a separate manual step. Prefers python3.11 (the project target).
+ensure_venv() {
+  [ -f "$BACKEND/venv/bin/activate" ] && return 0
+  say "${bold}Python env${rst}"
+  local py="" c
+  for c in python3.11 python3; do
+    command -v "$c" >/dev/null 2>&1 && { py="$c"; break; }
+  done
+  [ -n "$py" ] || { err "no python3 found — install Python 3.11"; return 1; }
+  case "$py" in python3)
+    warn "python3.11 not found; using $($py --version 2>&1) — the project targets 3.11" ;;
+  esac
+  say "  ${dim}… creating backend/venv and installing deps (first run, a few minutes)${rst}"
+  if ( cd "$BACKEND" && "$py" -m venv venv && source venv/bin/activate \
+        && pip install --quiet --upgrade pip \
+        && pip install --quiet -r requirements.txt ); then
+    ok "backend/venv ready ($py)"
+  else
+    err "venv setup failed — create it manually:"
+    say "      cd '$BACKEND' && python3.11 -m venv venv && source venv/bin/activate && pip install -r requirements.txt"
+    return 1
+  fi
 }
 
 start_backend() {
@@ -297,6 +343,7 @@ cmd_start() {
     err "Postgres is not up — skipping migrations/backend (fix the above, then 'lense')"
     return 1
   fi
+  ensure_venv || true
   ensure_migrations || true
   start_backend || true
   start_frontend || true
