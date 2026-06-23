@@ -41,7 +41,7 @@ def test_analyst_prompts_format_with_all_fields():
     assert "proto" in sys and "cats" in sys
     user = prompts.ANALYST_PROMPT.format(
         hunt_name="H", edr="Falcon", siem="QRadar", language="Spanish",
-        methodology_brief="brief", methodology="meth", finding_format="fmt",
+        dataset_focus="focus", methodology_brief="brief", methodology="meth",
         tenant_context="ctx", dataset_name="d.csv", evidence_json="{}",
     )
     assert "Spanish" in user and "Falcon" in user and "QRadar" in user

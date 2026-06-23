@@ -33,6 +33,16 @@ def _flatten_evidence_values(evidence_package: dict[str, Any]) -> set[str]:
         values.add(str(hit.get("tool", "")).lower())
     for sig in evidence_package.get("suspicious_signals", []):
         values.add(str(sig.get("example", "")).lower())
+    # Behavioral signals carry citable entities too (fan-out sources/targets,
+    # concentration values, external IPs) — a spray finding cites these.
+    behavioral = evidence_package.get("behavioral", {})
+    for pair in behavioral.get("fan_out", []):
+        for src in pair.get("top_sources", []):
+            values.add(str(src.get("source", "")).lower())
+            values.update(str(t).lower() for t in src.get("example_targets", []))
+    for conc in behavioral.get("concentration", []):
+        values.update(str(v.get("value", "")).lower() for v in conc.get("top", []))
+    values.update(str(ip).lower() for ip in behavioral.get("ip_classification", {}).get("external_ips", []))
     for row in evidence_package.get("sample_rows", []) + evidence_package.get("targeted_rows", []):
         values.update(str(v).lower() for v in row.values())
     return values
