@@ -168,6 +168,7 @@ class HuntOut(ORMModel):
     methodology_brief: dict | None
     methodology_sections: dict | None
     analysis_plan: dict | None
+    plan_state: dict | None
     status: str
     created_at: datetime
 

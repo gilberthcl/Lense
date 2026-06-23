@@ -2,20 +2,26 @@
 import re
 import time
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import (
-    APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File,
+    APIRouter, BackgroundTasks, Body, Depends, HTTPException, UploadFile, File,
 )
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_tenant
 from app.core.config import settings
 from app.core.db import SessionLocal, get_db
 from app.models import AnalysisJob, Dataset, Hunt, Tenant
-from app.schemas import DatasetOut, JobOut
+from app.schemas import DatasetOut, HuntOut, JobOut
 from app.services import analysis_planner, csv_loader, jobs
 from app.services.analysis_runner import run_dataset_analysis
+
+
+class PlanRequest(BaseModel):
+    feedback: str | None = None
 
 router = APIRouter(prefix="/api/tenants/{tenant_id}/hunts/{hunt_id}", tags=["datasets"])
 
@@ -128,10 +134,14 @@ def preview_dataset(
 def create_analysis_plan(
     hunt_id: int,
     background: BackgroundTasks,
+    payload: PlanRequest = Body(default=PlanRequest()),
     tenant: Tenant = Depends(get_tenant),
     db: Session = Depends(get_db),
 ):
-    """Plan the analysis (phases/batches/complexity/QA) from dataset metadata."""
+    """Plan the analysis (phases/batches/complexity/QA) from dataset metadata.
+
+    An optional `feedback` revises the previous plan instead of starting fresh.
+    """
     _resolve_hunt(db, tenant, hunt_id)
     if not db.query(Dataset).filter_by(hunt_id=hunt_id, tenant_id=tenant.id).first():
         raise HTTPException(status_code=422, detail="Upload datasets before planning")
@@ -140,6 +150,7 @@ def create_analysis_plan(
     if existing:
         return existing
 
+    feedback = (payload.feedback or "").strip() or None
     job = AnalysisJob(
         tenant_id=tenant.id, hunt_id=hunt_id, dataset_id=None,
         phase="plan", status="queued",
@@ -166,7 +177,9 @@ def create_analysis_plan(
                 j.model = analysis_planner.planner_model()
                 emit(j, "Collecting dataset metadata…", 10)
                 metas = analysis_planner.dataset_meta(task_db, h_id, t_id)
-                emit(j, f"Planning across {len(metas)} datasets with {j.model}…", 20)
+                verb = "Revising" if feedback else "Planning"
+                emit(j, f"{verb} across {len(metas)} datasets with {j.model}…", 20)
+                previous = h.analysis_plan if feedback else None
 
                 state = {"last": time.monotonic(), "pct": 20, "tok": 0}
 
@@ -176,11 +189,15 @@ def create_analysis_plan(
                     if now - state["last"] >= 1.3:
                         state["last"] = now
                         state["pct"] = min(90, state["pct"] + 5)
-                        emit(j, f"{j.model} planning… {state['tok']} tokens", state["pct"])
+                        emit(j, f"{j.model} {verb.lower()}… {state['tok']} tokens", state["pct"])
                         jobs.raise_if_cancelled(task_db, job_id)
 
-                plan = analysis_planner.plan_stream(h, metas, on_chunk=on_chunk)
+                plan = analysis_planner.plan_stream(
+                    h, metas, on_chunk=on_chunk, feedback=feedback, previous=previous
+                )
                 h.analysis_plan = plan
+                # Reset review state: a (re)generated plan starts as a draft.
+                h.plan_state = {"status": "draft", "feedback": feedback, "accepted_at": None}
                 emit(j, f"Plan ready — {len(plan.get('phases', []))} phases, "
                         f"{plan.get('estimated_rounds', '?')} rounds.", 98)
                 j.status = "done"
@@ -205,8 +222,27 @@ def create_analysis_plan(
         finally:
             task_db.close()
 
-    background.add_task(_task, job.id, hunt_id, tenant.id)
+    background.add_task(_task, job.id, hunt_id, tenant.id)  # feedback captured via closure
     return job
+
+
+@router.post("/plan/accept", response_model=HuntOut)
+def accept_plan(
+    hunt_id: int,
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+):
+    """Approve the current plan — unlocks phase-by-phase execution in the UI."""
+    hunt = _resolve_hunt(db, tenant, hunt_id)
+    if not hunt.analysis_plan:
+        raise HTTPException(status_code=422, detail="No plan to accept")
+    state = dict(hunt.plan_state or {})
+    state["status"] = "accepted"
+    state["accepted_at"] = datetime.utcnow().isoformat()
+    hunt.plan_state = state
+    db.commit()
+    db.refresh(hunt)
+    return hunt
 
 
 @router.get("/jobs", response_model=list[JobOut])

@@ -9,6 +9,7 @@ BEFORE the per-dataset analysis so the operator can review the plan first.
 """
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -58,7 +59,13 @@ def _methodology_summary(hunt: Hunt) -> str:
     return "\n".join(parts)
 
 
-def _build_prompt(hunt: Hunt, metas: list[dict]) -> tuple[str, str]:
+def _build_prompt(
+    hunt: Hunt,
+    metas: list[dict],
+    *,
+    feedback: str | None = None,
+    previous: dict | None = None,
+) -> tuple[str, str]:
     ds_lines = []
     for m in metas:
         size_kb = round((m["size_bytes"] or 0) / 1024, 1)
@@ -75,11 +82,26 @@ def _build_prompt(hunt: Hunt, metas: list[dict]) -> tuple[str, str]:
         datasets="\n".join(ds_lines) or "No datasets uploaded.",
         count=len(metas),
     )
+    if feedback:
+        prev = json.dumps(previous)[:3000] if previous else "(none)"
+        user += (
+            "\n\nREVISION REQUEST — the analyst reviewed a previous plan and wants "
+            "changes. Produce a revised plan that addresses the feedback while still "
+            "covering every dataset.\nPrevious plan (JSON): "
+            f"{prev}\nAnalyst feedback: {feedback}\n"
+        )
     return prompts.ANALYSIS_PLAN_SYSTEM, user
 
 
-def plan_stream(hunt: Hunt, metas: list[dict], *, on_chunk=None) -> dict[str, Any]:
-    sys, user = _build_prompt(hunt, metas)
+def plan_stream(
+    hunt: Hunt,
+    metas: list[dict],
+    *,
+    on_chunk=None,
+    feedback: str | None = None,
+    previous: dict | None = None,
+) -> dict[str, Any]:
+    sys, user = _build_prompt(hunt, metas, feedback=feedback, previous=previous)
     raw = ollama.generate_stream(planner_model(), sys, user, on_chunk=on_chunk, json_mode=True)
     parsed = ollama.parse_json_response(raw)
     if not isinstance(parsed, dict):
