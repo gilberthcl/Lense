@@ -69,19 +69,30 @@ def analyze_dataset(
         if on_stage:
             on_stage(name, pct)
 
-    finding_format = finding_format or DEFAULT_FINDING_FORMAT
-    finding_categories = finding_categories or prompts.DEFAULT_CATEGORIES
-    analysis_instructions = analysis_instructions or "Follow standard evidence-based threat-hunting practice."
-    tenant_context = (tenant_context or "No additional tenant context provided.")[:8000]
+    # Aggressive prompt budget — the analyst prompt was ~15k tokens (mostly
+    # repeated methodology + full KB docs), which made every call slow/time out.
+    # The brief already summarizes the methodology, so the raw text is dropped to
+    # a short snippet and every component is capped.
+    finding_format = (finding_format or DEFAULT_FINDING_FORMAT)[:1500]
+    finding_categories = (finding_categories or prompts.DEFAULT_CATEGORIES)[:2000]
+    analysis_instructions = (
+        analysis_instructions or "Follow standard evidence-based threat-hunting practice."
+    )[:1500]
+    tenant_context = (tenant_context or "No additional tenant context provided.")[:2000]
     if isinstance(methodology_brief, dict):
-        brief_text = json.dumps(methodology_brief, ensure_ascii=False, indent=2, default=str)
+        brief_text = json.dumps(methodology_brief, ensure_ascii=False, default=str)
     else:
         brief_text = methodology_brief or "No methodology brief available."
-    # Keep prompts bounded — the brief + tenant context already summarize the
-    # methodology, so the raw text is capped to avoid huge, slow generations.
-    brief_text = brief_text[:6000]
-    methodology = (methodology or "No methodology document provided.")[:8000]
+    brief_text = brief_text[:3000]
+    methodology = (methodology or "No methodology document provided.")[:800]
     evidence_json = json.dumps(evidence_package, ensure_ascii=False, default=str)
+    if len(evidence_json) > 6000:
+        # Wide dataset — drop the bulky per-column top-values, keep schema/sample/stats.
+        slim = dict(evidence_package)
+        stats = dict(slim.get("stats", {}))
+        stats.pop("top_values", None)
+        slim["stats"] = stats
+        evidence_json = json.dumps(slim, ensure_ascii=False, default=str)[:6000]
     trace: dict[str, Any] = {}
 
     # ── Phase 1: Analyst ───────────────────────────────────────────────────

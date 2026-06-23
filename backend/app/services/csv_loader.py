@@ -70,19 +70,20 @@ def extract_entities(df: pd.DataFrame, max_per_type: int = 50) -> dict[str, list
     return entities
 
 
-def compute_stats(df: pd.DataFrame, top_n: int = 15) -> dict[str, Any]:
+def compute_stats(df: pd.DataFrame, top_n: int = 6) -> dict[str, Any]:
     """Deterministic statistics the model may reference as evidence."""
     columns_meta = [{"name": c, "non_empty": int((df[c].astype(str).str.strip() != "").sum())}
                     for c in df.columns]
     value_counts: dict[str, list[dict[str, Any]]] = {}
-    for col in df.columns:
+    # Cap the number of summarized columns to keep the prompt small on wide CSVs.
+    for col in list(df.columns)[:25]:
         series = df[col].astype(str).str.strip()
         series = series[series != ""]
         nunique = series.nunique()
         # Only summarize categorical-ish columns to keep the package compact.
-        if 0 < nunique <= max(top_n * 4, 200):
+        if 0 < nunique <= max(top_n * 4, 60):
             top = series.value_counts().head(top_n)
-            value_counts[col] = [{"value": k, "count": int(v)} for k, v in top.items()]
+            value_counts[col] = [{"value": str(k)[:80], "count": int(v)} for k, v in top.items()]
     return {
         "row_count": int(len(df)),
         "col_count": int(len(df.columns)),

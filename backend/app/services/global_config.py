@@ -39,7 +39,8 @@ def ai_defaults() -> dict:
         # model every call. single_model_pipeline runs reviewer+QA on the analyst
         # model (one resident model, no swapping) — far faster.
         "single_model_pipeline": True,
-        "num_predict": 4096,    # cap output so JSON can't run to the context limit
+        "num_predict": 2048,    # cap output (findings for one dataset are small)
+        "num_ctx": 8192,        # context window — must fit the (now-trimmed) prompt
         "keep_alive": "30m",    # keep the model warm between datasets
         # Each stage is a separate generation. On a slow box, turning Reviewer/QA
         # off runs a single analyst pass (≈3× faster) at some FP-reduction cost.
@@ -110,6 +111,8 @@ def _validate_ai(patch: dict) -> dict:
         out["timeout"] = max(30, int(out["timeout"]))
     if "num_predict" in out:
         out["num_predict"] = max(256, min(int(out["num_predict"]), 16384))
+    if "num_ctx" in out:
+        out["num_ctx"] = max(2048, min(int(out["num_ctx"]), 32768))
     if "single_model_pipeline" in out:
         out["single_model_pipeline"] = bool(out["single_model_pipeline"])
     for k in ("enable_reviewer", "enable_qa"):

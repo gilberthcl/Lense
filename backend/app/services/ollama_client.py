@@ -39,7 +39,11 @@ def _gen_options(cfg: dict) -> dict:
         "temperature": cfg["temperature"],
         # Cap output so a json_mode generation can't run to the context limit
         # (which truncates the JSON and breaks parsing).
-        "num_predict": int(cfg.get("num_predict", 4096)),
+        "num_predict": int(cfg.get("num_predict", 2048)),
+        # Set the context window explicitly. Ollama's default (2048) would
+        # silently truncate our prompt; sizing it to the trimmed prompt keeps
+        # the whole thing in context without paying for a giant KV cache.
+        "num_ctx": int(cfg.get("num_ctx", 8192)),
     }
 
 

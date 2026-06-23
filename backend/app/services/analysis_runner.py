@@ -35,30 +35,26 @@ def ensure_methodology_sections(db: Session, hunt: Hunt) -> dict | None:
 
 
 def _methodology_sections_context(sections: dict | None) -> str:
-    """Compact, evidence-grounded summary of the methodology for the analyst."""
+    """Compact methodology summary for the analyst (kept small to stay fast)."""
     if not sections or not sections.get("available"):
         return ""
-    lines = ["[methodology_plan] Hunt topics and their detection focus:"]
+    lines = ["[methodology_plan] Hunt topics (with up to 2 key indicators each):"]
     poa = sections.get("plan_of_action", {})
     for t in poa.get("topics", []):
         mitre = f" ({t['mitre']})" if t.get("mitre") else ""
         lines.append(f"- {t['name']}{mitre}")
-        for ind in t.get("indicators", [])[:6]:
-            lines.append(f"    • {ind}")
-    # Which queries already returned results worth prioritising in the data.
+        for ind in t.get("indicators", [])[:2]:
+            lines.append(f"    • {ind[:160]}")
+    # Queries that already returned events — worth corroborating in the data.
     hot = [
-        f"{r['name'].split(' Covers:')[0].strip()} ({r['result_count']} events)"
+        f"{r['name'].split(' Covers:')[0].strip()[:80]} ({r['result_count']})"
         for tq in sections.get("queries", [])
         for r in tq.get("rows", [])
         if r.get("status") == "results"
     ]
     if hot:
-        lines.append(
-            "[methodology_queries_with_results] These hunt queries already "
-            "returned events — corroborate or refute them in the datasets:\n  - "
-            + "\n  - ".join(hot[:40])
-        )
-    return "\n".join(lines)
+        lines.append("[queries_with_results]: " + "; ".join(hot[:12]))
+    return "\n".join(lines)[:2000]
 
 
 def _approved_software_context(db: Session, tenant_id: int) -> str:
@@ -95,15 +91,17 @@ def _approved_software_context(db: Session, tenant_id: int) -> str:
 
 def _tenant_context(db: Session, tenant_id: int) -> str:
     parts = []
-    for dt in ("approved_software", "report_standard", "previous_report"):
+    # Only the report standard + approved-software baseline are useful per-dataset;
+    # previous reports are large and would bloat every prompt. Each is capped.
+    for dt in ("approved_software", "report_standard"):
         for doc in db.query(KnowledgeDocument).filter_by(
             tenant_id=tenant_id, doc_type=dt
         ):
-            parts.append(f"[{dt}] {doc.title}\n{doc.content}")
+            parts.append(f"[{dt}] {doc.title}\n{(doc.content or '')[:600]}")
     sw = _approved_software_context(db, tenant_id)
     if sw:
-        parts.append(sw)
-    return "\n\n".join(parts)
+        parts.append(sw[:800])
+    return "\n\n".join(parts)[:2000]
 
 
 def _retrieval_query(hunt: Hunt, dataset: Dataset, evidence: dict) -> str:
@@ -181,7 +179,7 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
         df = csv_loader.load_csv(dataset.file_path, settings.max_upload_bytes)
         # Bounded sample keeps the prompt small (and the model fast) — the full
         # schema + statistics still describe the whole dataset.
-        evidence = csv_loader.build_evidence_package(df, sample_rows=8)
+        evidence = csv_loader.build_evidence_package(df, sample_rows=5)
 
         # Persist computed schema/stats for the UI.
         dataset.row_count = evidence["stats"]["row_count"]
