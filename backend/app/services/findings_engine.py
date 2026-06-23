@@ -69,33 +69,35 @@ def analyze_dataset(
         if on_stage:
             on_stage(name, pct)
 
-    # Aggressive prompt budget — the analyst prompt was ~15k tokens (mostly
-    # repeated methodology + full KB docs), which made every call slow/time out.
-    # The brief already summarizes the methodology, so the raw text is dropped to
-    # a short snippet and every component is capped.
-    finding_format = (finding_format or DEFAULT_FINDING_FORMAT)[:1500]
-    finding_categories = (finding_categories or prompts.DEFAULT_CATEGORIES)[:2000]
+    # Prompt budget. The earlier build over-trimmed everything to ~4k tokens,
+    # which starved the model of the methodology + protocol it needs to hunt.
+    # We now split content by STAGE so each prompt only carries what it needs:
+    #   • Extractor gets the protocol + methodology + evidence (NOT the format).
+    #   • Writer gets the finding format + the extracted findings (NOT the data).
+    # That keeps each prompt rich but well within num_ctx (raised to 16k).
+    finding_format = (finding_format or DEFAULT_FINDING_FORMAT)[:9600]
+    finding_categories = (finding_categories or prompts.DEFAULT_CATEGORIES)[:3500]
     analysis_instructions = (
         analysis_instructions or "Follow standard evidence-based threat-hunting practice."
-    )[:1500]
-    tenant_context = (tenant_context or "No additional tenant context provided.")[:2000]
+    )[:6500]
+    tenant_context = (tenant_context or "No additional tenant context provided.")[:2500]
     if isinstance(methodology_brief, dict):
         brief_text = json.dumps(methodology_brief, ensure_ascii=False, default=str)
     else:
         brief_text = methodology_brief or "No methodology brief available."
-    brief_text = brief_text[:3000]
-    methodology = (methodology or "No methodology document provided.")[:800]
+    brief_text = brief_text[:2500]
+    methodology = (methodology or "No methodology document provided.")[:10000]
     evidence_json = json.dumps(evidence_package, ensure_ascii=False, default=str)
-    if len(evidence_json) > 6000:
+    if len(evidence_json) > 9000:
         # Wide dataset — drop the bulky per-column top-values, keep schema/sample/stats.
         slim = dict(evidence_package)
         stats = dict(slim.get("stats", {}))
         stats.pop("top_values", None)
         slim["stats"] = stats
-        evidence_json = json.dumps(slim, ensure_ascii=False, default=str)[:6000]
+        evidence_json = json.dumps(slim, ensure_ascii=False, default=str)[:9000]
     trace: dict[str, Any] = {}
 
-    # ── Phase 1: Analyst ───────────────────────────────────────────────────
+    # ── Stage 1: Extractor — investigate the data, extract every finding ────
     sys = prompts.ANALYST_SYSTEM.format(
         analysis_instructions=analysis_instructions,
         guardrails=prompts.GUARDRAILS,
@@ -108,16 +110,15 @@ def analyze_dataset(
         language=language or "English",
         methodology_brief=brief_text,
         methodology=methodology,
-        finding_format=finding_format,
         tenant_context=tenant_context,
         dataset_name=dataset_name,
         evidence_json=evidence_json,
     )
-    stage(f"Analyst reading evidence (~{len(user) // 4} prompt tokens)…", 55)
+    stage(f"Analyzing data — extracting findings (~{len(user) // 4} prompt tokens)…", 55)
     _t = time.perf_counter()
     raw = ollama.analyst(sys, user)
     trace["analyst_secs"] = round(time.perf_counter() - _t, 1)
-    stage(f"Analyst finished in {trace['analyst_secs']}s (~{len(raw) // 4} tokens out)", 68)
+    stage(f"Extraction finished in {trace['analyst_secs']}s (~{len(raw) // 4} tokens out)", 66)
     try:
         analyst_out = ollama.parse_json_response(raw)
     except ollama.OllamaError:
@@ -128,9 +129,9 @@ def analyze_dataset(
     findings = analyst_out.get("findings", []) if isinstance(analyst_out, dict) else []
     trace["analyst_count"] = len(findings)
 
-    # ── Phase 2: Reviewer (false-positive reduction) ───────────────────────
+    # ── Stage 1b: Reviewer (optional false-positive reduction) ─────────────
     if run_reviewer and findings:
-        stage(f"Reviewer checking {len(findings)} findings…", 72)
+        stage(f"Reviewer challenging {len(findings)} finding(s)…", 74)
         r_sys = prompts.REVIEWER_SYSTEM.format(guardrails=prompts.GUARDRAILS)
         r_user = prompts.REVIEWER_PROMPT.format(
             evidence_json=evidence_json,
@@ -153,25 +154,37 @@ def analyze_dataset(
             trace["reviewer_error"] = True  # fail open: keep analyst findings
     trace["after_review_count"] = len(findings)
 
-    # ── Phase 3: QA (format normalization) ─────────────────────────────────
-    if run_qa and findings:
-        stage("QA normalizing format…", 88)
-        q_sys = prompts.QA_SYSTEM.format(guardrails=prompts.GUARDRAILS)
-        q_user = prompts.QA_PROMPT.format(
+    # ── Stage 2: Writer — render each finding in the approved format ───────
+    # Always runs (it is the second of the user's two tasks): a dedicated pass
+    # that rewrites the extracted findings into the client's finding format and
+    # report language. Fails open — on error we keep the extractor's findings.
+    if findings:
+        stage(f"Writing {len(findings)} finding(s) in the required format…", 88)
+        w_sys = prompts.WRITER_SYSTEM.format(guardrails=prompts.GUARDRAILS)
+        w_user = prompts.WRITER_PROMPT.format(
+            language=language or "English",
             finding_format=finding_format,
             findings_json=json.dumps(findings, ensure_ascii=False, default=str),
         )
         try:
             _t = time.perf_counter()
-            normalized = ollama.parse_json_response(ollama.qa(q_sys, q_user))
-            trace["qa_secs"] = round(time.perf_counter() - _t, 1)
-            stage(f"QA finished in {trace['qa_secs']}s", 94)
-            if isinstance(normalized, list):
-                findings = normalized
-            elif isinstance(normalized, dict) and "findings" in normalized:
-                findings = normalized["findings"]
+            written = ollama.parse_json_response(ollama.qa(w_sys, w_user))
+            trace["writer_secs"] = round(time.perf_counter() - _t, 1)
+            stage(f"Writer finished in {trace['writer_secs']}s", 94)
+            if isinstance(written, list):
+                new_findings = written
+            elif isinstance(written, dict) and "findings" in written:
+                new_findings = written["findings"]
+            else:
+                new_findings = []
+            # Only accept the rewrite if it preserved the finding set; otherwise
+            # keep the richer extractor output rather than lose findings.
+            if len(new_findings) == len(findings):
+                findings = new_findings
+            else:
+                trace["writer_count_mismatch"] = [len(findings), len(new_findings)]
         except ollama.OllamaError:
-            trace["qa_error"] = True
+            trace["writer_error"] = True
 
     # ── Hard anti-hallucination gate (code, not model) ─────────────────────
     evidence_values = _flatten_evidence_values(evidence_package)

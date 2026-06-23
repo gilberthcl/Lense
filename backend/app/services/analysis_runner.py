@@ -177,9 +177,10 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
         sections = ensure_methodology_sections(db, hunt)
 
         df = csv_loader.load_csv(dataset.file_path, settings.max_upload_bytes)
-        # Bounded sample keeps the prompt small (and the model fast) — the full
-        # schema + statistics still describe the whole dataset.
-        evidence = csv_loader.build_evidence_package(df, sample_rows=5)
+        # Bounded sample keeps the prompt manageable while still giving the
+        # extractor concrete rows to cite. The evidence_json is capped downstream
+        # in findings_engine for very wide datasets.
+        evidence = csv_loader.build_evidence_package(df, sample_rows=12)
 
         # Persist computed schema/stats for the UI.
         dataset.row_count = evidence["stats"]["row_count"]

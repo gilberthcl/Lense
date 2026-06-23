@@ -32,19 +32,40 @@ function prettyJson(value: unknown): string {
   }
 }
 
+// Render a single list item that may be a scalar OR an object (e.g. MITRE comes
+// back as [{technique_id, name}]). Objects are flattened to a readable label
+// instead of the default "[object Object]".
+function stringifyItem(v: unknown): string {
+  if (v == null) return "";
+  if (typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    const id = o.technique_id ?? o.technique ?? o.id ?? o.tactic_id;
+    const name = o.name ?? o.title ?? o.technique_name ?? o.tactic ?? o.value;
+    const label = [id, name].filter((x) => x != null && x !== "").join(" — ");
+    if (label) return label;
+    // Fallback: join the scalar values so we never show "[object Object]".
+    const scalars = Object.values(o).filter(
+      (x) => typeof x === "string" || typeof x === "number",
+    );
+    return scalars.length ? scalars.map(String).join(" · ") : JSON.stringify(v);
+  }
+  return String(v);
+}
+
 function asList(value: unknown): string[] {
   if (value == null) return [];
-  if (Array.isArray(value)) return value.map((v) => String(v));
+  if (Array.isArray(value)) return value.map(stringifyItem).filter(Boolean);
   if (typeof value === "string") {
     const trimmed = value.trim();
     try {
       const parsed = JSON.parse(trimmed);
-      if (Array.isArray(parsed)) return parsed.map((v) => String(v));
+      if (Array.isArray(parsed)) return parsed.map(stringifyItem).filter(Boolean);
     } catch {
       // fall through
     }
     return trimmed ? [trimmed] : [];
   }
+  if (typeof value === "object") return [stringifyItem(value)];
   return [String(value)];
 }
 

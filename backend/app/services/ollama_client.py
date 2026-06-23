@@ -4,10 +4,13 @@ Ollama client + multi-agent orchestration.
 All calls go to a LOCAL Ollama instance. No data leaves the box, which is what
 keeps tenant isolation intact. Models are Western-origin only (see config).
 
-Agent roles:
-  - Analyst  (gemma3:27b)  : reads evidence, proposes findings
-  - Reviewer (gpt-oss:20b) : challenges findings, reduces false positives
-  - QA       (gpt-oss:20b) : checks format/consistency against the finding spec
+Agent roles (two-stage pipeline + optional reviewer):
+  - Analyst/Extractor (gemma3:27b)  : reads evidence, extracts every finding
+  - Reviewer          (gpt-oss:20b) : optional — challenges findings, cuts FPs
+  - Writer/QA         (gpt-oss:20b) : rewrites findings in the approved format
+
+In single_model_pipeline mode every role reuses the analyst model so Ollama
+never swaps a multi-GB model between stages.
 """
 from __future__ import annotations
 

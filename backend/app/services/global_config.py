@@ -40,7 +40,11 @@ def ai_defaults() -> dict:
         # model (one resident model, no swapping) — far faster.
         "single_model_pipeline": True,
         "num_predict": 2048,    # cap output (findings for one dataset are small)
-        "num_ctx": 8192,        # context window — must fit the (now-trimmed) prompt
+        # Context window. The extractor prompt carries the full investigation
+        # protocol + methodology + evidence, so 8192 would silently truncate it
+        # (Ollama drops the oldest tokens). 16384 fits the rich prompt; on a 7B
+        # model the extra KV cache is modest.
+        "num_ctx": 16384,
         "keep_alive": "30m",    # keep the model warm between datasets
         # Each stage is a separate generation. On a slow box, turning Reviewer/QA
         # off runs a single analyst pass (≈3× faster) at some FP-reduction cost.
@@ -80,7 +84,14 @@ def _write(db: Session, key: str, title: str, data: dict) -> None:
 
 
 def get_ai(db: Session) -> dict:
-    return _read(db, AI_KEY, ai_defaults())
+    data = _read(db, AI_KEY, ai_defaults())
+    # A config saved under an older build may pin num_ctx too low (e.g. 8192) for
+    # the current rich extractor prompt, which would silently truncate the
+    # methodology. Floor it to the current default so guidance always fits.
+    floor = ai_defaults()["num_ctx"]
+    if int(data.get("num_ctx", 0)) < floor:
+        data["num_ctx"] = floor
+    return data
 
 
 def get_platform(db: Session) -> dict:

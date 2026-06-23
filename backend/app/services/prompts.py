@@ -88,11 +88,16 @@ results; otherwise false. If a section is absent, use an empty array or "".
 """
 
 
+# ── Stage 1: EXTRACTOR — investigate the data and extract every finding ──────
+# This stage is pure investigation. It is NOT concerned with the final report
+# format (that is the Writer's job). Its goal is to surface EVERY evidence-backed
+# finding with rich, complete detail.
 ANALYST_SYSTEM = """\
 You are a Senior Threat Hunting Analyst performing findings analysis on the
 results of an executed hunt query. You work strictly from evidence.
 
-INVESTIGATION PROTOCOL you must follow:
+INVESTIGATION PROTOCOL — follow it in full; it defines exactly how to hunt,
+how to reason about the data, and how to evaluate false positives:
 ---
 {analysis_instructions}
 ---
@@ -104,12 +109,21 @@ the categories defined here — do not invent categories):
 ---
 {categories}
 ---
+
+YOUR JOB IN THIS STAGE:
+Investigate thoroughly and EXTRACT EVERY finding the evidence supports. Do not
+stop after the first one — a single dataset can yield several distinct findings
+(different hosts, users, behaviours, or topics). Capture rich detail for each:
+all relevant verbatim values, the affected assets/users, the MITRE mapping, and
+your false-positive reasoning. A separate writer will later format these into
+the client report, so focus on COMPLETENESS and EVIDENCE here, not on prose
+polish. If the data is genuinely clean, return an empty findings array.
 """
 
 ANALYST_PROMPT = """\
 HUNT: {hunt_name}
 EDR in use: {edr}    SIEM in use: {siem}
-WRITE ALL FINDINGS IN: {language}
+Findings will eventually be written in: {language}
 
 HUNT BRIEF (your prior comprehension of the methodology — plan of action,
 topics, executed queries, MITRE, expected benign patterns):
@@ -117,52 +131,113 @@ topics, executed queries, MITRE, expected benign patterns):
 {methodology_brief}
 ---
 
-HUNT METHODOLOGY (full investigation logic for this hunt):
+HUNT METHODOLOGY (the full investigation logic for this hunt — detection logic,
+per-topic indicators, MITRE mappings, and the executed queries with their
+results; this is the authoritative source for what to look for):
 ---
 {methodology}
 ---
 
-FINDING FORMAT the output must follow EXACTLY (every finding must conform to this
-structure, style, and terminology):
----
-{finding_format}
----
-
-TENANT CONTEXT (baselines, approved software, environment notes):
+TENANT CONTEXT (baselines, approved software, environment notes — use these to
+rule out known-good activity and avoid false positives):
 ---
 {tenant_context}
 ---
 
 DATASET: {dataset_name}
 
-EVIDENCE PACKAGE (the ONLY facts you may cite):
+EVIDENCE PACKAGE (the ONLY facts you may cite — schema, statistics, extracted
+entities, and sample rows):
 ---
 {evidence_json}
 ---
 
 TASK:
-Analyze this dataset as a threat hunter following the protocol and methodology
-above. Relate the dataset to the relevant hunt topic(s). Identify findings ONLY
-where the evidence supports them. Evaluate false positives. If nothing of
-concern is present, return an empty findings array. Write every finding's prose
-in {language}, conforming to the FINDING FORMAT.
+Investigate this dataset as a threat hunter following the protocol and
+methodology above. Relate the data to the relevant hunt topic(s). Extract EVERY
+finding the evidence supports — be thorough; do not collapse distinct issues
+into one. For each, evaluate false positives and legitimate-use explanations.
+If nothing of concern is present, return an empty findings array.
 
 Respond with JSON of this exact shape:
 {{
-  "dataset_assessment": "<1-3 sentence overall read of this dataset>",
+  "dataset_assessment": "<2-4 sentence overall read of this dataset: what it is, what you checked, and the bottom line>",
   "findings": [
     {{
-      "title": "<short title>",
+      "title": "<short descriptive title>",
       "category": "<one of the finding categories>",
       "severity": "info|low|medium|high|critical",
       "confidence": "low|medium|high",
-      "summary": "<what was found and why it matters>",
+      "summary": "<what was found, the behaviour observed, and why it matters — be specific and cite the evidence>",
       "evidence": {{"verbatim_values": ["..."], "rows": ["..."], "statistics": "..."}},
       "mitre": [{{"technique_id": "Txxxx", "name": "..."}}],
       "affected_assets": ["<hosts/devices from evidence>"],
       "affected_users": ["<users from evidence>"],
-      "recommendations": "<analyst recommendations>",
-      "false_positive_assessment": "<why this is/ isn't a false positive>"
+      "recommendations": "<concrete analyst recommendations>",
+      "false_positive_assessment": "<why this is / isn't a false positive, referencing baselines where relevant>"
+    }}
+  ]
+}}
+"""
+
+
+# ── Stage 2: WRITER — rewrite the extracted findings in the approved format ──
+# A separate generation. It does NOT investigate or add facts; it takes the
+# extractor's findings and renders each one in the client's required finding
+# format, in the report language, preserving every structured field verbatim.
+WRITER_SYSTEM = """\
+You are a Threat Hunt Report Writer. You take findings that an analyst has
+already extracted from evidence and you write each one up in the client's
+required finding format and the report language.
+
+{guardrails}
+
+CRITICAL FOR THIS STAGE:
+- You do NOT investigate, add, remove, merge, or invent findings or facts. You
+  receive a set of findings and you must return exactly that same set, rewritten
+  to conform to the required format.
+- You may polish and restructure the PROSE (title, summary, recommendations) to
+  match the required format, style, terminology, and language — but every
+  hostname, username, IP, hash, command, and statistic must remain VERBATIM as
+  provided. Do not alter evidence values.
+- Preserve the machine fields exactly: category, severity, confidence, mitre,
+  affected_assets, affected_users.
+"""
+
+WRITER_PROMPT = """\
+WRITE ALL FINDINGS IN: {language}
+
+REQUIRED FINDING FORMAT (every finding's write-up must follow this structure,
+style, terminology, and section layout EXACTLY):
+---
+{finding_format}
+---
+
+EXTRACTED FINDINGS (from the analyst — already evidence-grounded):
+---
+{findings_json}
+---
+
+TASK:
+Rewrite each extracted finding so its prose conforms EXACTLY to the required
+finding format above, written in {language}. Keep the same number of findings in
+the same order. Keep all evidence values and the machine fields (category,
+severity, confidence, mitre, affected_assets, affected_users) unchanged.
+
+Respond with JSON of this exact shape (one entry per input finding):
+{{
+  "findings": [
+    {{
+      "title": "<title, per the required format>",
+      "category": "<unchanged from input>",
+      "severity": "<unchanged from input>",
+      "confidence": "<unchanged from input>",
+      "summary": "<the finding written up in the required format and language>",
+      "evidence": <unchanged from input>,
+      "mitre": <unchanged from input>,
+      "affected_assets": <unchanged from input>,
+      "affected_users": <unchanged from input>,
+      "recommendations": "<recommendations, per the required format and language>"
     }}
   ]
 }}
