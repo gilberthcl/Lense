@@ -192,6 +192,12 @@ export interface DbHealth {
   healthy: boolean;
 }
 
+export interface PlanState {
+  status?: "draft" | "accepted" | string;
+  feedback?: string | null;
+  accepted_at?: string | null;
+}
+
 export interface DatasetPreview {
   filename: string;
   row_count: number;
@@ -213,6 +219,7 @@ export interface Hunt {
   methodology_brief?: MethodologyBrief | null;
   methodology_sections?: MethodologySections | null;
   analysis_plan?: AnalysisPlan | null;
+  plan_state?: PlanState | null;
   created_at: string;
 }
 

@@ -11,6 +11,7 @@ import {
   fmtBytes,
   PanelHeader,
   Spinner,
+  Textarea,
 } from "./ui";
 
 const MAX_BYTES = 20 * 1024 * 1024; // 20MB client-side cap
@@ -53,6 +54,7 @@ export default function DatasetsPanel({
   const fileRef = useRef<HTMLInputElement>(null);
 
   const plan = hunt?.analysis_plan ?? null;
+  const planState = hunt?.plan_state ?? null;
 
   const load = () =>
     api
@@ -181,15 +183,15 @@ export default function DatasetsPanel({
     if (any) onAnalysisComplete();
   };
 
-  const runPlan = async () => {
+  const runPlan = async (feedback?: string) => {
     setPlanning(true);
     setPlanJob({ id: "", status: "queued", progress: 0 });
     try {
-      const started = await api.analysisPlan(tid, hid);
+      const started = await api.analysisPlan(tid, hid, feedback);
       const final = await pollJob(tid, hid, started.id, (j) => setPlanJob(j));
       if (final.status === "error") toast.error("Planning failed — see the log.");
       else {
-        toast.success("Analysis plan ready.");
+        toast.success(feedback ? "Plan revised." : "Analysis plan ready.");
         onHuntRefresh();
         setShowPlan(true);
       }
@@ -197,6 +199,39 @@ export default function DatasetsPanel({
       toast.error(e instanceof ApiError ? e.message : "Planning failed.");
     } finally {
       setPlanning(false);
+    }
+  };
+
+  const acceptPlan = async () => {
+    try {
+      await api.acceptPlan(tid, hid);
+      onHuntRefresh();
+      toast.success("Plan accepted — you can now run it phase by phase.");
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Could not accept the plan.");
+    }
+  };
+
+  // Execute one plan phase: analyze its (pending) datasets one at a time.
+  const runPhase = async (filenames: string[]) => {
+    const queue = filenames
+      .map((fn) => (datasets ?? []).find((d) => d.filename === fn))
+      .filter((d): d is Dataset => !!d && d.status !== "analyzed");
+    if (queue.length === 0) {
+      toast.info("Nothing pending in this phase.");
+      return;
+    }
+    setRunningAll(true);
+    let any = false;
+    for (const ds of queue) {
+      const ok = await runAnalysis(ds);
+      any = any || ok;
+      await load();
+    }
+    setRunningAll(false);
+    if (any) {
+      onAnalysisComplete();
+      onHuntRefresh();
     }
   };
 
@@ -231,7 +266,7 @@ export default function DatasetsPanel({
           title="Analysis Plan"
           subtitle="The model plans phases, batches & QA from dataset metadata — before any contents are analyzed"
           right={
-            <Button variant={plan ? "ghost" : "primary"} onClick={runPlan} disabled={planning || !hasDatasets}>
+            <Button variant={plan ? "ghost" : "primary"} onClick={() => runPlan()} disabled={planning || !hasDatasets}>
               {planning ? (
                 <>
                   <Spinner /> {planJob?.progress ?? 0}%
@@ -291,7 +326,18 @@ export default function DatasetsPanel({
                 : "Upload datasets first, then plan the analysis."}
             </EmptyState>
           ) : (
-            <PlanView plan={plan} expanded={showPlan} onToggle={() => setShowPlan((s) => !s)} />
+            <PlanView
+              plan={plan}
+              planState={planState}
+              datasets={datasets ?? []}
+              activeDatasetId={active?.datasetId ?? null}
+              busy={busy || planning}
+              expanded={showPlan}
+              onToggle={() => setShowPlan((s) => !s)}
+              onAccept={acceptPlan}
+              onRegenerate={runPlan}
+              onRunPhase={runPhase}
+            />
           )}
         </div>
       </Card>
@@ -461,53 +507,164 @@ function PreviewTable({ data, onClose }: { data: DatasetPreview; onClose: () => 
 
 function PlanView({
   plan,
+  planState,
+  datasets,
+  activeDatasetId,
+  busy,
   expanded,
   onToggle,
+  onAccept,
+  onRegenerate,
+  onRunPhase,
 }: {
   plan: NonNullable<Hunt["analysis_plan"]>;
+  planState: Hunt["plan_state"];
+  datasets: Dataset[];
+  activeDatasetId: string | null;
+  busy: boolean;
   expanded: boolean;
   onToggle: () => void;
+  onAccept: () => void;
+  onRegenerate: (feedback: string) => void;
+  onRunPhase: (filenames: string[]) => void;
 }) {
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const accepted = planState?.status === "accepted";
+  const phases = plan.phases ?? [];
+
+  // Per-phase execution state derived from the datasets' own statuses.
+  const phaseInfo = (filenames: string[] = []) => {
+    const ds = filenames.map((fn) => datasets.find((d) => d.filename === fn)).filter((d): d is Dataset => !!d);
+    const total = ds.length;
+    const analyzed = ds.filter((d) => d.status === "analyzed").length;
+    const running = ds.some((d) => String(d.id) === activeDatasetId);
+    return { total, analyzed, running, done: total > 0 && analyzed === total };
+  };
+  const nextPhaseIdx = phases.findIndex((p) => !phaseInfo(p.datasets).done);
+
   return (
     <div className="space-y-4">
       {plan.summary && <p className="text-sm leading-relaxed text-slate-300">{plan.summary}</p>}
-      <div className="flex flex-wrap gap-2 text-xs">
+
+      {/* Review / execution controls */}
+      <div className="flex flex-wrap items-center gap-2">
         {plan.estimated_rounds != null && (
           <Badge className="border border-indigo-800 bg-indigo-950 text-indigo-300">
             {plan.estimated_rounds} round{plan.estimated_rounds === 1 ? "" : "s"}
           </Badge>
         )}
-        {!!plan.phases?.length && (
-          <Badge className="border border-slate-700 bg-slate-800 text-slate-300">{plan.phases.length} phases</Badge>
+        {!!phases.length && (
+          <Badge className="border border-slate-700 bg-slate-800 text-slate-300">{phases.length} phases</Badge>
+        )}
+        {accepted ? (
+          <Badge className="border border-emerald-800 bg-emerald-950 text-emerald-300">✓ Plan accepted</Badge>
+        ) : (
+          <Badge className="border border-amber-800 bg-amber-950 text-amber-300">Draft — review &amp; accept</Badge>
+        )}
+        <span className="flex-1" />
+        {!accepted && (
+          <>
+            <Button variant="ghost" onClick={() => setShowFeedback((s) => !s)} disabled={busy}>
+              Request changes
+            </Button>
+            <Button variant="primary" onClick={onAccept} disabled={busy}>
+              Accept plan
+            </Button>
+          </>
+        )}
+        {accepted && nextPhaseIdx >= 0 && (
+          <Button
+            variant="success"
+            disabled={busy}
+            onClick={() => onRunPhase(phases[nextPhaseIdx].datasets ?? [])}
+          >
+            {busy ? <Spinner /> : `Run phase ${nextPhaseIdx + 1}`}
+          </Button>
+        )}
+        {accepted && nextPhaseIdx < 0 && (
+          <Badge className="border border-emerald-800 bg-emerald-950 text-emerald-300">All phases complete</Badge>
         )}
         <button onClick={onToggle} className="text-indigo-400 hover:text-indigo-300">
           {expanded ? "Hide details" : "Show details"}
         </button>
       </div>
 
+      {showFeedback && !accepted && (
+        <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+          <Textarea
+            rows={2}
+            value={feedback}
+            onChange={(e) => setFeedback(e.target.value)}
+            placeholder="e.g. Split the high-complexity datasets into their own phase; analyze auth logs before endpoint data."
+          />
+          <div className="mt-2 flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setShowFeedback(false)}>Cancel</Button>
+            <Button
+              variant="primary"
+              disabled={busy || !feedback.trim()}
+              onClick={() => {
+                onRegenerate(feedback.trim());
+                setShowFeedback(false);
+              }}
+            >
+              Regenerate with feedback
+            </Button>
+          </div>
+        </div>
+      )}
+
       {expanded && (
         <>
-          {!!plan.phases?.length && (
+          {!!phases.length && (
             <ol className="space-y-2">
-              {plan.phases.map((p, i) => (
-                <li key={i} className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-                  <p className="text-sm font-medium text-slate-200">
-                    <span className="font-mono text-slate-500">{i + 1}. </span>
-                    {p.name}
-                  </p>
-                  {p.focus && <p className="mt-1 text-xs text-slate-400">{p.focus}</p>}
-                  {!!p.datasets?.length && (
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {p.datasets.map((d, j) => (
-                        <span key={j} className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[11px] text-slate-300">
-                          {d}
-                        </span>
-                      ))}
+              {phases.map((p, i) => {
+                const info = phaseInfo(p.datasets);
+                const isNext = i === nextPhaseIdx;
+                return (
+                  <li key={i} className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium text-slate-200">
+                        <span className="font-mono text-slate-500">{i + 1}. </span>
+                        {p.name}
+                      </p>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {info.done ? (
+                          <Badge className="border border-emerald-800 bg-emerald-950 text-emerald-300">Done</Badge>
+                        ) : info.running ? (
+                          <Badge className="border border-indigo-800 bg-indigo-950 text-indigo-300">Running</Badge>
+                        ) : (
+                          <Badge className="border border-slate-700 bg-slate-800 text-slate-400">
+                            {info.analyzed}/{info.total || (p.datasets?.length ?? 0)}
+                          </Badge>
+                        )}
+                        {accepted && !info.done && (
+                          <Button
+                            variant="ghost"
+                            className="px-2 py-1 text-xs"
+                            disabled={busy || !isNext}
+                            title={isNext ? "Run this phase" : "Finish the earlier phase first"}
+                            onClick={() => onRunPhase(p.datasets ?? [])}
+                          >
+                            Run
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                  )}
-                  {p.rationale && <p className="mt-1.5 text-xs italic text-slate-500">{p.rationale}</p>}
-                </li>
-              ))}
+                    {p.focus && <p className="mt-1 text-xs text-slate-400">{p.focus}</p>}
+                    {!!p.datasets?.length && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {p.datasets.map((d, j) => (
+                          <span key={j} className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[11px] text-slate-300">
+                            {d}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {p.rationale && <p className="mt-1.5 text-xs italic text-slate-500">{p.rationale}</p>}
+                  </li>
+                );
+              })}
             </ol>
           )}
 

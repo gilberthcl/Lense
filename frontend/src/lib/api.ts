@@ -265,8 +265,13 @@ export const api = {
     }),
   previewDataset: (tid: string, hid: string, did: string) =>
     request<DatasetPreview>(`/api/tenants/${tid}/hunts/${hid}/datasets/${did}/preview`),
-  analysisPlan: (tid: string, hid: string) =>
-    request<Job>(`/api/tenants/${tid}/hunts/${hid}/analysis-plan`, { method: "POST" }),
+  analysisPlan: (tid: string, hid: string, feedback?: string) =>
+    request<Job>(`/api/tenants/${tid}/hunts/${hid}/analysis-plan`, {
+      method: "POST",
+      body: JSON.stringify({ feedback: feedback ?? null }),
+    }),
+  acceptPlan: (tid: string, hid: string) =>
+    request<Hunt>(`/api/tenants/${tid}/hunts/${hid}/plan/accept`, { method: "POST" }),
   getJob: (tid: string, hid: string, jobId: string) =>
     request<Job>(`/api/tenants/${tid}/hunts/${hid}/jobs/${jobId}`),
   listHuntJobs: (tid: string, hid: string) =>
