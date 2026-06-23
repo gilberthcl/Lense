@@ -55,6 +55,7 @@ def analyze_dataset(
     finding_categories: str | None = None,
     analysis_instructions: str | None = None,
     methodology_brief: dict[str, Any] | str | None = None,
+    dataset_focus: str | None = None,
     hunt_name: str = "Threat Hunt",
     language: str = "English",
     edr: str | None = None,
@@ -80,6 +81,11 @@ def analyze_dataset(
     analysis_instructions = (
         analysis_instructions or "Follow standard evidence-based threat-hunting practice."
     )[:6500]
+    dataset_focus = (
+        dataset_focus
+        or "No specific methodology query matched this dataset by name — rely on "
+        "the full methodology below."
+    )[:2200]
     tenant_context = (tenant_context or "No additional tenant context provided.")[:2500]
     if isinstance(methodology_brief, dict):
         brief_text = json.dumps(methodology_brief, ensure_ascii=False, default=str)
@@ -108,6 +114,7 @@ def analyze_dataset(
         edr=edr or "unspecified",
         siem=siem or "unspecified",
         language=language or "English",
+        dataset_focus=dataset_focus,
         methodology_brief=brief_text,
         methodology=methodology,
         tenant_context=tenant_context,

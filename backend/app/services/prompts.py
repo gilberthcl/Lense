@@ -125,6 +125,13 @@ HUNT: {hunt_name}
 EDR in use: {edr}    SIEM in use: {siem}
 Findings will eventually be written in: {language}
 
+THIS DATASET'S METHODOLOGY FOCUS — CONSULT THIS FIRST. It identifies the specific
+hunt query this dataset is the result of, that query's objective, and exactly
+what the methodology says to look for. Recall it, then hunt the data against it:
+---
+{dataset_focus}
+---
+
 HUNT BRIEF (your prior comprehension of the methodology — plan of action,
 topics, executed queries, MITRE, expected benign patterns):
 ---
@@ -153,11 +160,15 @@ entities, and sample rows):
 ---
 
 TASK:
-Investigate this dataset as a threat hunter following the protocol and
-methodology above. Relate the data to the relevant hunt topic(s). Extract EVERY
-finding the evidence supports — be thorough; do not collapse distinct issues
-into one. For each, evaluate false positives and legitimate-use explanations.
-If nothing of concern is present, return an empty findings array.
+1. First confirm which methodology query/topic this dataset corresponds to (see
+   THIS DATASET'S METHODOLOGY FOCUS above) and recall its objective and the
+   indicators the methodology says to look for.
+2. Then investigate this dataset as a threat hunter, following the protocol and
+   methodology, hunting the data specifically against that query's objective.
+Relate the data to the relevant hunt topic(s). Extract EVERY finding the evidence
+supports — be thorough; do not collapse distinct issues into one. For each,
+evaluate false positives and legitimate-use explanations. If nothing of concern
+is present, return an empty findings array.
 
 Respond with JSON of this exact shape:
 {{

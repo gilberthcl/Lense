@@ -7,6 +7,7 @@ once). Each call handles a single dataset.
 """
 from __future__ import annotations
 
+import re
 import time
 
 from sqlalchemy.orm import Session
@@ -55,6 +56,107 @@ def _methodology_sections_context(sections: dict | None) -> str:
     if hot:
         lines.append("[queries_with_results]: " + "; ".join(hot[:12]))
     return "\n".join(lines)[:2000]
+
+
+def _brief_topic_for(brief: dict | None, name: str) -> dict | None:
+    """Best-matching comprehension-brief topic for a parsed query topic name."""
+    if not isinstance(brief, dict):
+        return None
+    nt = methodology_parser._tokens(name)
+    if not nt:
+        return None
+    best: tuple[float, dict] | None = None
+    for t in brief.get("topics", []) or []:
+        tt = methodology_parser._tokens(t.get("name", ""))
+        if not tt:
+            continue
+        score = len(nt & tt) / max(1, len(nt | tt))
+        if best is None or score > best[0]:
+            best = (score, t)
+    return best[1] if best and best[0] >= 0.3 else None
+
+
+def _dataset_methodology_focus(
+    sections: dict | None, brief: dict | None, filename: str
+) -> str:
+    """
+    Look up — in the ALREADY-PARSED methodology (cached `methodology_sections`)
+    and the cached comprehension `brief` — the specific executed query this
+    dataset is the result of, plus that query's objective and indicators.
+
+    This does NOT re-parse the methodology document; it only matches the dataset
+    filename against the query entries that were parsed once and cached.
+    """
+    if not sections or not sections.get("available"):
+        return ""
+    base = re.sub(r"^\s*\d+\s*[-_.)]\s*", "", filename.rsplit(".", 1)[0])  # drop "N-" + ext
+    ft = methodology_parser._tokens(base)
+    if not ft:
+        return ""
+
+    queries = sections.get("queries", []) or []
+    poa_topics = sections.get("plan_of_action", {}).get("topics", []) or []
+
+    # Find the best-matching TOPIC by filename token overlap (a topic scores by the
+    # best of its own name and any of its query rows). We then render that topic's
+    # executed query row(s) — the dataset is the result set of that query.
+    best: tuple[float, int, dict, dict | None] | None = None
+    for ti, topic in enumerate(queries):
+        tt = methodology_parser._tokens(topic.get("name", ""))
+        score = len(ft & tt) / max(1, len(ft)) if tt else 0.0
+        best_row: dict | None = None
+        for row in topic.get("rows", []) or []:
+            rt = methodology_parser._tokens(row.get("name", "")) | methodology_parser._tokens(
+                row.get("query", "")
+            )
+            if not rt:
+                continue
+            rscore = len(ft & rt) / max(1, len(ft))
+            if rscore > score:
+                score, best_row = rscore, row
+            elif best_row is None:
+                best_row = row  # remember a row to show even if the name matched best
+        if best is None or score > best[0]:
+            best = (score, ti, topic, best_row)
+
+    if not best or best[0] < 0.15:  # no confident match — full methodology still in prompt
+        return ""
+
+    _, ti, topic, matched_row = best
+    lines = [
+        "This dataset is the result set of the following executed hunt query "
+        "(matched from the parsed methodology):",
+        f"- Topic {topic.get('number', '?')}: {topic.get('name', '')}"
+        + (f"  [MITRE: {topic['mitre']}]" if topic.get("mitre") else ""),
+    ]
+    # Render the matched query row, else the topic's rows (up to 2).
+    rows_to_show = [matched_row] if matched_row else (topic.get("rows", []) or [])[:2]
+    for row in rows_to_show:
+        if not row:
+            continue
+        lines.append(f"- Executed query: {row.get('name', '')}")
+        if row.get("query"):
+            lines.append(f"    query logic: {str(row['query'])[:400]}")
+        if row.get("outcome"):
+            lines.append(
+                f"    recorded outcome: {str(row['outcome'])[:160]} "
+                f"(status={row.get('status')}, count={row.get('result_count')})"
+            )
+    if ti < len(poa_topics):
+        inds = poa_topics[ti].get("indicators", []) or []
+        if inds:
+            lines.append("- Plan-of-action — what to look for in this data:")
+            for ind in inds[:4]:
+                lines.append(f"    • {str(ind)[:200]}")
+    bt = _brief_topic_for(brief, topic.get("name", ""))
+    if bt:
+        if bt.get("objective"):
+            lines.append(f"- Query objective: {str(bt['objective'])[:300]}")
+        if bt.get("expected_benign"):
+            lines.append(f"- Expected-benign / false positives: {str(bt['expected_benign'])[:300]}")
+        if bt.get("malicious_indicators"):
+            lines.append(f"- Malicious indicators: {str(bt['malicious_indicators'])[:300]}")
+    return "\n".join(lines)[:2200]
 
 
 def _approved_software_context(db: Session, tenant_id: int) -> str:
@@ -214,6 +316,12 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
             job.log = (job.log or []) + [{"at": round(time.monotonic() - t0, 1), "msg": name}]
             db.commit()
 
+        # Consult the already-parsed methodology (cached) for the specific query
+        # this dataset came from — no re-parsing of the document.
+        dataset_focus = _dataset_methodology_focus(sections, brief, dataset.filename)
+        if dataset_focus:
+            _stage("Matched dataset to its methodology query", 50)
+
         ai = global_config.current_ai()
         result = findings_engine.analyze_dataset(
             on_stage=_stage,
@@ -226,6 +334,7 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
             finding_categories=config_store.get_value(db, "finding_categories"),
             analysis_instructions=config_store.get_value(db, "analysis_instructions"),
             methodology_brief=brief,
+            dataset_focus=dataset_focus,
             hunt_name=hunt.name,
             language=hunt.report_language or "English",
             edr=hunt.edr,
