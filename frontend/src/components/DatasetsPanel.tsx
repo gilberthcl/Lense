@@ -213,6 +213,31 @@ export default function DatasetsPanel({
     }
   };
 
+  const deletePlan = async () => {
+    if (!window.confirm("Delete the analysis plan? You can generate a new one anytime.")) return;
+    try {
+      await api.deletePlan(tid, hid);
+      onHuntRefresh();
+      toast.success("Plan deleted.");
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Could not delete the plan.");
+    }
+  };
+
+  const resetAnalysis = async () => {
+    if (!window.confirm("Clear all analysis? This deletes every finding and sets all datasets back to 'uploaded' — as if nothing was analyzed. Files and the plan are kept."))
+      return;
+    try {
+      const r = await api.resetAnalysis(tid, hid);
+      toast.success(`Cleared — ${r.findings_deleted} findings removed, ${r.datasets_reset} datasets reset.`);
+      await load();
+      onAnalysisComplete();
+      onHuntRefresh();
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Reset failed.");
+    }
+  };
+
   // Execute one plan phase: analyze its (pending) datasets one at a time.
   const runPhase = async (filenames: string[]) => {
     const queue = filenames
@@ -276,17 +301,24 @@ export default function DatasetsPanel({
           title="Analysis Plan"
           subtitle="The model plans phases, batches & QA from dataset metadata — before any contents are analyzed"
           right={
-            <Button variant={plan ? "ghost" : "primary"} onClick={() => runPlan()} disabled={planning || !hasDatasets}>
-              {planning ? (
-                <>
-                  <Spinner /> {planJob?.progress ?? 0}%
-                </>
-              ) : plan ? (
-                "Re-plan"
-              ) : (
-                "Plan analysis"
+            <div className="flex items-center gap-2">
+              {plan && (
+                <Button variant="danger" onClick={deletePlan} disabled={planning}>
+                  Delete plan
+                </Button>
               )}
-            </Button>
+              <Button variant={plan ? "ghost" : "primary"} onClick={() => runPlan()} disabled={planning || !hasDatasets}>
+                {planning ? (
+                  <>
+                    <Spinner /> {planJob?.progress ?? 0}%
+                  </>
+                ) : plan ? (
+                  "Re-plan"
+                ) : (
+                  "Plan analysis"
+                )}
+              </Button>
+            </div>
           }
         />
         <div className="p-4">
@@ -362,6 +394,11 @@ export default function DatasetsPanel({
           subtitle="CSV evidence (max 20MB each) — analyzed against the methodology & client context"
           right={
             <div className="flex items-center gap-2">
+              {hasDatasets && (
+                <Button variant="ghost" disabled={busy} onClick={resetAnalysis}>
+                  Reset analysis
+                </Button>
+              )}
               <Button variant="success" disabled={busy || pendingCount === 0} onClick={onAnalyzeAll}>
                 {runningAll ? <Spinner /> : `Analyze all (${pendingCount})`}
               </Button>
@@ -672,6 +709,18 @@ function PlanView({
                         )}
                       </div>
                     </div>
+                    {/* Per-phase completion bar (every phase) */}
+                    {info.total > 0 && (
+                      <div className="mt-2 h-1.5 w-full overflow-hidden rounded bg-slate-800">
+                        <div
+                          className={`h-full transition-all duration-500 ${
+                            info.done ? "bg-emerald-500" : "bg-indigo-500"
+                          }`}
+                          style={{ width: `${Math.round((info.analyzed / info.total) * 100)}%` }}
+                        />
+                      </div>
+                    )}
+
                     {/* Live progress for the dataset currently running in this phase */}
                     {info.running && activeJob && (
                       <div className="mt-2">
