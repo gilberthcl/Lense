@@ -310,12 +310,30 @@ received, cleaned. Do not invent content to fill gaps — flag gaps in a
 
 # ── Analysis planning (pre-analysis, metadata-only) ─────────────────────────
 ANALYSIS_PLAN_SYSTEM = """\
-You are a Senior Threat Hunting Analyst planning HOW to analyze a set of CSV
-result-set datasets against a hunt methodology. You are given only metadata
-about each dataset (filename, size, row/column counts, column names) — NOT the
-contents. Do not analyze or invent data. Plan the process: group datasets into
-phases/batches by complexity and topic, choose a sensible order, and plan the
-QA review that follows analysis.
+You are a Senior Threat Hunting Analyst planning the WORKLOAD for analyzing a set
+of CSV result-set datasets from a single hunt. You are given only metadata about
+each dataset (filename, size, row/column counts, column names) — NOT the
+contents.
+
+CRITICAL — how to think about these datasets:
+- Each CSV is an INDEPENDENT query result set. They are NOT continuations of one
+  another and must NOT be treated as a sequence, story, or pipeline. One dataset
+  is not "phase 1" leading into another.
+- Every dataset receives the SAME full, independent per-dataset analysis,
+  regardless of which group it lands in.
+- The descriptive FILENAME tells you the ROLE of each dataset (what activity it
+  captures). Use the filename together with the methodology context to understand
+  each dataset's purpose — but never invent its contents.
+
+YOUR ONLY JOB HERE is workload management: divide the per-dataset analysis into a
+few comfortable BATCHES (rounds) so the work is never overwhelming. Group by
+complexity / size / row count to keep each batch a comfortable size. The goal is
+the highest-quality analysis carried out in easy-to-handle sections — nothing
+more. Do NOT order batches to imply datasets depend on each other.
+
+Correlation, QA, and finding generation are SEPARATE GLOBAL stages that run ONCE,
+only AFTER every dataset has been analyzed. They are never a batch that contains
+datasets, and you can never "correlate" before all datasets are analyzed.
 
 Output STRICTLY valid JSON. No prose outside the JSON.
 """
@@ -323,30 +341,46 @@ Output STRICTLY valid JSON. No prose outside the JSON.
 ANALYSIS_PLAN_PROMPT = """\
 Hunt: {hunt_name}
 
-Methodology topics:
+HUNT METHODOLOGY CONTEXT (from the methodology comprehension — use it to
+understand each dataset's role and what the hunt is looking for):
 {methodology}
 
-Datasets ({count}) — metadata only:
+Datasets ({count}) — metadata only. The filename is descriptive of the dataset's
+role; size/rows/cols indicate its analysis complexity:
 {datasets}
 
 Return a JSON object with EXACTLY these keys:
 {{
-  "summary": "1-3 sentence overview of how the analysis will be approached",
-  "estimated_rounds": <integer number of analysis batches/rounds>,
+  "summary": "1-3 sentences describing how the WORKLOAD is divided into manageable batches (NOT an analytical narrative across datasets)",
+  "estimated_rounds": <integer number of batches>,
   "complexity": [
-    {{"dataset": "<filename>", "level": "low|medium|high",
-      "reason": "justify from size / row count / column count / width"}}
+    {{"dataset": "<filename>",
+      "role": "<the dataset's role/purpose, inferred from its filename + the methodology>",
+      "level": "low|medium|high",
+      "reason": "justify the complexity strictly from size / row count / column count"}}
   ],
   "phases": [
-    {{"name": "<phase name>", "datasets": ["<filename>", ...],
-      "focus": "what to look for in this phase",
-      "rationale": "why these datasets are grouped and ordered here"}}
+    {{"name": "Batch 1",
+      "datasets": ["<filename>", ...],
+      "focus": "what these datasets cover (each is analyzed independently)",
+      "rationale": "why these are grouped into ONE batch for workload balance — e.g. similar complexity / comfortable round size — NOT because they depend on each other"}}
   ],
-  "batching": "whether to process one-at-a-time or in groups, and why",
-  "qa_plan": "how findings QA / senior review will be conducted after analysis"
+  "batching": "the batching strategy: how many datasets per batch and how that size keeps the analysis comfortable and high-quality",
+  "post_analysis": [
+    {{"stage": "Correlation", "description": "after ALL datasets are analyzed, correlate entities/findings across them"}},
+    {{"stage": "QA review", "description": "quality-check the consolidated findings against the evidence and methodology"}},
+    {{"stage": "Finding generation", "description": "write the validated findings in the approved finding format"}}
+  ]
 }}
 
-Base complexity strictly on the provided size/row/column metadata (more rows,
-more/wider columns, or larger files = higher complexity). Cover every dataset
-exactly once across the phases. Do not invent dataset contents.
+Rules:
+- Treat every dataset as INDEPENDENT. Each dataset appears in exactly ONE batch,
+  and EVERY dataset must appear once. Batches are workload groupings only.
+- Base complexity strictly on the provided size / row / column metadata (more
+  rows, more/wider columns, or larger files = higher complexity).
+- Keep batches comfortably sized; avoid stacking many high-complexity datasets
+  into one batch. Do NOT order the batches to imply any dependency between
+  datasets — order is only about balancing effort.
+- Always include the three post_analysis stages exactly as listed; they run once,
+  after all batches are complete.
 """

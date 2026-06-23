@@ -16,7 +16,7 @@ from app.core.config import settings
 from app.core.db import SessionLocal, get_db
 from app.models import AnalysisJob, Dataset, Finding, Hunt, Tenant
 from app.schemas import DatasetOut, HuntOut, JobOut
-from app.services import analysis_planner, csv_loader, jobs
+from app.services import analysis_planner, analysis_runner, csv_loader, jobs
 from app.services.analysis_runner import run_dataset_analysis
 
 
@@ -175,7 +175,12 @@ def create_analysis_plan(
             try:
                 j.status = "running"
                 j.model = analysis_planner.planner_model()
-                emit(j, "Collecting dataset metadata…", 10)
+                # Comprehend the methodology FIRST so the planner understands each
+                # dataset's role and the hunt's intent (not just filenames).
+                emit(j, "Comprehending hunt methodology…", 8)
+                analysis_runner.ensure_methodology_brief(task_db, h)
+                analysis_runner.ensure_methodology_sections(task_db, h)
+                emit(j, "Collecting dataset metadata…", 12)
                 metas = analysis_planner.dataset_meta(task_db, h_id, t_id)
                 verb = "Revising" if feedback else "Planning"
                 emit(j, f"{verb} across {len(metas)} datasets with {j.model}…", 20)
@@ -198,8 +203,8 @@ def create_analysis_plan(
                 h.analysis_plan = plan
                 # Reset review state: a (re)generated plan starts as a draft.
                 h.plan_state = {"status": "draft", "feedback": feedback, "accepted_at": None}
-                emit(j, f"Plan ready — {len(plan.get('phases', []))} phases, "
-                        f"{plan.get('estimated_rounds', '?')} rounds.", 98)
+                emit(j, f"Plan ready — {len(plan.get('phases', []))} batches "
+                        f"({plan.get('estimated_rounds', '?')} rounds).", 98)
                 j.status = "done"
                 j.progress = 100
                 j.current_task = "Complete"

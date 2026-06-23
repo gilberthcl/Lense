@@ -47,16 +47,44 @@ def dataset_meta(db: Session, hunt_id: int, tenant_id: int) -> list[dict[str, An
 
 
 def _methodology_summary(hunt: Hunt) -> str:
-    sections = hunt.methodology_sections or {}
+    """Rich methodology context for the planner — the comprehension brief plus
+    the deterministically-parsed topics, so the planner understands what each
+    dataset is for (not just a bare list of topic names)."""
     parts: list[str] = []
-    if isinstance(sections, dict) and sections.get("available"):
-        for t in sections.get("plan_of_action", {}).get("topics", []):
-            mitre = f" ({t['mitre']})" if t.get("mitre") else ""
-            parts.append(f"- {t['name']}{mitre}")
-    if not parts and hunt.methodology_brief:
-        for t in (hunt.methodology_brief or {}).get("topics", []):
-            parts.append(f"- {t.get('name', '')}")
-    return "\n".join(parts)
+    brief = hunt.methodology_brief if isinstance(hunt.methodology_brief, dict) else {}
+    if brief:
+        if brief.get("hunt_overview"):
+            parts.append(f"Overview: {brief['hunt_overview']}")
+        if brief.get("scope"):
+            parts.append(f"Scope: {brief['scope']}")
+        topics = brief.get("topics") or []
+        if topics:
+            parts.append("Topics (what the hunt looks for):")
+            for t in topics:
+                mitre = t.get("mitre")
+                mitre_s = ", ".join(mitre) if isinstance(mitre, list) else (mitre or "")
+                head = f"- {t.get('name', '')}"
+                if mitre_s:
+                    head += f" [{mitre_s}]"
+                if t.get("objective"):
+                    head += f": {t['objective']}"
+                parts.append(head)
+                if t.get("expected_benign"):
+                    parts.append(f"    expected-benign: {t['expected_benign']}")
+        if brief.get("what_to_expect"):
+            parts.append(f"What to expect in the data: {brief['what_to_expect']}")
+        kfp = brief.get("known_false_positives") or []
+        if kfp:
+            parts.append("Known false positives: " + "; ".join(map(str, kfp)))
+
+    # Fall back to (or supplement with) the deterministic plan-of-action topics.
+    if not parts:
+        sections = hunt.methodology_sections or {}
+        if isinstance(sections, dict) and sections.get("available"):
+            for t in sections.get("plan_of_action", {}).get("topics", []):
+                mitre = f" ({t['mitre']})" if t.get("mitre") else ""
+                parts.append(f"- {t['name']}{mitre}")
+    return "\n".join(parts)[:4500]
 
 
 def _build_prompt(

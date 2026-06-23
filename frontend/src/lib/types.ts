@@ -177,10 +177,11 @@ export interface MethodologySections {
 export interface AnalysisPlan {
   summary?: string;
   estimated_rounds?: number;
-  complexity?: { dataset: string; level: string; reason?: string }[];
+  complexity?: { dataset: string; role?: string; level: string; reason?: string }[];
   phases?: { name: string; datasets?: string[]; focus?: string; rationale?: string }[];
   batching?: string;
   qa_plan?: string;
+  post_analysis?: { stage: string; description?: string }[];
   [key: string]: unknown;
 }
 

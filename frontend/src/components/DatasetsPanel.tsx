@@ -299,7 +299,7 @@ export default function DatasetsPanel({
       <Card>
         <PanelHeader
           title="Analysis Plan"
-          subtitle="The model plans phases, batches & QA from dataset metadata — before any contents are analyzed"
+          subtitle="Splits the per-dataset analysis into comfortable batches (workload only) from the methodology + dataset metadata — datasets are analyzed independently"
           right={
             <div className="flex items-center gap-2">
               {plan && (
@@ -653,7 +653,7 @@ function PlanView({
           </Badge>
         )}
         {!!phases.length && (
-          <Badge className="border border-slate-700 bg-slate-800 text-slate-300">{phases.length} phases</Badge>
+          <Badge className="border border-slate-700 bg-slate-800 text-slate-300">{phases.length} batches</Badge>
         )}
         {accepted ? (
           <Badge className="border border-emerald-800 bg-emerald-950 text-emerald-300">✓ Plan accepted</Badge>
@@ -678,12 +678,12 @@ function PlanView({
             </Button>
           ) : (
             <Button variant="success" disabled={busy} onClick={() => onRunPhase(phases[nextPhaseIdx].datasets ?? [])}>
-              {`Run phase ${nextPhaseIdx + 1}`}
+              {`Run batch ${nextPhaseIdx + 1}`}
             </Button>
           )
         )}
         {accepted && nextPhaseIdx < 0 && (
-          <Badge className="border border-emerald-800 bg-emerald-950 text-emerald-300">All phases complete</Badge>
+          <Badge className="border border-emerald-800 bg-emerald-950 text-emerald-300">All batches analyzed</Badge>
         )}
         <button onClick={onToggle} className="text-indigo-400 hover:text-indigo-300">
           {expanded ? "Hide details" : "Show details"}
@@ -696,7 +696,7 @@ function PlanView({
             rows={2}
             value={feedback}
             onChange={(e) => setFeedback(e.target.value)}
-            placeholder="e.g. Split the high-complexity datasets into their own phase; analyze auth logs before endpoint data."
+            placeholder="e.g. Use smaller batches; keep high-complexity datasets in their own batch so each round stays comfortable."
           />
           <div className="mt-2 flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setShowFeedback(false)}>Cancel</Button>
@@ -818,14 +818,15 @@ function PlanView({
 
           {!!plan.complexity?.length && (
             <div>
-              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Complexity</p>
-              <ul className="space-y-1">
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Datasets — role &amp; complexity</p>
+              <ul className="space-y-1.5">
                 {plan.complexity.map((c, i) => (
                   <li key={i} className="flex items-start gap-2 text-sm text-slate-300">
                     <Badge className={`shrink-0 ${LEVEL_COLOR[c.level] ?? LEVEL_COLOR.medium}`}>{c.level}</Badge>
                     <span className="min-w-0">
                       <span className="font-mono text-xs text-slate-400">{c.dataset}</span>
-                      {c.reason ? ` — ${c.reason}` : ""}
+                      {c.role ? <span className="text-slate-300"> — {c.role}</span> : ""}
+                      {c.reason ? <span className="text-xs text-slate-500"> ({c.reason})</span> : ""}
                     </span>
                   </li>
                 ))}
@@ -835,14 +836,32 @@ function PlanView({
 
           {plan.batching && (
             <div>
-              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Batching</p>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Batching strategy</p>
               <p className="text-sm text-slate-300">{plan.batching}</p>
             </div>
           )}
-          {plan.qa_plan && (
+
+          {/* Global stages that run ONCE, after every dataset is analyzed. */}
+          {(plan.post_analysis?.length || plan.qa_plan) && (
             <div>
-              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">QA plan</p>
-              <p className="text-sm text-slate-300">{plan.qa_plan}</p>
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                After all datasets are analyzed
+              </p>
+              {plan.post_analysis?.length ? (
+                <ol className="space-y-1.5">
+                  {plan.post_analysis.map((s, i) => (
+                    <li key={i} className="flex items-start gap-2 rounded-lg border border-slate-800 bg-slate-950/40 p-2.5 text-sm">
+                      <span className="font-mono text-xs text-slate-500">{i + 1}.</span>
+                      <span className="min-w-0">
+                        <span className="font-medium text-slate-200">{s.stage}</span>
+                        {s.description ? <span className="text-slate-400"> — {s.description}</span> : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="text-sm text-slate-300">{plan.qa_plan}</p>
+              )}
             </div>
           )}
         </>
