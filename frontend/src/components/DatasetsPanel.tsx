@@ -732,7 +732,14 @@ function PlanView({
                         {info.done ? (
                           <Badge className="border border-emerald-800 bg-emerald-950 text-emerald-300">Done</Badge>
                         ) : info.running ? (
-                          <Badge className="border border-indigo-800 bg-indigo-950 text-indigo-300">Running</Badge>
+                          <Badge className="flex items-center gap-1.5 border border-indigo-700 bg-indigo-950 text-indigo-300">
+                            <span className="flex gap-0.5">
+                              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-indigo-400 [animation-delay:-0.3s]" />
+                              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-indigo-400 [animation-delay:-0.15s]" />
+                              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-indigo-400" />
+                            </span>
+                            Hunting
+                          </Badge>
                         ) : (
                           <Badge className="border border-slate-700 bg-slate-800 text-slate-400">
                             {info.analyzed}/{info.total || (p.datasets?.length ?? 0)}
@@ -765,18 +772,19 @@ function PlanView({
 
                     {/* Live progress for the dataset currently running in this phase */}
                     {info.running && activeJob && (
-                      <div className="mt-2">
+                      <div className="mt-2 rounded-lg border border-indigo-500/30 bg-indigo-500/[0.06] p-2.5">
                         <div className="mb-1 flex items-center justify-between text-xs">
-                          <span className="animate-pulse text-indigo-300">
-                            {activeJob.current_task ?? "Analyzing…"}
+                          <span className="flex items-center gap-2 text-indigo-200">
+                            <Spinner className="h-3.5 w-3.5" />
+                            <span className="animate-pulse">{activeJob.current_task ?? "Analyzing…"}</span>
                           </span>
-                          <span className="font-mono text-slate-500">
+                          <span className="font-mono text-slate-400">
                             {Math.round(activeJob.progress ?? 0)}%
                           </span>
                         </div>
-                        <div className="h-1.5 w-full overflow-hidden rounded bg-slate-800">
+                        <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
                           <div
-                            className="h-full bg-indigo-500 transition-all duration-500"
+                            className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-emerald-400 transition-all duration-500"
                             style={{ width: `${Math.max(4, activeJob.progress ?? 0)}%` }}
                           />
                         </div>
