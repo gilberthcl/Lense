@@ -249,6 +249,9 @@ export interface AiEngineConfig {
   embed_model: string;
   temperature: number;
   timeout: number;
+  single_model_pipeline?: boolean;
+  num_predict?: number;
+  keep_alive?: string;
 }
 
 export interface PlatformConfig {

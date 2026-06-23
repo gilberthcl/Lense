@@ -260,6 +260,46 @@ export default function GlobalConfig() {
               className="font-mono"
             />
           </div>
+          <div>
+            <Label>Max output tokens (num_predict)</Label>
+            <Input
+              type="number"
+              min="256"
+              max="16384"
+              value={ai.num_predict ?? 4096}
+              onChange={(e) => setAi({ ...ai, num_predict: Number(e.target.value) })}
+              className="font-mono"
+            />
+            <p className="mt-1 text-xs text-slate-600">Caps generation so JSON can't truncate</p>
+          </div>
+          <div>
+            <Label>Keep model warm (keep_alive)</Label>
+            <Input
+              value={ai.keep_alive ?? "30m"}
+              onChange={(e) => setAi({ ...ai, keep_alive: e.target.value })}
+              className="font-mono"
+            />
+            <p className="mt-1 text-xs text-slate-600">e.g. 30m — avoids reloading between datasets</p>
+          </div>
+          <div className="sm:col-span-2">
+            <label className="flex items-start gap-2 rounded border border-indigo-500/20 bg-indigo-500/[0.04] px-3 py-2 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={ai.single_model_pipeline ?? true}
+                onChange={(e) => setAi({ ...ai, single_model_pipeline: e.target.checked })}
+              />
+              <span>
+                <span className="font-medium">Single-model pipeline</span> — run Reviewer &amp; QA on
+                the Analyst model.{" "}
+                <span className="text-slate-500">
+                  Strongly recommended on ≤32 GB: avoids Ollama reloading a second large model on every
+                  dataset (the main cause of slow/failed runs). Uncheck only if you have RAM for two
+                  models at once.
+                </span>
+              </span>
+            </label>
+          </div>
           <div className="sm:col-span-2">
             <div className="mb-3 rounded border border-amber-500/20 bg-amber-500/[0.04] px-3 py-2 text-xs text-amber-300/90">
               Local-only compliance: <code>*-cloud</code> models are rejected, and

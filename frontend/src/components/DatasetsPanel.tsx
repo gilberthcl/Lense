@@ -52,6 +52,7 @@ export default function DatasetsPanel({
   const [preview, setPreview] = useState<DatasetPreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const stopRef = useRef(false);
 
   const plan = hunt?.analysis_plan ?? null;
   const planState = hunt?.plan_state ?? null;
@@ -221,9 +222,11 @@ export default function DatasetsPanel({
       toast.info("Nothing pending in this phase.");
       return;
     }
+    stopRef.current = false;
     setRunningAll(true);
     let any = false;
     for (const ds of queue) {
+      if (stopRef.current) break;
       const ok = await runAnalysis(ds);
       any = any || ok;
       await load();
@@ -233,6 +236,13 @@ export default function DatasetsPanel({
       onAnalysisComplete();
       onHuntRefresh();
     }
+  };
+
+  // Stop the running phase: cancel the in-flight dataset and halt the queue.
+  const stopPhase = () => {
+    stopRef.current = true;
+    if (active?.job.id) cancelJob(active.job.id);
+    toast.info("Stopping after the current dataset…");
   };
 
   const togglePreview = async (ds: Dataset) => {
@@ -331,12 +341,15 @@ export default function DatasetsPanel({
               planState={planState}
               datasets={datasets ?? []}
               activeDatasetId={active?.datasetId ?? null}
+              activeJob={active?.job ?? null}
+              running={runningAll}
               busy={busy || planning}
               expanded={showPlan}
               onToggle={() => setShowPlan((s) => !s)}
               onAccept={acceptPlan}
               onRegenerate={runPlan}
               onRunPhase={runPhase}
+              onStop={stopPhase}
             />
           )}
         </div>
@@ -510,23 +523,29 @@ function PlanView({
   planState,
   datasets,
   activeDatasetId,
+  activeJob,
+  running,
   busy,
   expanded,
   onToggle,
   onAccept,
   onRegenerate,
   onRunPhase,
+  onStop,
 }: {
   plan: NonNullable<Hunt["analysis_plan"]>;
   planState: Hunt["plan_state"];
   datasets: Dataset[];
   activeDatasetId: string | null;
+  activeJob: Job | null;
+  running: boolean;
   busy: boolean;
   expanded: boolean;
   onToggle: () => void;
   onAccept: () => void;
   onRegenerate: (feedback: string) => void;
   onRunPhase: (filenames: string[]) => void;
+  onStop: () => void;
 }) {
   const [showFeedback, setShowFeedback] = useState(false);
   const [feedback, setFeedback] = useState("");
@@ -574,13 +593,15 @@ function PlanView({
           </>
         )}
         {accepted && nextPhaseIdx >= 0 && (
-          <Button
-            variant="success"
-            disabled={busy}
-            onClick={() => onRunPhase(phases[nextPhaseIdx].datasets ?? [])}
-          >
-            {busy ? <Spinner /> : `Run phase ${nextPhaseIdx + 1}`}
-          </Button>
+          running ? (
+            <Button variant="danger" onClick={onStop}>
+              Stop
+            </Button>
+          ) : (
+            <Button variant="success" disabled={busy} onClick={() => onRunPhase(phases[nextPhaseIdx].datasets ?? [])}>
+              {`Run phase ${nextPhaseIdx + 1}`}
+            </Button>
+          )
         )}
         {accepted && nextPhaseIdx < 0 && (
           <Badge className="border border-emerald-800 bg-emerald-950 text-emerald-300">All phases complete</Badge>
@@ -651,6 +672,25 @@ function PlanView({
                         )}
                       </div>
                     </div>
+                    {/* Live progress for the dataset currently running in this phase */}
+                    {info.running && activeJob && (
+                      <div className="mt-2">
+                        <div className="mb-1 flex items-center justify-between text-xs">
+                          <span className="animate-pulse text-indigo-300">
+                            {activeJob.current_task ?? "Analyzing…"}
+                          </span>
+                          <span className="font-mono text-slate-500">
+                            {Math.round(activeJob.progress ?? 0)}%
+                          </span>
+                        </div>
+                        <div className="h-1.5 w-full overflow-hidden rounded bg-slate-800">
+                          <div
+                            className="h-full bg-indigo-500 transition-all duration-500"
+                            style={{ width: `${Math.max(4, activeJob.progress ?? 0)}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
                     {p.focus && <p className="mt-1 text-xs text-slate-400">{p.focus}</p>}
                     {!!p.datasets?.length && (
                       <div className="mt-2 flex flex-wrap gap-1">
