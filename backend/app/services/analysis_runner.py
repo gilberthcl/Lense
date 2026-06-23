@@ -11,6 +11,7 @@ import logging
 import re
 import time
 
+import pandas as pd
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -18,8 +19,8 @@ from app.models import (
     AnalysisJob, ClientApprovedSoftware, Dataset, Finding, Hunt, KnowledgeDocument,
 )
 from app.services import (
-    categories, config_store, csv_loader, findings_engine, global_config, jobs,
-    knowledge, methodology, methodology_parser,
+    categories, config_store, csv_loader, enrichment, findings_engine,
+    global_config, jobs, knowledge, methodology, methodology_parser,
 )
 from app.services import ollama_client as ollama
 
@@ -238,6 +239,31 @@ def _finding_format(db: Session, tenant_id: int) -> str:
     return config_store.get_value(db, "finding_format")
 
 
+def _hunt_intel_index(db: Session, hunt: Hunt, max_bytes: int) -> dict:
+    """
+    Build a threat-intel index from any reputation/TI datasets in this hunt.
+
+    Cheap header read first (nrows=0) to test each sibling; only reputation
+    datasets are fully loaded. Fail-open per dataset — a bad sibling never
+    breaks the analysis. Tenant-safe: only this hunt's datasets are touched.
+    """
+    index: dict = {}
+    for ds in db.query(Dataset).filter_by(hunt_id=hunt.id, tenant_id=hunt.tenant_id):
+        try:
+            cols = list(pd.read_csv(ds.file_path, dtype=str, nrows=0).columns)
+        except Exception:  # noqa: BLE001 — unreadable header, skip
+            continue
+        if not enrichment.is_reputation_dataset(cols):
+            continue
+        try:
+            df = csv_loader.load_csv(ds.file_path, max_bytes)
+            for k, v in enrichment.build_intel_index(df).items():
+                index.setdefault(k, v)
+        except Exception:  # noqa: BLE001 — skip a bad TI dataset
+            logger.exception("Failed to index TI dataset %s", ds.filename)
+    return index
+
+
 def ensure_methodology_brief(db: Session, hunt: Hunt) -> dict | None:
     """Lazily compute + cache the hunt's methodology brief (comprehension pass)."""
     if hunt.methodology_brief:
@@ -324,6 +350,19 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
         dataset_focus = _dataset_methodology_focus(sections, brief, dataset.filename)
         if dataset_focus:
             _stage("Matched dataset to its methodology query", 50)
+
+        # Threat-intel enrichment: join this dataset's indicators (IPs, domains,
+        # hashes) against any reputation/TI dataset in the same hunt, so the
+        # analyst can cite verdicts (malicious/N vendors/TOR/ASN) it could never
+        # see from this CSV alone. Fail-open — never block analysis.
+        try:
+            intel_index = _hunt_intel_index(db, hunt, settings.max_upload_bytes)
+            threat_intel = enrichment.enrich_evidence(evidence, intel_index)
+            if threat_intel:
+                evidence["threat_intel"] = threat_intel
+                _stage(f"Enriched {len(threat_intel)} indicator(s) with threat intel", 50)
+        except Exception:  # noqa: BLE001
+            logger.exception("Threat-intel enrichment failed (job=%s) — continuing", job_id)
 
         ai = global_config.current_ai()
         result = findings_engine.analyze_dataset(

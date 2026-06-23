@@ -147,6 +147,12 @@ ANALYST METHOD — apply this to every dataset (non-negotiable):
    Cross these signals: external IP + high fan-out + scripting user-agent =
    automated attack against many accounts. Internal IP + named service account +
    steady volume = baseline.
+   • `threat_intel` — reputation verdicts joined from the hunt's TI dataset for
+     indicators present here. An external, high-fan-out IP that ALSO appears in
+     `threat_intel` flagged malicious / TOR / by many vendors is a confirmed
+     malicious-infrastructure finding: cite the verdict verbatim and rate it
+     high/critical. This is the corroboration that turns "suspicious" into
+     "confirmed".
 7. VERBATIM + CALCULATED. Every value you cite must appear verbatim in the
    evidence; every number must come from the provided statistics or behavioral
    block — never estimate or invent.
@@ -211,10 +217,14 @@ distributions); `entities` (verbatim hosts/users/ips/processes/…);
 `behavioral` (THE HIGH-SIGNAL BLOCK — `fan_out`: per-source distinct-target
 counts + `time_span_min` (spray/scan signal); `concentration`: per-actor share
 of events with `dominant` flag (volume anomaly); `ip_classification`:
-external_ips vs internal counts); `offensive_tool_hits` (known-tool matches —
-treat as high priority); `suspicious_signals` (heuristic flags to confirm);
-`sample_rows` (verbatim rows); `targeted_rows` (the actual rows behind the tool
-hits):
+external_ips vs internal counts); `threat_intel` (reputation verdicts for this
+dataset's indicators, JOINED from the hunt's threat-intel dataset — each has the
+`indicator` and its `attributes`: score/malicious-vendor counts/tags like TOR/
+ASN/country. An indicator appearing here with a malicious verdict is corroborated
+external evidence — cite it verbatim and raise severity); `offensive_tool_hits`
+(known-tool matches — treat as high priority); `suspicious_signals` (heuristic
+flags to confirm); `sample_rows` (verbatim rows); `targeted_rows` (the actual
+rows behind the tool hits):
 ---
 {evidence_json}
 ---

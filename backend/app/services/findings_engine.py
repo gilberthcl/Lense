@@ -43,6 +43,10 @@ def _flatten_evidence_values(evidence_package: dict[str, Any]) -> set[str]:
     for conc in behavioral.get("concentration", []):
         values.update(str(v.get("value", "")).lower() for v in conc.get("top", []))
     values.update(str(ip).lower() for ip in behavioral.get("ip_classification", {}).get("external_ips", []))
+    # Threat-intel enrichment: indicators + their attributes are citable.
+    for rec in evidence_package.get("threat_intel", []):
+        values.add(str(rec.get("indicator", "")).lower())
+        values.update(str(v).lower() for v in (rec.get("attributes") or {}).values())
     for row in evidence_package.get("sample_rows", []) + evidence_package.get("targeted_rows", []):
         values.update(str(v).lower() for v in row.values())
     return values
