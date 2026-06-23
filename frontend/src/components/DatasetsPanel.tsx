@@ -517,29 +517,71 @@ export default function DatasetsPanel({
 }
 
 function PreviewTable({ data, onClose }: { data: DatasetPreview; onClose: () => void }) {
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<{ col: number; dir: "asc" | "desc" } | null>(null);
+
+  const toggleSort = (col: number) =>
+    setSort((s) =>
+      s?.col === col ? { col, dir: s.dir === "asc" ? "desc" : "asc" } : { col, dir: "asc" },
+    );
+
+  let rows = data.rows;
+  if (query.trim()) {
+    const q = query.toLowerCase();
+    rows = rows.filter((r) => r.some((v) => v.toLowerCase().includes(q)));
+  }
+  if (sort) {
+    const { col, dir } = sort;
+    rows = [...rows].sort((a, b) => {
+      const av = a[col] ?? "";
+      const bv = b[col] ?? "";
+      const an = Number(av);
+      const bn = Number(bv);
+      const cmp =
+        av !== "" && bv !== "" && !Number.isNaN(an) && !Number.isNaN(bn)
+          ? an - bn
+          : av.localeCompare(bv);
+      return dir === "asc" ? cmp : -cmp;
+    });
+  }
+
   return (
     <div>
-      <div className="mb-2 flex items-center justify-between">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-slate-500">
-          {data.row_count.toLocaleString()} rows · {data.col_count} columns · showing first {data.rows.length}
+          {data.row_count.toLocaleString()} rows · {data.col_count} columns · showing {rows.length} of first {data.rows.length}
         </p>
-        <button onClick={onClose} className="text-xs text-slate-400 hover:text-slate-200">
-          ✕ Close preview
-        </button>
+        <div className="flex items-center gap-2">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Filter rows…"
+            className="w-44 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-200 placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none"
+          />
+          <button onClick={onClose} className="text-xs text-slate-400 hover:text-slate-200">
+            ✕ Close preview
+          </button>
+        </div>
       </div>
       <div className="max-h-72 overflow-auto rounded border border-slate-800">
         <table className="w-full text-xs">
           <thead className="sticky top-0 bg-slate-900">
             <tr>
               {data.columns.map((c, i) => (
-                <th key={i} className="whitespace-nowrap px-2 py-1.5 text-left font-mono font-medium text-slate-400">
+                <th
+                  key={i}
+                  onClick={() => toggleSort(i)}
+                  className="cursor-pointer select-none whitespace-nowrap px-2 py-1.5 text-left font-mono font-medium text-slate-400 hover:text-slate-200"
+                  title="Click to sort"
+                >
                   {c}
+                  {sort?.col === i && <span className="ml-1 text-indigo-400">{sort.dir === "asc" ? "▲" : "▼"}</span>}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/70">
-            {data.rows.map((row, i) => (
+            {rows.map((row, i) => (
               <tr key={i}>
                 {row.map((v, j) => (
                   <td key={j} className="max-w-xs truncate px-2 py-1 font-mono text-slate-300" title={v}>
