@@ -180,13 +180,21 @@ ensure_venv() {
     warn "python3.11 not found; using $($py --version 2>&1) — the project targets 3.11" ;;
   esac
   say "  ${dim}… creating backend/venv and installing deps (first run, a few minutes)${rst}"
+  # Install from public PyPI by default. A corporate pip mirror (e.g. an internal
+  # Artifactory) configured globally will 401 here and break the install, so we
+  # point pip explicitly at pypi.org. Override with LENSE_PIP_INDEX_URL if you
+  # have working credentials for an internal index.
+  local idx="${LENSE_PIP_INDEX_URL:-https://pypi.org/simple/}"
+  local pipargs="--index-url $idx --trusted-host pypi.org --trusted-host files.pythonhosted.org"
   if ( cd "$BACKEND" && "$py" -m venv venv && source venv/bin/activate \
-        && pip install --quiet --upgrade pip \
-        && pip install --quiet -r requirements.txt ); then
-    ok "backend/venv ready ($py)"
+        && pip install --quiet $pipargs --upgrade pip \
+        && pip install --quiet $pipargs -r requirements.txt ); then
+    ok "backend/venv ready ($py, index: $idx)"
   else
-    err "venv setup failed — create it manually:"
-    say "      cd '$BACKEND' && python3.11 -m venv venv && source venv/bin/activate && pip install -r requirements.txt"
+    err "venv setup failed — likely a pip index/credentials issue."
+    err "if your shell forces an internal mirror, this installs from public PyPI:"
+    say "      cd '$BACKEND' && '$py' -m venv venv && source venv/bin/activate \\"
+    say "        && pip install --index-url https://pypi.org/simple/ -r requirements.txt"
     return 1
   fi
 }
