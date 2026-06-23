@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.schemas import ConfigOut, ConfigUpdate
-from app.services import categories, config_store, global_config
+from app.services import categories, config_store, db_health, global_config
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
@@ -85,6 +85,19 @@ def update_ai_engine(payload: dict, db: Session = Depends(get_db)):
 @router.put("/global/platform")
 def update_platform(payload: dict, db: Session = Depends(get_db)):
     return global_config.update_platform(db, payload)
+
+
+# ── Database / storage maintenance ─────────────────────────────────────────
+@router.get("/db-health")
+def db_health_scan(db: Session = Depends(get_db)):
+    """Read-only scan for orphaned files, missing dataset files, and stuck jobs."""
+    return db_health.scan(db)
+
+
+@router.post("/db-health/clean")
+def db_health_clean(db: Session = Depends(get_db)):
+    """Delete orphaned files, clear stuck jobs, prune empty dirs."""
+    return db_health.clean(db)
 
 
 # ── Platform logo ──────────────────────────────────────────────────────────

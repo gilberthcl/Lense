@@ -1,53 +1,81 @@
 """
-Deterministic methodology parser.
+Deterministic, format-tolerant methodology parser.
 
-Threat-hunt methodologies follow a fixed structure:
-
-    THREAT HUNT METHODOLOGY  <title>
-    MITRE ATT&CK Coverage    -> table: Technique | Tactic
-    Methodology              -> description prose
-    Plan of Action           -> intro + N hunt topics (title + indicator bullets)
-    Definitions              -> per-topic deep-dive prose
-    Queries                  -> per topic: "Topic N - name", "MITRE ATT&CK: ...",
-                                table: Query Name / Purpose | Query | Outcome
-    Hallazgos / Findings     -> example findings (optional)
-
-This module splits that text (as produced by `doc_loader`, which emits tables as
+Threat-hunt methodologies share a structure but not an exact format. They may be
+in English or Spanish, use different headings, number topics as "Topic N -" or
+"N.", and place one or several query tables per topic. This module splits the
+document text (as produced by `doc_loader`, which renders tables as
 `[TABLE] ... [/TABLE]` blocks with ` | `-separated cells) into structured
-sections WITHOUT an LLM — so the three methodology sub-tabs (Description, Plan of
-Action, Queries) are always faithful to the source document. The LLM layer adds
-an "understanding" narrative on top; it never invents the queries or topics.
+sections WITHOUT an LLM, so the Description / Plan of Action / Queries sub-tabs
+stay faithful to the source. The LLM layer adds an "understanding" on top.
+
+Canonical section keys: description, plan, definitions, queries, mitre, findings.
 """
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Any
-
-# Section headings, in document order. Matching is case-insensitive on a
-# stripped line that equals (or starts with) the heading.
-_HEADINGS = [
-    "mitre att&ck coverage",
-    "methodology",
-    "plan of action",
-    "definitions",
-    "queries",
-    "hallazgos",
-    "findings",
-]
 
 _TABLE_OPEN = "[TABLE]"
 _TABLE_CLOSE = "[/TABLE]"
 
+# Heading aliases → canonical section key (accent/`&`-insensitive, EN + ES).
+_EXACT = {
+    "methodology": "description", "metodologia": "description",
+    "plan of action": "plan", "plan de accion": "plan",
+    "definitions": "definitions", "definiciones": "definitions",
+    "hallazgos": "findings", "findings": "findings", "resultados": "findings",
+}
+_PREFIX = [
+    ("queries", "queries"), ("consultas", "queries"), ("queries de", "queries"),
+    ("cobertura mitre", "mitre"), ("mitre att ck coverage", "mitre"),
+]
+
+_TOPIC_RE = re.compile(r"^(?:topic\s+|tema\s+)?(\d+)\s*[.)\-–:]\s*(.+)$", re.IGNORECASE)
+_MITRE_RE = re.compile(r"mitre\s*att&?ck\s*:?\s*(.+)", re.IGNORECASE)
+_TECH_RE = re.compile(r"T\d{4}(?:\.\d{3})?")
+
 
 def _normalize(s: str) -> str:
-    """Loose key for matching topic titles across sections ('&' vs 'and', spacing)."""
-    s = s.lower().replace("&", "and")
-    s = re.sub(r"[^a-z0-9]+", " ", s)
-    return s.strip()
+    """Accent-stripped, lowercased, alnum-spaced key for loose matching."""
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    s = s.lower().replace("&", " ")
+    return re.sub(r"[^a-z0-9]+", " ", s).strip()
+
+
+def _tokens(s: str) -> set[str]:
+    return set(_normalize(s).split())
+
+
+def _heading_at(line: str) -> str | None:
+    s = line.strip()
+    if not s or len(s) > 70:
+        return None
+    norm = _normalize(s)
+    if norm in _EXACT:
+        return _EXACT[norm]
+    for pref, canon in _PREFIX:
+        if norm == pref or norm.startswith(pref + " "):
+            return canon
+    return None
+
+
+def _sections(text: str) -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {"_pre": []}
+    current = "_pre"
+    for raw in text.splitlines():
+        h = _heading_at(raw)
+        if h:
+            current = h
+            out.setdefault(current, [])
+        else:
+            out[current].append(raw)
+    return out
 
 
 def _split_table_block(lines: list[str]) -> tuple[list[str], list[list[list[str]]]]:
-    """Separate plain text lines from `[TABLE]` blocks. Returns (text_lines, tables)."""
     text: list[str] = []
     tables: list[list[list[str]]] = []
     i = 0
@@ -66,120 +94,6 @@ def _split_table_block(lines: list[str]) -> tuple[list[str], list[list[list[str]
     return text, tables
 
 
-def _heading_at(line: str) -> str | None:
-    norm = line.strip().lower()
-    for h in _HEADINGS:
-        if norm == h:
-            return h
-    return None
-
-
-def _sections(text: str) -> dict[str, list[str]]:
-    """Slice the document into {heading: [lines]} by the known headings."""
-    out: dict[str, list[str]] = {"_preamble": []}
-    current = "_preamble"
-    for raw in text.splitlines():
-        h = _heading_at(raw)
-        if h:
-            current = h
-            out.setdefault(current, [])
-        else:
-            out[current].append(raw)
-    return out
-
-
-def _paragraphs(lines: list[str]) -> list[str]:
-    return [ln.strip() for ln in lines if ln.strip()]
-
-
-def _result_count(outcome: str) -> int | None:
-    """Pull the event count from an Outcome cell (tolerant of typos like 'evets')."""
-    if not outcome:
-        return None
-    m = re.search(r"(\d[\d.,]*)\s*ev", outcome, re.IGNORECASE)
-    if not m:
-        return None
-    try:
-        return int(m.group(1).replace(",", "").replace(".", ""))
-    except ValueError:
-        return None
-
-
-def _query_status(outcome: str, count: int | None) -> str:
-    low = (outcome or "").strip().lower()
-    if count is None:
-        if not low or low in {"ignored", "blank"}:
-            return "pending"
-        return "unknown"
-    return "no_results" if count == 0 else "results"
-
-
-def _parse_mitre_coverage(tables: list[list[list[str]]]) -> list[dict[str, str]]:
-    if not tables:
-        return []
-    rows = tables[0]
-    out = []
-    for r in rows[1:]:  # skip header
-        if len(r) >= 2:
-            out.append({"technique": r[0], "tactic": r[1]})
-    return out
-
-
-def _parse_queries(lines: list[str]) -> list[dict[str, Any]]:
-    """Parse the Queries section: 'Topic N - name' + 'MITRE: ...' + a table."""
-    topics: list[dict[str, Any]] = []
-    i = 0
-    topic_re = re.compile(r"^topic\s+(\d+)\s*[–\-:]\s*(.+)$", re.IGNORECASE)
-    mitre_re = re.compile(r"^mitre att&ck:\s*(.+)$", re.IGNORECASE)
-    while i < len(lines):
-        m = topic_re.match(lines[i].strip())
-        if not m:
-            i += 1
-            continue
-        topic = {
-            "number": int(m.group(1)),
-            "name": m.group(2).strip(),
-            "mitre": "",
-            "rows": [],
-        }
-        i += 1
-        # optional MITRE line, then a table
-        while i < len(lines) and lines[i].strip() != _TABLE_OPEN:
-            mm = mitre_re.match(lines[i].strip())
-            if mm:
-                topic["mitre"] = mm.group(1).strip()
-            if topic_re.match(lines[i].strip()):  # next topic with no table
-                break
-            i += 1
-        if i < len(lines) and lines[i].strip() == _TABLE_OPEN:
-            block, tables = _split_table_block(lines[i:_table_end(lines, i) + 1])
-            rows = tables[0] if tables else []
-            for r in rows[1:]:  # skip header row
-                if len(r) >= 2:
-                    # The Query cell embeds ` | ` (CrowdStrike pipe syntax), so it
-                    # over-splits. Name and Outcome never contain a pipe → take
-                    # the first and last cells; rejoin the middle as the query.
-                    name = r[0].strip()
-                    if not name:
-                        continue  # skip stray/empty rows (e.g. trailing notes)
-                    if len(r) >= 3:
-                        outcome = r[-1]
-                        query = " | ".join(r[1:-1])
-                    else:
-                        outcome, query = "", r[1]
-                    count = _result_count(outcome)
-                    topic["rows"].append({
-                        "name": name,
-                        "query": query,
-                        "outcome": outcome,
-                        "result_count": count,
-                        "status": _query_status(outcome, count),
-                    })
-            i = _table_end(lines, i) + 1
-        topics.append(topic)
-    return topics
-
-
 def _table_end(lines: list[str], start: int) -> int:
     for j in range(start, len(lines)):
         if lines[j].strip() == _TABLE_CLOSE:
@@ -187,21 +101,92 @@ def _table_end(lines: list[str], start: int) -> int:
     return len(lines) - 1
 
 
-def _tokens(s: str) -> set[str]:
-    return set(_normalize(s).split())
+def _paragraphs(lines: list[str]) -> list[str]:
+    return [ln.strip() for ln in lines if ln.strip()]
 
 
-def _parse_plan_of_action(lines: list[str], topic_names: list[str]) -> dict[str, Any]:
-    """
-    Split the Plan of Action prose into intro + per-topic indicator bullets.
+def _result_count(outcome: str) -> int | None:
+    """Pull a count from an Outcome/Resultados cell (EN/ES, tolerant of typos)."""
+    if not outcome:
+        return None
+    m = re.search(
+        r"(\d[\d.,]*)\s*(?:events?|eventos?|evets?|resultados?|registros?|hits?|rows?|filas?)",
+        outcome, re.IGNORECASE,
+    )
+    if m:
+        token = m.group(1)
+    elif re.fullmatch(r"\d[\d.,]*", outcome.strip()):
+        token = outcome.strip()
+    else:
+        return None
+    try:
+        return int(token.replace(",", "").replace(".", ""))
+    except ValueError:
+        return None
 
-    Topics appear in the same order as in the Queries section but their titles
-    may carry suffixes (e.g. '(T1021.006)') or '&'/'and' variants. We therefore
-    match the *next expected* topic by token overlap on short title lines, which
-    is robust to those differences and to false positives in long indicators.
-    """
+
+def _query_status(outcome: str, count: int | None) -> str:
+    low = (outcome or "").strip().lower()
+    if count is None:
+        return "pending" if (not low or low in {"ignored", "blank", "-"}) else "unknown"
+    return "no_results" if count == 0 else "results"
+
+
+def _parse_rows(rows: list[list[str]], out: list[dict]) -> None:
+    for r in rows[1:]:  # skip the header row
+        if len(r) < 2:
+            continue
+        name = r[0].strip()
+        if not name:
+            continue
+        # The Query cell embeds ` | ` (CSF/YARA-L/SPL pipe syntax) → over-splits;
+        # name and outcome never contain a pipe, so take first/last cells.
+        if len(r) >= 3:
+            outcome, query = r[-1], " | ".join(r[1:-1])
+        else:
+            outcome, query = "", r[1]
+        count = _result_count(outcome)
+        out.append({
+            "name": name, "query": query, "outcome": outcome,
+            "result_count": count, "status": _query_status(outcome, count),
+        })
+
+
+def _parse_queries(lines: list[str]) -> list[dict[str, Any]]:
+    """Parse the Queries section: numbered topics, each with >=1 query tables."""
+    topics: list[dict[str, Any]] = []
+    i, n = 0, len(lines)
+    while i < n:
+        m = _TOPIC_RE.match(lines[i].strip())
+        if not m:
+            i += 1
+            continue
+        topic: dict[str, Any] = {
+            "number": int(m.group(1)), "name": m.group(2).strip(),
+            "mitre": "", "rows": [],
+        }
+        i += 1
+        while i < n and not _TOPIC_RE.match(lines[i].strip()):
+            s = lines[i].strip()
+            if s == _TABLE_OPEN:
+                end = _table_end(lines, i)
+                _, tables = _split_table_block(lines[i:end + 1])
+                if tables:
+                    _parse_rows(tables[0], topic["rows"])
+                i = end + 1
+                continue
+            mm = _MITRE_RE.search(s) if s else None
+            if mm and not topic["mitre"]:
+                topic["mitre"] = ", ".join(_TECH_RE.findall(mm.group(1))) or mm.group(1).strip()
+            i += 1
+        topics.append(topic)
+    return topics
+
+
+def _parse_plan(lines: list[str], topic_names: list[str]) -> dict[str, Any]:
+    """Split Plan of Action prose into intro + per-topic indicator bullets."""
     paras = _paragraphs(lines)
-    expected = [_tokens(n) for n in topic_names]
+    expected = [_tokens(nm) for nm in topic_names]
     topics: list[dict[str, Any]] = []
     intro: list[str] = []
     closing: list[str] = []
@@ -209,10 +194,9 @@ def _parse_plan_of_action(lines: list[str], topic_names: list[str]) -> dict[str,
     ptr = 0
     for p in paras:
         is_title = False
-        if ptr < len(expected) and len(p) <= 140:
+        if ptr < len(expected) and len(p) <= 150:
             want = expected[ptr]
-            overlap = len(_tokens(p) & want) / max(1, len(want))
-            if overlap >= 0.7:
+            if want and len(_tokens(p) & want) / max(1, len(want)) >= 0.6:
                 is_title = True
         if is_title:
             current = {"name": p, "indicators": []}
@@ -220,15 +204,27 @@ def _parse_plan_of_action(lines: list[str], topic_names: list[str]) -> dict[str,
             ptr += 1
         elif current is None:
             intro.append(p)
-        elif ptr >= len(expected) and len(p) > 400:
-            closing.append(p)  # trailing summary paragraph
+        elif ptr >= len(expected) and len(p) > 300:
+            closing.append(p)
         else:
             current["indicators"].append(p)
-    return {
-        "intro": " ".join(intro).strip(),
-        "topics": topics,
-        "closing": " ".join(closing).strip(),
-    }
+    return {"intro": " ".join(intro).strip(), "topics": topics, "closing": " ".join(closing).strip()}
+
+
+def _parse_mitre_coverage(lines: list[str], full_text: str) -> list[dict[str, str]]:
+    _, tables = _split_table_block(lines)
+    if tables and tables[0]:
+        return [
+            {"technique": r[0], "tactic": r[1]}
+            for r in tables[0][1:] if len(r) >= 2
+        ]
+    # Fallback: the richest "MITRE ATT&CK: T1078.004, T1110.003, ..." line anywhere.
+    best: list[str] = []
+    for m in _MITRE_RE.finditer(full_text):
+        techs = _TECH_RE.findall(m.group(1))
+        if len(techs) > len(best):
+            best = techs
+    return [{"technique": t, "tactic": ""} for t in best]
 
 
 def parse_methodology(text: str) -> dict[str, Any]:
@@ -238,27 +234,26 @@ def parse_methodology(text: str) -> dict[str, Any]:
     try:
         secs = _sections(text)
 
-        cov_text, cov_tables = _split_table_block(secs.get("mitre att&ck coverage", []))
-        mitre_coverage = _parse_mitre_coverage(cov_tables)
+        mitre_coverage = _parse_mitre_coverage(secs.get("mitre", []), text)
 
-        desc_text, _ = _split_table_block(secs.get("methodology", []))
+        desc_text, _ = _split_table_block(secs.get("description", []))
         description = "\n\n".join(_paragraphs(desc_text))
 
         queries = _parse_queries(secs.get("queries", []))
         topic_names = [t["name"] for t in queries]
 
-        poa = _parse_plan_of_action(secs.get("plan of action", []), topic_names)
-        # Attach MITRE from the matching query topic (same order) for display.
+        poa = _parse_plan(secs.get("plan", []), topic_names)
         for idx, t in enumerate(poa["topics"]):
-            if idx < len(queries):
-                t["mitre"] = queries[idx].get("mitre", "")
+            if idx < len(queries) and queries[idx].get("mitre"):
+                t["mitre"] = queries[idx]["mitre"]
 
+        available = bool(description or poa["topics"] or queries)
         total_queries = sum(len(t["rows"]) for t in queries)
         with_results = sum(
             1 for t in queries for r in t["rows"] if r["status"] == "results"
         )
         return {
-            "available": True,
+            "available": available,
             "mitre_coverage": mitre_coverage,
             "description": description,
             "plan_of_action": poa,
