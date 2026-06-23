@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../../lib/api";
-import type { AiEngineConfig, GlobalConfig, PlatformConfig } from "../../lib/types";
+import type { AiEngineConfig, DbHealth, GlobalConfig, PlatformConfig } from "../../lib/types";
 import { useToast } from "../Toast";
 import { BrandLogo } from "../BrandLogo";
-import { Button, Card, Input, Label, PanelHeader, Select, Spinner } from "../ui";
+import { Badge, Button, Card, fmtBytes, Input, Label, PanelHeader, Select, Spinner } from "../ui";
 
 const PIN_LEN = 6;
 
@@ -34,6 +34,37 @@ export default function GlobalConfig() {
   const [curPin, setCurPin] = useState("");
   const [newPin, setNewPin] = useState("");
   const [changingPin, setChangingPin] = useState(false);
+
+  // Maintenance state
+  const [health, setHealth] = useState<DbHealth | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
+
+  const scan = async () => {
+    setScanning(true);
+    try {
+      setHealth(await api.dbHealthScan());
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Scan failed.");
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const clean = async () => {
+    if (!window.confirm("Delete orphaned files and clear stuck jobs? This removes upload files no longer referenced by the database."))
+      return;
+    setCleaning(true);
+    try {
+      const r = await api.dbHealthClean();
+      toast.success(`Removed ${r.removed_files} files (${fmtBytes(r.freed_bytes)}), cleared ${r.cleared_jobs} jobs.`);
+      await scan();
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Cleanup failed.");
+    } finally {
+      setCleaning(false);
+    }
+  };
 
   useEffect(() => {
     api
@@ -267,6 +298,87 @@ export default function GlobalConfig() {
               {changingPin ? <Spinner /> : "Change PIN"}
             </Button>
           </div>
+        </div>
+      </Card>
+
+      {/* Database / storage maintenance */}
+      <Card>
+        <PanelHeader
+          title="Database & Storage Maintenance"
+          subtitle="Find and remove leftovers from deleted hunts/datasets (orphaned files, stuck jobs)"
+          right={
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={scan} disabled={scanning}>
+                {scanning ? <Spinner /> : "Scan"}
+              </Button>
+              <Button
+                variant="danger"
+                onClick={clean}
+                disabled={cleaning || !health || health.healthy}
+              >
+                {cleaning ? <Spinner /> : "Clean now"}
+              </Button>
+            </div>
+          }
+        />
+        <div className="p-4">
+          {!health ? (
+            <p className="text-sm text-slate-500">Run a scan to check storage and jobs.</p>
+          ) : (
+            <div className="space-y-3 text-sm">
+              <div className="flex flex-wrap gap-2 text-xs text-slate-400">
+                <span>{health.counts.clients} clients</span>·
+                <span>{health.counts.hunts} hunts</span>·
+                <span>{health.counts.datasets} datasets</span>·
+                <span>{health.counts.findings} findings</span>·
+                <span>{health.counts.jobs} jobs</span>
+              </div>
+
+              {health.healthy ? (
+                <Badge className="border border-emerald-800 bg-emerald-950 text-emerald-300">
+                  ✓ Clean — nothing to remove
+                </Badge>
+              ) : (
+                <ul className="space-y-2">
+                  <li className="flex items-center justify-between rounded border border-slate-800 bg-slate-950/40 px-3 py-2">
+                    <span className="text-slate-300">Orphaned upload files</span>
+                    <span className="font-mono text-xs text-amber-300">
+                      {health.orphan_files.count} · {fmtBytes(health.orphan_files.bytes)}
+                    </span>
+                  </li>
+                  <li className="flex items-center justify-between rounded border border-slate-800 bg-slate-950/40 px-3 py-2">
+                    <span className="text-slate-300">Datasets with missing files</span>
+                    <span className="font-mono text-xs text-amber-300">
+                      {health.missing_dataset_files.length}
+                    </span>
+                  </li>
+                  <li className="flex items-center justify-between rounded border border-slate-800 bg-slate-950/40 px-3 py-2">
+                    <span className="text-slate-300">Stuck / active jobs</span>
+                    <span className="font-mono text-xs text-amber-300">
+                      {health.stuck_jobs.length}
+                    </span>
+                  </li>
+                </ul>
+              )}
+
+              {health.orphan_files.sample.length > 0 && (
+                <details className="text-xs text-slate-500">
+                  <summary className="cursor-pointer hover:text-slate-300">
+                    Sample orphaned files
+                  </summary>
+                  <ul className="mt-1 max-h-40 overflow-auto font-mono">
+                    {health.orphan_files.sample.map((f, i) => (
+                      <li key={i} className="truncate">{f}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+              <p className="text-xs text-slate-600">
+                “Clean now” deletes orphaned files, clears stuck jobs, and prunes empty folders.
+                Missing-file datasets are reported only — delete those hunts manually if unwanted.
+              </p>
+            </div>
+          )}
         </div>
       </Card>
     </div>

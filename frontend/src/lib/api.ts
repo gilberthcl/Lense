@@ -12,6 +12,7 @@ import type {
   CreateContactInput,
   CreateHuntInput,
   DatasetPreview,
+  DbHealth,
   GlobalConfig,
   GlobalJob,
   PlatformConfig,
@@ -280,6 +281,14 @@ export const api = {
     request<{ id: number; status: string }>(`/api/jobs/${jobId}/cancel`, { method: "POST" }),
   ollamaModels: () =>
     request<{ models: string[]; reachable: boolean }>(`/api/config/ollama-models`),
+
+  // --- DB / storage maintenance ---
+  dbHealthScan: () => request<DbHealth>(`/api/config/db-health`),
+  dbHealthClean: () =>
+    request<{ removed_files: number; freed_bytes: number; cleared_jobs: number }>(
+      `/api/config/db-health/clean`,
+      { method: "POST" },
+    ),
 
   // --- Findings ---
   listFindings: (tid: string, hid: string) =>

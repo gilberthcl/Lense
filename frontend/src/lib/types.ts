@@ -184,6 +184,14 @@ export interface AnalysisPlan {
   [key: string]: unknown;
 }
 
+export interface DbHealth {
+  counts: { clients: number; hunts: number; datasets: number; findings: number; jobs: number };
+  orphan_files: { count: number; bytes: number; sample: string[] };
+  missing_dataset_files: { id: number; filename: string; path: string }[];
+  stuck_jobs: { id: number; phase: string; status: string; hunt_id: number }[];
+  healthy: boolean;
+}
+
 export interface DatasetPreview {
   filename: string;
   row_count: number;
