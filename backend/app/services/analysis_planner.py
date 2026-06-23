@@ -87,13 +87,7 @@ def _methodology_summary(hunt: Hunt) -> str:
     return "\n".join(parts)[:4500]
 
 
-def _build_prompt(
-    hunt: Hunt,
-    metas: list[dict],
-    *,
-    feedback: str | None = None,
-    previous: dict | None = None,
-) -> tuple[str, str]:
+def _dataset_block(metas: list[dict]) -> str:
     ds_lines = []
     for m in metas:
         size_kb = round((m["size_bytes"] or 0) / 1024, 1)
@@ -104,12 +98,29 @@ def _build_prompt(
             f"cols={m['cols'] if m['cols'] is not None else 'unknown'} | "
             f"columns: {cols or 'unknown'}"
         )
+    return "\n".join(ds_lines) or "No datasets uploaded."
+
+
+def _build_prompt(
+    hunt: Hunt,
+    metas: list[dict],
+    *,
+    feedback: str | None = None,
+    previous: dict | None = None,
+    reasoning: str | None = None,
+) -> tuple[str, str]:
     user = prompts.ANALYSIS_PLAN_PROMPT.format(
         hunt_name=hunt.name or "",
         methodology=_methodology_summary(hunt) or "No methodology summary available.",
-        datasets="\n".join(ds_lines) or "No datasets uploaded.",
+        datasets=_dataset_block(metas),
         count=len(metas),
     )
+    if reasoning:
+        user += (
+            "\n\nYOUR REASONING (you already worked this out step by step — convert "
+            "it FAITHFULLY into the JSON schema above; do not contradict it):\n"
+            f"{reasoning[:6000]}\n"
+        )
     if feedback:
         prev = json.dumps(previous)[:3000] if previous else "(none)"
         user += (
@@ -125,12 +136,49 @@ def plan_stream(
     hunt: Hunt,
     metas: list[dict],
     *,
-    on_chunk=None,
+    on_reason_chunk=None,
+    on_struct_chunk=None,
+    on_phase=None,
     feedback: str | None = None,
     previous: dict | None = None,
 ) -> dict[str, Any]:
-    sys, user = _build_prompt(hunt, metas, feedback=feedback, previous=previous)
-    raw = ollama.generate_stream(planner_model(), sys, user, on_chunk=on_chunk, json_mode=True)
+    """
+    Two-pass plan generation:
+      1. Reason out loud (plain text) about each dataset's role, complexity, and
+         the workload batching — streamed to the caller for the live job log.
+      2. Convert that reasoning into the strict plan JSON.
+    """
+    model = planner_model()
+    methodology = _methodology_summary(hunt) or "No methodology summary available."
+
+    # ── Pass 1: step-by-step reasoning (visible in the log) ───────────────
+    if on_phase:
+        on_phase("Reasoning through each dataset's role, complexity & batching")
+    r_user = prompts.ANALYSIS_REASONING_PROMPT.format(
+        hunt_name=hunt.name or "",
+        methodology=methodology,
+        datasets=_dataset_block(metas),
+        count=len(metas),
+    )
+    if feedback:
+        r_user += (
+            "\n\nThe operator reviewed the previous plan and asked for changes. "
+            f"Take this into account while reasoning. Feedback: {feedback}\n"
+        )
+    reasoning = ollama.generate_stream(
+        model, prompts.ANALYSIS_REASONING_SYSTEM, r_user,
+        on_chunk=on_reason_chunk, json_mode=False,
+    )
+
+    # ── Pass 2: structure the reasoning into the plan JSON ────────────────
+    if on_phase:
+        on_phase("Writing the structured plan")
+    sys, user = _build_prompt(
+        hunt, metas, feedback=feedback, previous=previous, reasoning=reasoning
+    )
+    raw = ollama.generate_stream(
+        model, sys, user, on_chunk=on_struct_chunk, json_mode=True
+    )
     parsed = ollama.parse_json_response(raw)
     if not isinstance(parsed, dict):
         return {"summary": str(parsed)[:2000], "phases": [], "complexity": []}

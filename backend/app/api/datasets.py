@@ -186,19 +186,40 @@ def create_analysis_plan(
                 emit(j, f"{verb} across {len(metas)} datasets with {j.model}…", 20)
                 previous = h.analysis_plan if feedback else None
 
-                state = {"last": time.monotonic(), "pct": 20, "tok": 0}
+                # Stream the planner's step-by-step reasoning into the job log,
+                # one readable line at a time, so the operator sees what it's
+                # doing (not just a token counter).
+                state = {"buf": "", "pct": 20, "last": time.monotonic()}
 
-                def on_chunk(_t: str) -> None:
-                    state["tok"] += 1
+                def on_phase(name: str) -> None:
+                    state["pct"] = min(92, state["pct"] + 2)
+                    emit(j, f"▸ {name}", state["pct"])
+                    jobs.raise_if_cancelled(task_db, job_id)
+
+                def on_reason_chunk(t: str) -> None:
+                    state["buf"] += t
+                    while "\n" in state["buf"]:
+                        line, state["buf"] = state["buf"].split("\n", 1)
+                        line = line.strip()
+                        if line:
+                            state["pct"] = min(90, state["pct"] + 1)
+                            emit(j, line[:200], state["pct"])
+                            jobs.raise_if_cancelled(task_db, job_id)
+
+                def on_struct_chunk(_t: str) -> None:
                     now = time.monotonic()
                     if now - state["last"] >= 1.3:
                         state["last"] = now
-                        state["pct"] = min(90, state["pct"] + 5)
-                        emit(j, f"{j.model} {verb.lower()}… {state['tok']} tokens", state["pct"])
+                        state["pct"] = min(96, state["pct"] + 1)
+                        emit(j, "Structuring the plan into the final format…", state["pct"])
                         jobs.raise_if_cancelled(task_db, job_id)
 
                 plan = analysis_planner.plan_stream(
-                    h, metas, on_chunk=on_chunk, feedback=feedback, previous=previous
+                    h, metas,
+                    on_reason_chunk=on_reason_chunk,
+                    on_struct_chunk=on_struct_chunk,
+                    on_phase=on_phase,
+                    feedback=feedback, previous=previous,
                 )
                 h.analysis_plan = plan
                 # Reset review state: a (re)generated plan starts as a draft.

@@ -376,11 +376,59 @@ Return a JSON object with EXACTLY these keys:
 Rules:
 - Treat every dataset as INDEPENDENT. Each dataset appears in exactly ONE batch,
   and EVERY dataset must appear once. Batches are workload groupings only.
+- Name each batch exactly "Batch 1", "Batch 2", … — NEVER thematic names like
+  "Initial Screening", "Detailed Analysis", "Post-Authentication" or
+  "Correlation". A batch is a workload round, not an analysis theme.
 - Base complexity strictly on the provided size / row / column metadata (more
   rows, more/wider columns, or larger files = higher complexity).
 - Keep batches comfortably sized; avoid stacking many high-complexity datasets
   into one batch. Do NOT order the batches to imply any dependency between
-  datasets — order is only about balancing effort.
+  datasets — order is only about balancing effort. "batching" must NOT say a
+  batch builds on a previous one.
 - Always include the three post_analysis stages exactly as listed; they run once,
   after all batches are complete.
+"""
+
+
+# ── Analysis planning — step 1: reason out loud before structuring ──────────
+ANALYSIS_REASONING_SYSTEM = """\
+You are a Senior Threat Hunting Analyst about to plan the WORKLOAD for analyzing
+a set of INDEPENDENT CSV result-set datasets from one hunt. Before producing any
+plan, you THINK OUT LOUD, step by step, in plain readable text (NOT JSON).
+
+Hold these facts firmly while you reason:
+- Each CSV is an INDEPENDENT query result set. It is NEVER a continuation of
+  another and batches must not form a storyline ("screening" → "detailed" →
+  "correlation").
+- Every dataset receives the SAME full, independent per-dataset analysis.
+- The descriptive FILENAME tells you each dataset's ROLE; combine it with the
+  methodology to understand its purpose. Never invent contents.
+- Batches exist ONLY to split the per-dataset work into comfortable rounds (by
+  complexity / size / rows) so nothing is overwhelming.
+- Correlation, QA and finding generation happen ONCE, only AFTER every dataset is
+  analyzed — they are never a batch that contains datasets.
+"""
+
+ANALYSIS_REASONING_PROMPT = """\
+Hunt: {hunt_name}
+
+HUNT METHODOLOGY CONTEXT (use it to understand each dataset's role):
+{methodology}
+
+Datasets ({count}) — metadata only (the filename describes the dataset's role):
+{datasets}
+
+Work through this OUT LOUD as readable, numbered notes — one short line per
+dataset where applicable. Do NOT output JSON.
+
+STEP 1 — ROLES: for EACH dataset, state the role you infer from its filename +
+         the methodology (what activity it captures).
+STEP 2 — COMPLEXITY: for EACH dataset, rate low / medium / high, justified ONLY
+         by its size / row count / column count.
+STEP 3 — BATCHES: decide how many comfortable batches to use and which datasets
+         go in each, balancing complexity so no batch is overwhelming. State the
+         balance reasoning. Remember the datasets are independent — you are only
+         splitting workload, not ordering a pipeline.
+STEP 4 — POST-ANALYSIS: confirm that Correlation, QA and Finding generation run
+         once, after ALL datasets are analyzed.
 """

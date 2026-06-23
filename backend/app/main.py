@@ -84,4 +84,4 @@ app.include_router(reports.router)
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "service": "lens-thfe", "build": "2026-06-23-batch-plan"}
+    return {"status": "ok", "service": "lens-thfe", "build": "2026-06-23-plan-reasoning"}
