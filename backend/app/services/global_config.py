@@ -78,6 +78,7 @@ def get_platform(db: Session) -> dict:
 
 def _validate_ai(patch: dict) -> dict:
     allowed = ai_defaults()
+    gen_roles = ("analyst_model", "reviewer_model", "qa_model")
     out: dict = {}
     for k, v in patch.items():
         if k not in allowed:
@@ -85,6 +86,12 @@ def _validate_ai(patch: dict) -> dict:
         if k.endswith("_model") and isinstance(v, str) and "-cloud" in v:
             raise ValueError(
                 f"Cloud models are not allowed (local-only compliance): {v}"
+            )
+        # Embedding models can't generate text → /api/generate returns 400.
+        if k in gen_roles and isinstance(v, str) and "embed" in v.lower():
+            raise ValueError(
+                f"'{v}' looks like an embedding model — it can't be used for the "
+                f"{k.replace('_model', '')} role (it only produces vectors)."
             )
         out[k] = v
     if "temperature" in out:

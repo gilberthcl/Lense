@@ -207,7 +207,10 @@ export default function GlobalConfig() {
           {AI_FIELDS.map((f) => {
             const val = String(ai[f.key] ?? "");
             const isModel = f.key.endsWith("_model");
-            const opts = isModel ? Array.from(new Set([val, ...models].filter(Boolean))) : [];
+            const isEmbedRole = f.key === "embed_model";
+            // Generation roles can't use embedding models; the embeddings role wants them.
+            const pool = isEmbedRole ? models : models.filter((m) => !m.toLowerCase().includes("embed"));
+            const opts = isModel ? Array.from(new Set([val, ...pool].filter(Boolean))) : [];
             return (
               <div key={f.key}>
                 <Label>{f.label}</Label>
