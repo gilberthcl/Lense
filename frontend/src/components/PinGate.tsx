@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { api, ApiError, clearToken, getToken, setToken } from "../lib/api";
+import { AUTH_LOST_EVENT, api, ApiError, getToken, setToken, signalAuthLost } from "../lib/api";
 import { BrandLogo } from "./BrandLogo";
 import { Button, Input } from "./ui";
 
@@ -13,8 +13,7 @@ import { Button, Input } from "./ui";
 const PIN_LEN = 6;
 
 export function lockApp() {
-  clearToken();
-  window.location.reload();
+  signalAuthLost();
 }
 
 export function PinGate({ children }: { children: ReactNode }) {
@@ -33,6 +32,14 @@ export function PinGate({ children }: { children: ReactNode }) {
       .then((s) => setConfigured(s.configured))
       .catch(() => setConfigured(false));
   }, [unlocked]);
+
+  // Re-lock (without a page reload) when a protected call reports the token is
+  // no longer valid. This is what breaks the old reload loop.
+  useEffect(() => {
+    const onLost = () => setUnlocked(false);
+    window.addEventListener(AUTH_LOST_EVENT, onLost);
+    return () => window.removeEventListener(AUTH_LOST_EVENT, onLost);
+  }, []);
 
   if (unlocked) return <>{children}</>;
 

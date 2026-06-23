@@ -51,6 +51,16 @@ export const getToken = () => localStorage.getItem(TOKEN_KEY);
 export const setToken = (t: string) => localStorage.setItem(TOKEN_KEY, t);
 export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
 
+// Fired when the session is no longer authenticated. The PIN gate listens for
+// this and re-locks via React state — deliberately NOT a full-page reload,
+// which would loop forever (and thrash the browser) if a protected call keeps
+// 401ing while the page is loading.
+export const AUTH_LOST_EVENT = "lens:auth-lost";
+export function signalAuthLost() {
+  clearToken();
+  window.dispatchEvent(new CustomEvent(AUTH_LOST_EVENT));
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   const token = getToken();
@@ -74,10 +84,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     );
   }
 
-  // The PIN became invalid (e.g. changed elsewhere) — drop it and re-gate.
+  // The PIN became invalid (e.g. changed elsewhere, or the backend was reset
+  // by a fresh `lense up` so a stale token no longer verifies). Drop it and
+  // re-gate through the PIN screen WITHOUT reloading — a reload here would
+  // re-issue the same protected call, 401 again, and loop the browser to death.
   if (res.status === 401 && !path.startsWith("/api/auth")) {
-    clearToken();
-    window.location.reload();
+    signalAuthLost();
   }
 
   const text = await res.text();
