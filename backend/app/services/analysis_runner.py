@@ -175,7 +175,9 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
         sections = ensure_methodology_sections(db, hunt)
 
         df = csv_loader.load_csv(dataset.file_path, settings.max_upload_bytes)
-        evidence = csv_loader.build_evidence_package(df)
+        # Bounded sample keeps the prompt small (and the model fast) — the full
+        # schema + statistics still describe the whole dataset.
+        evidence = csv_loader.build_evidence_package(df, sample_rows=8)
 
         # Persist computed schema/stats for the UI.
         dataset.row_count = evidence["stats"]["row_count"]
@@ -202,7 +204,14 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
         db.commit()
         jobs.raise_if_cancelled(db, job.id)
 
+        def _stage(name: str, pct: int) -> None:
+            jobs.raise_if_cancelled(db, job.id)
+            job.current_task = name
+            job.progress = pct
+            db.commit()
+
         result = findings_engine.analyze_dataset(
+            on_stage=_stage,
             dataset_name=dataset.filename,
             evidence_package=evidence,
             methodology=hunt.methodology_text or "No methodology document provided.",

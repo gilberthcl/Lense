@@ -61,16 +61,25 @@ def analyze_dataset(
     tenant_context: str | None = None,
     run_reviewer: bool = True,
     run_qa: bool = True,
+    on_stage=None,
 ) -> dict[str, Any]:
     """Run the full pipeline. Returns {dataset_assessment, findings, trace}."""
+    def stage(name: str, pct: int) -> None:
+        if on_stage:
+            on_stage(name, pct)
+
     finding_format = finding_format or DEFAULT_FINDING_FORMAT
     finding_categories = finding_categories or prompts.DEFAULT_CATEGORIES
     analysis_instructions = analysis_instructions or "Follow standard evidence-based threat-hunting practice."
-    tenant_context = tenant_context or "No additional tenant context provided."
+    tenant_context = (tenant_context or "No additional tenant context provided.")[:8000]
     if isinstance(methodology_brief, dict):
         brief_text = json.dumps(methodology_brief, ensure_ascii=False, indent=2, default=str)
     else:
         brief_text = methodology_brief or "No methodology brief available."
+    # Keep prompts bounded — the brief + tenant context already summarize the
+    # methodology, so the raw text is capped to avoid huge, slow generations.
+    brief_text = brief_text[:6000]
+    methodology = (methodology or "No methodology document provided.")[:8000]
     evidence_json = json.dumps(evidence_package, ensure_ascii=False, default=str)
     trace: dict[str, Any] = {}
 
@@ -92,14 +101,21 @@ def analyze_dataset(
         dataset_name=dataset_name,
         evidence_json=evidence_json,
     )
+    stage("Analyst: reading evidence", 55)
     raw = ollama.analyst(sys, user)
-    analyst_out = ollama.parse_json_response(raw)
+    try:
+        analyst_out = ollama.parse_json_response(raw)
+    except ollama.OllamaError:
+        # Don't crash the whole job on a malformed analyst response — surface it.
+        analyst_out = {}
+        trace["analyst_parse_error"] = True
     assessment = analyst_out.get("dataset_assessment", "") if isinstance(analyst_out, dict) else ""
     findings = analyst_out.get("findings", []) if isinstance(analyst_out, dict) else []
     trace["analyst_count"] = len(findings)
 
     # ── Phase 2: Reviewer (false-positive reduction) ───────────────────────
     if run_reviewer and findings:
+        stage("Reviewer: reducing false positives", 72)
         r_sys = prompts.REVIEWER_SYSTEM.format(guardrails=prompts.GUARDRAILS)
         r_user = prompts.REVIEWER_PROMPT.format(
             evidence_json=evidence_json,
@@ -121,6 +137,7 @@ def analyze_dataset(
 
     # ── Phase 3: QA (format normalization) ─────────────────────────────────
     if run_qa and findings:
+        stage("QA: normalizing format", 88)
         q_sys = prompts.QA_SYSTEM.format(guardrails=prompts.GUARDRAILS)
         q_user = prompts.QA_PROMPT.format(
             finding_format=finding_format,

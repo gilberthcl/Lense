@@ -35,6 +35,12 @@ def ai_defaults() -> dict:
         "embed_model": settings.ollama_embed_model,
         "temperature": 0.2,
         "timeout": settings.ollama_timeout,
+        # On 32 GB, two large models can't co-reside, so Ollama reloads a 17 GB
+        # model every call. single_model_pipeline runs reviewer+QA on the analyst
+        # model (one resident model, no swapping) — far faster.
+        "single_model_pipeline": True,
+        "num_predict": 4096,    # cap output so JSON can't run to the context limit
+        "keep_alive": "30m",    # keep the model warm between datasets
     }
 
 
@@ -98,6 +104,10 @@ def _validate_ai(patch: dict) -> dict:
         out["temperature"] = max(0.0, min(1.0, float(out["temperature"])))
     if "timeout" in out:
         out["timeout"] = max(30, int(out["timeout"]))
+    if "num_predict" in out:
+        out["num_predict"] = max(256, min(int(out["num_predict"]), 16384))
+    if "single_model_pipeline" in out:
+        out["single_model_pipeline"] = bool(out["single_model_pipeline"])
     return out
 
 

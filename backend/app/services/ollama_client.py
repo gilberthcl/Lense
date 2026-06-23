@@ -34,20 +34,39 @@ def _post(path: str, payload: dict) -> dict:
         raise OllamaError(f"Ollama call failed ({path}): {exc}") from exc
 
 
+def _gen_options(cfg: dict) -> dict:
+    return {
+        "temperature": cfg["temperature"],
+        # Cap output so a json_mode generation can't run to the context limit
+        # (which truncates the JSON and breaks parsing).
+        "num_predict": int(cfg.get("num_predict", 4096)),
+    }
+
+
 def generate(model: str, system: str, prompt: str, *, json_mode: bool = False) -> str:
     """Single non-streaming generation. Returns the raw text response."""
+    cfg = global_config.current_ai()
     payload: dict = {
         "model": model,
         "system": system,
         "prompt": prompt,
         "stream": False,
-        # low temp — analytical, deterministic-ish (editable in Global config)
-        "options": {"temperature": global_config.current_ai()["temperature"]},
+        "keep_alive": cfg.get("keep_alive", "30m"),  # keep the model warm
+        "options": _gen_options(cfg),
     }
     if json_mode:
         payload["format"] = "json"
     data = _post("/api/generate", payload)
     return data.get("response", "")
+
+
+def _role_model(role: str) -> str:
+    """Model for a pipeline role. In single-model mode, reviewer/QA reuse the
+    analyst model so Ollama never swaps a multi-GB model between calls."""
+    cfg = global_config.current_ai()
+    if cfg.get("single_model_pipeline", True):
+        return cfg["analyst_model"]
+    return cfg[f"{role}_model"]
 
 
 def generate_stream(
@@ -69,7 +88,8 @@ def generate_stream(
         "system": system,
         "prompt": prompt,
         "stream": True,
-        "options": {"temperature": cfg["temperature"]},
+        "keep_alive": cfg.get("keep_alive", "30m"),
+        "options": _gen_options(cfg),
     }
     if json_mode:
         payload["format"] = "json"
@@ -141,8 +161,8 @@ def analyst(system: str, prompt: str, *, json_mode: bool = True) -> str:
 
 
 def reviewer(system: str, prompt: str, *, json_mode: bool = True) -> str:
-    return generate(global_config.current_ai()["reviewer_model"], system, prompt, json_mode=json_mode)
+    return generate(_role_model("reviewer"), system, prompt, json_mode=json_mode)
 
 
 def qa(system: str, prompt: str, *, json_mode: bool = True) -> str:
-    return generate(global_config.current_ai()["qa_model"], system, prompt, json_mode=json_mode)
+    return generate(_role_model("qa"), system, prompt, json_mode=json_mode)
