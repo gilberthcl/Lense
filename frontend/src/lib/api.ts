@@ -272,6 +272,13 @@ export const api = {
     }),
   acceptPlan: (tid: string, hid: string) =>
     request<Hunt>(`/api/tenants/${tid}/hunts/${hid}/plan/accept`, { method: "POST" }),
+  deletePlan: (tid: string, hid: string) =>
+    request<Hunt>(`/api/tenants/${tid}/hunts/${hid}/plan/delete`, { method: "POST" }),
+  resetAnalysis: (tid: string, hid: string) =>
+    request<{ findings_deleted: number; datasets_reset: number }>(
+      `/api/tenants/${tid}/hunts/${hid}/analysis/reset`,
+      { method: "POST" },
+    ),
   getJob: (tid: string, hid: string, jobId: string) =>
     request<Job>(`/api/tenants/${tid}/hunts/${hid}/jobs/${jobId}`),
   listHuntJobs: (tid: string, hid: string) =>
@@ -308,6 +315,8 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
+  deleteFinding: (tid: string, hid: string, fid: string) =>
+    request<void>(`/api/tenants/${tid}/hunts/${hid}/findings/${fid}`, { method: "DELETE" }),
   bulkPatchFindings: (
     tid: string,
     hid: string,

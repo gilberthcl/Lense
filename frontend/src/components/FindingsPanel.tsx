@@ -78,14 +78,18 @@ function Pills({ items }: { items: string[] }) {
 function FindingDetail({
   finding,
   onPatch,
+  onDelete,
   patching,
 }: {
   finding: Finding;
   onPatch: (body: PatchBody) => void;
+  onDelete: () => void;
   patching: boolean;
 }) {
   const [notes, setNotes] = useState(finding.reviewer_notes ?? "");
   const notesDirty = notes !== (finding.reviewer_notes ?? "");
+  const [rejecting, setRejecting] = useState(false);
+  const [feedback, setFeedback] = useState("");
   return (
     <div className="space-y-4 border-t border-slate-800 bg-slate-950/60 p-4">
       {finding.summary && (
@@ -151,14 +155,48 @@ function FindingDetail({
         >
           {patching ? <Spinner /> : "Validate"}
         </Button>
-        <Button
-          variant="danger"
-          disabled={patching || finding.status === "rejected"}
-          onClick={() => onPatch({ status: "rejected" })}
-        >
-          Reject
+        <Button variant="danger" disabled={patching} onClick={() => setRejecting((s) => !s)}>
+          Reject…
         </Button>
       </div>
+
+      {rejecting && (
+        <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Reject this finding
+          </p>
+          <Textarea
+            rows={2}
+            value={feedback}
+            onChange={(e) => setFeedback(e.target.value)}
+            placeholder="Optional feedback — why it's a false positive / what's wrong. Saved with the rejection."
+          />
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Button
+              variant="ghost"
+              disabled={patching}
+              onClick={() => {
+                onPatch({ status: "rejected", reviewer_notes: feedback || notes });
+                setRejecting(false);
+              }}
+            >
+              Reject &amp; keep feedback
+            </Button>
+            <Button
+              variant="danger"
+              disabled={patching}
+              onClick={() => {
+                if (window.confirm("Delete this finding permanently? It is removed everywhere, including the knowledge base.")) {
+                  onDelete();
+                }
+              }}
+            >
+              Delete permanently
+            </Button>
+            <Button variant="ghost" onClick={() => setRejecting(false)}>Cancel</Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -208,6 +246,36 @@ export default function FindingsPanel({
       toast.error(e instanceof ApiError ? e.message : "Update failed.");
     } finally {
       setPatchingId(null);
+    }
+  };
+
+  const onDelete = async (finding: Finding) => {
+    setPatchingId(finding.id);
+    try {
+      await api.deleteFinding(tid, hid, finding.id);
+      setFindings((prev) => (prev ? prev.filter((f) => f.id !== finding.id) : prev));
+      setExpanded(null);
+      toast.success("Finding deleted.");
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Delete failed.");
+    } finally {
+      setPatchingId(null);
+    }
+  };
+
+  const bulkDelete = async () => {
+    if (selected.size === 0) return;
+    if (!window.confirm(`Delete ${selected.size} finding(s) permanently?`)) return;
+    setBulkBusy(true);
+    try {
+      await Promise.all([...selected].map((id) => api.deleteFinding(tid, hid, id)));
+      setFindings((prev) => (prev ? prev.filter((f) => !selected.has(f.id)) : prev));
+      setSelected(new Set());
+      toast.success("Findings deleted.");
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Bulk delete failed.");
+    } finally {
+      setBulkBusy(false);
     }
   };
 
@@ -265,6 +333,9 @@ export default function FindingsPanel({
           </Button>
           <Button variant="danger" disabled={bulkBusy} onClick={() => bulk("rejected")}>
             Reject selected
+          </Button>
+          <Button variant="danger" disabled={bulkBusy} onClick={bulkDelete}>
+            {bulkBusy ? <Spinner /> : "Delete selected"}
           </Button>
           <Button variant="ghost" disabled={bulkBusy} onClick={() => setSelected(new Set())}>
             Clear
@@ -345,6 +416,7 @@ export default function FindingsPanel({
                               finding={f}
                               patching={patchingId === f.id}
                               onPatch={(body) => onPatch(f, body)}
+                              onDelete={() => onDelete(f)}
                             />
                           </td>
                         </tr>
