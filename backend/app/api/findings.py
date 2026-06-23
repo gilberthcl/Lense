@@ -37,6 +37,27 @@ def _promote_to_knowledge(db: Session, finding: Finding) -> int | None:
     return doc.id
 
 
+@router.delete("/{finding_id}", status_code=204)
+def delete_finding(
+    hunt_id: int,
+    finding_id: int,
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+):
+    """Hard-delete a finding everywhere — including any KB doc it was promoted to."""
+    finding = db.get(Finding, finding_id)
+    if not finding or finding.tenant_id != tenant.id or finding.hunt_id != hunt_id:
+        raise HTTPException(status_code=404, detail="Finding not found")
+    if finding.finding_ref:
+        db.query(KnowledgeDocument).filter(
+            KnowledgeDocument.tenant_id == tenant.id,
+            KnowledgeDocument.doc_type == "validated_finding",
+            KnowledgeDocument.title.like(f"{finding.finding_ref}:%"),
+        ).delete(synchronize_session=False)
+    db.delete(finding)
+    db.commit()
+
+
 @router.get("", response_model=list[FindingOut])
 def list_findings(
     hunt_id: int,

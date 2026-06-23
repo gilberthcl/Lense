@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_tenant
 from app.core.config import settings
 from app.core.db import SessionLocal, get_db
-from app.models import AnalysisJob, Dataset, Hunt, Tenant
+from app.models import AnalysisJob, Dataset, Finding, Hunt, Tenant
 from app.schemas import DatasetOut, HuntOut, JobOut
 from app.services import analysis_planner, csv_loader, jobs
 from app.services.analysis_runner import run_dataset_analysis
@@ -243,6 +243,44 @@ def accept_plan(
     db.commit()
     db.refresh(hunt)
     return hunt
+
+
+@router.post("/plan/delete", response_model=HuntOut)
+def delete_plan(
+    hunt_id: int,
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+):
+    """Discard the analysis plan and its review/execution state."""
+    hunt = _resolve_hunt(db, tenant, hunt_id)
+    hunt.analysis_plan = None
+    hunt.plan_state = None
+    db.commit()
+    db.refresh(hunt)
+    return hunt
+
+
+@router.post("/analysis/reset")
+def reset_analysis(
+    hunt_id: int,
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+):
+    """Clear all analysis for the hunt: delete findings and set datasets back to
+    'uploaded' (as if never analyzed). The plan and uploaded files are kept."""
+    _resolve_hunt(db, tenant, hunt_id)
+    n_f = (
+        db.query(Finding)
+        .filter_by(hunt_id=hunt_id, tenant_id=tenant.id)
+        .delete(synchronize_session=False)
+    )
+    n_d = (
+        db.query(Dataset)
+        .filter_by(hunt_id=hunt_id, tenant_id=tenant.id)
+        .update({"status": "uploaded"}, synchronize_session=False)
+    )
+    db.commit()
+    return {"findings_deleted": n_f, "datasets_reset": n_d}
 
 
 @router.get("/jobs", response_model=list[JobOut])
