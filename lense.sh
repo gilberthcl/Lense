@@ -45,50 +45,125 @@ ensure_env() {
 ensure_db() {
   say "${bold}Postgres${rst}"
   ensure_env
-  # Self-bootstrapping: the DB runs in the tested pgvector/pgvector:pg16 image.
-  # If the docker binary is missing, install Docker Desktop via Homebrew; if it's
-  # installed but the daemon is down, start it. Then bring up the db container.
-  if ! command -v docker >/dev/null 2>&1; then
-    if command -v brew >/dev/null 2>&1; then
-      say "  ${dim}… docker not found — installing Docker Desktop via Homebrew (first run, large download)${rst}"
-      if ! brew install --cask docker >/dev/null 2>&1; then
-        err "couldn't install Docker Desktop automatically."
-        err "install it from https://www.docker.com/products/docker-desktop then re-run 'lense'"
+  # Use Docker only if it's actually usable. Many machines can't run Docker
+  # Desktop (org/MDM policy), so when it's absent or won't start we fall back to
+  # a native Homebrew Postgres + pgvector — no Docker required.
+  if command -v docker >/dev/null 2>&1; then
+    if ! docker info >/dev/null 2>&1; then
+      say "  ${dim}… starting Docker Desktop (up to 90s — accept any first-run prompt)${rst}"
+      open -a Docker >/dev/null 2>&1 || true
+      local i; for i in $(seq 1 45); do docker info >/dev/null 2>&1 && break; sleep 2; done
+    fi
+    if docker info >/dev/null 2>&1; then
+      local out
+      if ! out="$( cd "$ROOT" && docker compose up -d db 2>&1 )"; then
+        err "could not start the db container:"
+        printf "%s\n" "$out" | sed 's/^/      /'
         return 1
       fi
-    else
-      err "docker not found and Homebrew isn't installed."
-      err "install Docker Desktop (https://www.docker.com/products/docker-desktop) then re-run 'lense'"
-      return 1
+      local i
+      for i in $(seq 1 30); do
+        if ( cd "$ROOT" && docker compose exec -T db pg_isready -U "${POSTGRES_USER:-lens}" >/dev/null 2>&1 ); then
+          ok "database ready on :${POSTGRES_PORT:-5432} (docker)"; return 0
+        fi
+        sleep 1
+      done
+      warn "database not confirmed ready — continuing anyway"; return 0
     fi
+    warn "Docker is installed but isn't running — using a native Postgres instead"
   fi
-  # Ensure the daemon is up (Docker Desktop first launch needs a GUI consent).
-  if ! docker info >/dev/null 2>&1; then
-    say "  ${dim}… starting Docker Desktop (waiting up to 90s — accept any first-run prompt)${rst}"
-    open -a Docker >/dev/null 2>&1 || true
-    local i
-    for i in $(seq 1 45); do docker info >/dev/null 2>&1 && break; sleep 2; done
-  fi
-  if ! docker info >/dev/null 2>&1; then
-    err "Docker is installed but the daemon didn't come up — open Docker Desktop, finish its"
-    err "first-run setup, wait for the whale icon, then run 'lense' again"
+  ensure_db_native
+}
+
+# Docker-less fallback: a native Homebrew Postgres with pgvector on :PORT.
+# Reliable on machines where Docker Desktop can't be installed/run.
+ensure_db_native() {
+  local user pass db port
+  user="$(env_or POSTGRES_USER lens)"; pass="$(env_or POSTGRES_PASSWORD lens_dev_change_me)"
+  db="$(env_or POSTGRES_DB lens)";     port="$(env_or POSTGRES_PORT 5432)"
+
+  if ! command -v brew >/dev/null 2>&1; then
+    err "no Docker and no Homebrew — install Homebrew (https://brew.sh), then re-run 'lense'"
     return 1
   fi
-  local out
-  if ! out="$( cd "$ROOT" && docker compose up -d db 2>&1 )"; then
-    err "could not start the db container:"
-    printf "%s\n" "$out" | sed 's/^/      /'
-    return 1
-  fi
-  # wait for readiness (up to ~30s)
-  local i
-  for i in $(seq 1 30); do
-    if ( cd "$ROOT" && docker compose exec -T db pg_isready -U "${POSTGRES_USER:-lens}" >/dev/null 2>&1 ); then
-      ok "database ready on :${POSTGRES_PORT:-5432}"; return 0
-    fi
-    sleep 1
+
+  # Reuse an already-installed postgres formula; otherwise install postgresql@16.
+  local pgf="" f
+  for f in postgresql@16 postgresql@17 postgresql@15 postgresql@14 postgresql; do
+    brew list "$f" >/dev/null 2>&1 && { pgf="$f"; break; }
   done
-  warn "database not confirmed ready — continuing anyway"
+  if [ -z "$pgf" ]; then
+    say "  ${dim}… installing postgresql@16 (first run, a few minutes)${rst}"
+    brew install postgresql@16 >/dev/null 2>&1 || { err "brew install postgresql@16 failed"; return 1; }
+    pgf="postgresql@16"
+  fi
+
+  local pgbin; pgbin="$(brew --prefix "$pgf" 2>/dev/null)/bin"
+  [ -x "$pgbin/pg_isready" ] || { err "postgres tools not found under $pgbin"; return 1; }
+
+  # Start the service if it isn't already accepting connections on the port.
+  if ! "$pgbin/pg_isready" -h localhost -p "$port" >/dev/null 2>&1; then
+    say "  ${dim}… starting $pgf service${rst}"
+    brew services start "$pgf" >/dev/null 2>&1 || true
+    local i; for i in $(seq 1 30); do
+      "$pgbin/pg_isready" -h localhost -p "$port" >/dev/null 2>&1 && break; sleep 1
+    done
+  fi
+  if ! "$pgbin/pg_isready" -h localhost -p "$port" >/dev/null 2>&1; then
+    err "Postgres didn't come up on :$port — check 'brew services list'"; return 1
+  fi
+
+  # Make the pgvector extension AVAILABLE for this exact postgres (the app's
+  # knowledge base needs it). Try the bottle first; if the control file still
+  # isn't there (version mismatch), build it from source against this pg_config.
+  local sharedir ctrl
+  sharedir="$("$pgbin/pg_config" --sharedir 2>/dev/null)"
+  ctrl="$sharedir/extension/vector.control"
+  if [ ! -f "$ctrl" ]; then
+    say "  ${dim}… installing pgvector${rst}"
+    brew install pgvector >/dev/null 2>&1 || true
+  fi
+  if [ ! -f "$ctrl" ]; then
+    say "  ${dim}… building pgvector from source for $pgf${rst}"
+    local tmp; tmp="$(mktemp -d)"
+    git clone --depth 1 --branch v0.8.0 https://github.com/pgvector/pgvector.git "$tmp/pgvector" >/dev/null 2>&1 \
+      && ( cd "$tmp/pgvector" \
+           && make PG_CONFIG="$pgbin/pg_config" >/dev/null 2>&1 \
+           && make install PG_CONFIG="$pgbin/pg_config" >/dev/null 2>&1 ) \
+      || err "pgvector build failed — install Xcode CLT ('xcode-select --install') and re-run"
+    rm -rf "$tmp"
+  fi
+  if [ ! -f "$ctrl" ]; then
+    err "pgvector isn't available for $pgf (looked in $sharedir/extension)"
+    err "see https://github.com/pgvector/pgvector#installation, then re-run 'lense'"
+    return 1
+  fi
+
+  # Provision role + database + extension (idempotent). Connect to the bootstrap
+  # 'postgres' db as the OS superuser Homebrew's initdb created.
+  "$pgbin/psql" -h localhost -p "$port" -d postgres -v ON_ERROR_STOP=1 -q >/dev/null 2>&1 <<SQL
+DO \$do\$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${user}') THEN
+    CREATE ROLE "${user}" LOGIN SUPERUSER PASSWORD '${pass}';
+  ELSE
+    ALTER ROLE "${user}" WITH LOGIN SUPERUSER PASSWORD '${pass}';
+  END IF;
+END \$do\$;
+SQL
+  if [ $? -ne 0 ]; then
+    err "couldn't provision role '${user}' — try manually: $pgbin/psql -d postgres"
+    return 1
+  fi
+  if ! "$pgbin/psql" -h localhost -p "$port" -d postgres -tAc \
+        "SELECT 1 FROM pg_database WHERE datname='${db}'" 2>/dev/null | grep -q 1; then
+    "$pgbin/createdb" -h localhost -p "$port" -O "${user}" "${db}" >/dev/null 2>&1 \
+      || { err "couldn't create database '${db}'"; return 1; }
+  fi
+  if ! "$pgbin/psql" -h localhost -p "$port" -d "${db}" -q \
+        -c "CREATE EXTENSION IF NOT EXISTS vector;" >/dev/null 2>&1; then
+    err "couldn't enable pgvector in database '${db}'"; return 1
+  fi
+  ok "database ready on :$port (native $pgf + pgvector)"
 }
 
 # Create backend/venv and install deps if absent, so migrations/backend can run
@@ -358,7 +433,11 @@ cmd_stop() {
   stop_one "frontend" "$FE_PID" "vite"
   stop_one "backend"  "$BE_PID" "uvicorn app.main"
   if [ "${1:-}" = "--all" ]; then
-    ( cd "$ROOT" && docker compose stop db >/dev/null 2>&1 ) && ok "database stopped" || true
+    if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+      ( cd "$ROOT" && docker compose stop db >/dev/null 2>&1 ) && ok "database stopped" || true
+    else
+      say "${dim}(native Postgres left running — it's a shared brew service; stop with 'brew services stop postgresql@16')${rst}"
+    fi
   else
     say "${dim}(Postgres left running — use 'lense stop --all' to stop it too)${rst}"
   fi
@@ -366,7 +445,18 @@ cmd_stop() {
 
 cmd_status() {
   say "${bold}LENS status${rst}"
-  ( cd "$ROOT" && docker compose ps db --status running 2>/dev/null | grep -q db ) && ok "database: running" || warn "database: stopped"
+  if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+    ( cd "$ROOT" && docker compose ps db --status running 2>/dev/null | grep -q db ) && ok "database: running (docker)" || warn "database: stopped"
+  else
+    local port; port="$(env_or POSTGRES_PORT 5432)"
+    if command -v pg_isready >/dev/null 2>&1 && pg_isready -h localhost -p "$port" >/dev/null 2>&1; then
+      ok "database: running (native :$port)"
+    elif nc -z localhost "$port" >/dev/null 2>&1; then
+      ok "database: running (native :$port)"
+    else
+      warn "database: stopped"
+    fi
+  fi
   port_up "$BACKEND_PORT/api/health" && ok "backend:  http://localhost:$BACKEND_PORT" || warn "backend:  down"
   port_up "$FRONTEND_PORT" && ok "frontend: http://localhost:$FRONTEND_PORT" || warn "frontend: down"
   if curl -sf -o /dev/null "$OLLAMA_URL/api/tags"; then
