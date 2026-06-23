@@ -75,31 +75,37 @@ def analyze_dataset(
         if on_stage:
             on_stage(name, pct)
 
-    # Prompt budget. The earlier build over-trimmed everything to ~4k tokens,
-    # which starved the model of the methodology + protocol it needs to hunt.
-    # We now split content by STAGE so each prompt only carries what it needs:
+    # Prompt budget. Split content by STAGE so each prompt only carries what it
+    # needs:
     #   • Extractor gets the protocol + methodology + evidence (NOT the format).
     #   • Writer gets the finding format + the extracted findings (NOT the data).
-    # That keeps each prompt rich but well within num_ctx (raised to 16k).
-    finding_format = (finding_format or DEFAULT_FINDING_FORMAT)[:9600]
-    finding_categories = (finding_categories or prompts.DEFAULT_CATEGORIES)[:3500]
+    # The caps below keep the worst-case extractor prompt under ~6k tokens so it
+    # fits an 8k num_ctx with room for the generated findings. Crucially, the
+    # bulky constant context (full methodology doc, instructions, categories) is
+    # trimmed: on a 5-row CSV it otherwise dwarfs the actual evidence, sending
+    # 8-12k tokens through gemma3:27b on a 32 GB box — slow, and enough to crash
+    # it. The high-signal evidence (tool hits, suspicious signals, targeted rows)
+    # is always preserved below; the per-dataset focus + brief carry the specific
+    # query context, so the full methodology doc here is only a compact fallback.
+    finding_format = (finding_format or DEFAULT_FINDING_FORMAT)[:8000]
+    finding_categories = (finding_categories or prompts.DEFAULT_CATEGORIES)[:2000]
     analysis_instructions = (
         analysis_instructions or "Follow standard evidence-based threat-hunting practice."
-    )[:6500]
+    )[:2500]
     dataset_focus = (
         dataset_focus
         or "No specific methodology query matched this dataset by name — rely on "
         "the full methodology below."
-    )[:2200]
-    tenant_context = (tenant_context or "No additional tenant context provided.")[:2500]
+    )[:2000]
+    tenant_context = (tenant_context or "No additional tenant context provided.")[:1500]
     if isinstance(methodology_brief, dict):
         brief_text = json.dumps(methodology_brief, ensure_ascii=False, default=str)
     else:
         brief_text = methodology_brief or "No methodology brief available."
-    brief_text = brief_text[:2500]
-    methodology = (methodology or "No methodology document provided.")[:10000]
+    brief_text = brief_text[:1600]
+    methodology = (methodology or "No methodology document provided.")[:3500]
     evidence_json = json.dumps(evidence_package, ensure_ascii=False, default=str)
-    if len(evidence_json) > 13000:
+    if len(evidence_json) > 7000:
         # Wide/large dataset — shrink the bulky parts but ALWAYS keep the
         # high-signal evidence (tool hits, suspicious signals, targeted rows, the
         # entity/stat summary). Those are exactly where findings come from.
@@ -112,10 +118,10 @@ def analyze_dataset(
         slim["stats"] = stats
         slim["sample_rows"] = slim.get("sample_rows", [])[:8]
         evidence_json = json.dumps(slim, ensure_ascii=False, default=str)
-        if len(evidence_json) > 13000:  # still huge — drop top_values entirely, keep signals
+        if len(evidence_json) > 7000:  # still huge — drop top_values entirely, keep signals
             stats.pop("top_values", None)
             slim["stats"] = stats
-            evidence_json = json.dumps(slim, ensure_ascii=False, default=str)[:13000]
+            evidence_json = json.dumps(slim, ensure_ascii=False, default=str)[:7000]
     trace: dict[str, Any] = {}
 
     # ── Stage 1: Extractor — investigate the data, extract every finding ────

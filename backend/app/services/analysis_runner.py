@@ -7,6 +7,7 @@ once). Each call handles a single dataset.
 """
 from __future__ import annotations
 
+import logging
 import re
 import time
 
@@ -21,6 +22,8 @@ from app.services import (
     knowledge, methodology, methodology_parser,
 )
 from app.services import ollama_client as ollama
+
+logger = logging.getLogger("lens.analysis")
 
 
 def ensure_methodology_sections(db: Session, hunt: Hunt) -> dict | None:
@@ -384,6 +387,13 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
             dataset.status = "uploaded"  # back to a re-runnable state
         db.commit()
     except Exception as exc:  # noqa: BLE001 — record any failure on the job
+        # Make the failure visible: it was previously only stored on the job
+        # record, so `lense logs backend` showed nothing and the cause was a
+        # mystery. Log the full traceback here.
+        logger.exception(
+            "Dataset analysis failed (job=%s dataset=%s): %s",
+            job_id, getattr(dataset, "filename", "?"), exc,
+        )
         db.rollback()
         job.status = "error"
         job.error = str(exc)

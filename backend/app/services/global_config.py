@@ -40,11 +40,13 @@ def ai_defaults() -> dict:
         # model (one resident model, no swapping) — far faster.
         "single_model_pipeline": True,
         "num_predict": 2048,    # cap output (findings for one dataset are small)
-        # Context window. The extractor prompt carries the full investigation
-        # protocol + methodology + evidence, so 8192 would silently truncate it
-        # (Ollama drops the oldest tokens). 16384 fits the rich prompt; on a 7B
-        # model the extra KV cache is modest.
-        "num_ctx": 16384,
+        # Context window. The extractor prompt is now trimmed (see
+        # findings_engine) to fit comfortably here. The analyst is gemma3:27b —
+        # NOT a 7B model — so on a 32 GB Mac the KV cache for a 16k context is a
+        # multi-GB tax on top of the ~17 GB weights, which is what was starving
+        # the browser of RAM and slowing generation. 8192 holds the trimmed
+        # prompt + output with margin and roughly halves the KV-cache footprint.
+        "num_ctx": 8192,
         "keep_alive": "30m",    # keep the model warm between datasets
         # Each stage is a separate generation. On a slow box, turning Reviewer/QA
         # off runs a single analyst pass (≈3× faster) at some FP-reduction cost.
@@ -85,12 +87,12 @@ def _write(db: Session, key: str, title: str, data: dict) -> None:
 
 def get_ai(db: Session) -> dict:
     data = _read(db, AI_KEY, ai_defaults())
-    # A config saved under an older build may pin num_ctx too low (e.g. 8192) for
-    # the current rich extractor prompt, which would silently truncate the
-    # methodology. Floor it to the current default so guidance always fits.
-    floor = ai_defaults()["num_ctx"]
-    if int(data.get("num_ctx", 0)) < floor:
-        data["num_ctx"] = floor
+    # Floor num_ctx only if a saved config is implausibly small (would truncate
+    # the trimmed prompt). We do NOT force it up to a large value anymore — a
+    # 16k context on a 27B model is exactly what was crashing 32 GB machines, so
+    # the operator is free to keep num_ctx at the leaner default.
+    if int(data.get("num_ctx", 0)) < 4096:
+        data["num_ctx"] = ai_defaults()["num_ctx"]
     return data
 
 
