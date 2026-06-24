@@ -139,3 +139,45 @@ def dataset_index(evidence: dict[str, Any]) -> dict[str, Any]:
         "behavioral": behavioral_context(evidence),
         "time_range": time_range(evidence),
     }
+
+
+def entities_from_fields(
+    affected_users: Any, affected_assets: Any, evidence: Any
+) -> dict[str, list[str]]:
+    """
+    Derive typed entity buckets from a finding's RAW fields, with no evidence
+    package — the fallback for findings created before Phase A populated the
+    structured `entities` column. Lets correlation work on legacy findings.
+    """
+    buckets: dict[str, set[str]] = {b: set() for b in _BUCKETS}
+
+    def place(value: Any, default: str) -> None:
+        v = str(value).strip()
+        if not v or v.lower() in _NULLISH:
+            return
+        ioc = correlation._classify_indicator(v)
+        if ioc == "ip":
+            buckets["ips"].add(v)
+        elif ioc == "domain":
+            buckets["domains"].add(v)
+        elif ioc == "hash":
+            buckets["hashes"].add(v)
+        else:
+            buckets[default].add(v)
+
+    for u in correlation._as_str_list(affected_users):
+        place(u, "users")
+    for a in correlation._as_str_list(affected_assets):
+        place(a, "hosts")
+    # Pull IOCs out of the verbatim evidence blob.
+    for raw in correlation._as_str_list(evidence):
+        for token in re.split(r"[\s,;|\"'\[\]{}()]+", raw):
+            ioc = correlation._classify_indicator(token)
+            if ioc == "ip":
+                buckets["ips"].add(token)
+            elif ioc == "domain":
+                buckets["domains"].add(token)
+            elif ioc == "hash":
+                buckets["hashes"].add(token)
+
+    return {k: sorted(v) for k, v in buckets.items() if v}

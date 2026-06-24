@@ -19,12 +19,17 @@ import time
 from sqlalchemy.orm import Session
 
 from app.models import AnalysisJob, Dataset, Finding, Hunt, Incident
-from app.services import correlation_engine, jobs
+from app.services import correlation_engine, finding_details, jobs
 
 logger = logging.getLogger("lens.correlation")
 
 
 def _finding_dict(f: Finding) -> dict:
+    # Findings created before Phase A have no structured `entities`; derive them
+    # from the raw fields so correlation works on legacy findings too.
+    entities = f.entities or finding_details.entities_from_fields(
+        f.affected_users, f.affected_assets, f.evidence
+    )
     return {
         "id": f.id,
         "finding_ref": f.finding_ref,
@@ -32,7 +37,7 @@ def _finding_dict(f: Finding) -> dict:
         "category": f.category,
         "severity": f.severity,
         "summary": f.summary,
-        "entities": f.entities,
+        "entities": entities,
         "time_range": f.time_range,
         "mitre": f.mitre,
         "dataset_id": f.dataset_id,
