@@ -20,7 +20,11 @@ correlation.py.
 """
 from __future__ import annotations
 
+import json
 from typing import Any, Iterable
+
+from app.services import ollama_client as ollama
+from app.services import prompts
 
 # Entity buckets carried on each finding (Phase A `entities` column).
 _BUCKETS = ("users", "hosts", "ips", "domains", "hashes", "applications")
@@ -151,3 +155,47 @@ def build_correlation_package(
         "cross_dataset": cross_dataset_presence(findings, dataset_index),
         "timeline": timeline(findings),
     }
+
+
+# ── Phase C: LLM correlation pass ────────────────────────────────────────────
+
+def _compact_finding(f: dict[str, Any]) -> dict[str, Any]:
+    """The slice of a finding the correlation model needs (keeps the prompt small)."""
+    return {
+        "finding_ref": f.get("finding_ref"),
+        "title": f.get("title"),
+        "category": f.get("category"),
+        "severity": f.get("severity"),
+        "summary": (f.get("summary") or "")[:500],
+        "entities": f.get("entities"),
+        "time_range": f.get("time_range"),
+        "mitre": f.get("mitre"),
+        "dataset_id": f.get("dataset_id"),
+        "source_dataset": f.get("source_dataset"),
+    }
+
+
+def run_llm_correlation(
+    findings: list[dict[str, Any]], package: dict[str, Any]
+) -> dict[str, Any]:
+    """
+    Ask the analyst model to merge duplicates, enrich findings, and reconstruct
+    attack-chains from the deterministic package. Returns
+    {merges, enrichments, incidents} (empty lists on parse failure — never raises).
+    """
+    compact = [_compact_finding(f) for f in findings]
+    sys = prompts.CORRELATION_SYSTEM.format(guardrails=prompts.GUARDRAILS)
+    user = prompts.CORRELATION_PROMPT.format(
+        findings_json=json.dumps(compact, ensure_ascii=False, default=str)[:9000],
+        correlation_package_json=json.dumps(package, ensure_ascii=False, default=str)[:6000],
+    )
+    try:
+        out = ollama.parse_json_response(ollama.analyst(sys, user))
+    except ollama.OllamaError:
+        return {"merges": [], "enrichments": [], "incidents": [], "parse_error": True}
+    if not isinstance(out, dict):
+        return {"merges": [], "enrichments": [], "incidents": []}
+    out.setdefault("merges", [])
+    out.setdefault("enrichments", [])
+    out.setdefault("incidents", [])
+    return out

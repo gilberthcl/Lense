@@ -19,9 +19,9 @@ from app.models import (
     AnalysisJob, ClientApprovedSoftware, Dataset, Finding, Hunt, KnowledgeDocument,
 )
 from app.services import (
-    categories, config_store, csv_loader, enrichment, finding_details,
-    findings_engine, global_config, jobs, knowledge, methodology,
-    methodology_parser,
+    categories, config_store, correlation_runner, csv_loader, enrichment,
+    finding_details, findings_engine, global_config, jobs, knowledge,
+    methodology, methodology_parser,
 )
 from app.services import ollama_client as ollama
 
@@ -265,6 +265,29 @@ def _hunt_intel_index(db: Session, hunt: Hunt, max_bytes: int) -> dict:
     return index
 
 
+def _maybe_autocorrelate(db: Session, hunt: Hunt, tenant_id: int) -> None:
+    """Run the correlation phase once the LAST dataset of an opted-in hunt is
+    analyzed. Guarded against duplicate triggers when datasets finish together."""
+    if not getattr(hunt, "auto_correlate", False):
+        return
+    remaining = (
+        db.query(Dataset)
+        .filter(Dataset.hunt_id == hunt.id, Dataset.status != "analyzed")
+        .count()
+    )
+    if remaining:
+        return
+    if jobs.active_job(db, tenant_id=tenant_id, hunt_id=hunt.id, phase="correlation"):
+        return
+    corr = AnalysisJob(
+        tenant_id=tenant_id, hunt_id=hunt.id, phase="correlation", status="queued",
+    )
+    db.add(corr)
+    db.commit()
+    db.refresh(corr)
+    correlation_runner.run_correlation(db, corr.id)
+
+
 def ensure_methodology_brief(db: Session, hunt: Hunt) -> dict | None:
     """Lazily compute + cache the hunt's methodology brief (comprehension pass)."""
     if hunt.methodology_brief:
@@ -428,6 +451,11 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
             "trace": result["trace"],
         }
         db.commit()
+        # If this was the last dataset and the hunt opted in, run correlation now.
+        try:
+            _maybe_autocorrelate(db, hunt, job.tenant_id)
+        except Exception:  # noqa: BLE001 — never fail analysis because of correlation
+            logger.exception("auto-correlate after analysis failed (hunt=%s)", hunt.id)
     except jobs.JobCancelled:
         db.rollback()
         job = db.get(AnalysisJob, job_id)

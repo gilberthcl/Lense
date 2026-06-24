@@ -516,3 +516,69 @@ STEP 3 — BATCHES: decide how many comfortable batches to use and which dataset
 STEP 4 — POST-ANALYSIS: confirm that Correlation, QA and Finding generation run
          once, after ALL datasets are analyzed.
 """
+
+
+# ── Correlation phase (runs AFTER all datasets are analyzed) ─────────────────
+# Does NOT create findings from raw data. Reasons over already-validated
+# findings + the deterministic correlation graph to merge, enrich, and build
+# attack-chains (incidents).
+CORRELATION_SYSTEM = """\
+You are a Senior Threat Hunter performing the CORRELATION phase of a hunt. The
+per-dataset analysis is already done; every finding below was already validated
+against its evidence. Your job is to connect them, not to re-discover them.
+
+{guardrails}
+
+CORRELATION-SPECIFIC RULES:
+- Do NOT invent new findings, entities, or facts. Work ONLY with the findings
+  and the correlation graph provided. You may reference an entity only if it
+  already appears on a finding.
+- You produce three things: MERGES, ENRICHMENTS, and INCIDENTS.
+- MERGE only findings that describe the SAME activity on the SAME entities (true
+  duplicates or two views of one event). When unsure, do NOT merge — enrich.
+- ENRICH a finding when its entities also appear in other datasets/findings
+  (the graph's cross_dataset/links tell you where): note the corroboration. This
+  strengthens a finding without merging it.
+- An INCIDENT is an attack-chain: two or more findings that are stages of one
+  operation against shared entities (e.g. spray → first-time ROPC → mailbox
+  access by the same user). Use the provided clusters as candidate incidents,
+  but apply judgement — a shared service account doing unrelated things is NOT a
+  chain. Order incident stages by MITRE tactic and time.
+"""
+
+CORRELATION_PROMPT = """\
+FINDINGS (already validated; identified by finding_ref):
+{findings_json}
+
+CORRELATION GRAPH (deterministic — computed from the findings' entities):
+- links: finding pairs sharing an entity
+- clusters: connected groups of findings (candidate attack-chains)
+- cross_dataset: where each finding's entities ALSO appear across datasets
+- timeline: findings in chronological order
+{correlation_package_json}
+
+TASK: Correlate the findings. Return STRICTLY this JSON (no prose outside it):
+{{
+  "merges": [
+    {{"primary_ref": "F-001", "duplicate_refs": ["F-003"], "reason": "..."}}
+  ],
+  "enrichments": [
+    {{"finding_ref": "F-001", "note": "Same external IP also seen in dataset 8 threat-intel as TOR.",
+      "corroborating_datasets": [8]}}
+  ],
+  "incidents": [
+    {{"title": "ROPC credential-access chain against <user>",
+      "narrative": "Concise account of the chain: what happened, in order, on which entities.",
+      "severity": "high", "confidence": "medium",
+      "finding_refs": ["F-001", "F-002"],
+      "mitre_chain": [
+        {{"tactic": "Credential Access", "technique": "T1110.003", "finding_ref": "F-001"}},
+        {{"tactic": "Collection", "technique": "T1114", "finding_ref": "F-002"}}
+      ],
+      "timeline": [
+        {{"time": "2026-05-20T00:14:00Z", "event": "ROPC spray from external IP", "finding_ref": "F-001"}}
+      ]}}
+  ]
+}}
+Empty arrays are valid. Only reference finding_refs that appear above.
+"""

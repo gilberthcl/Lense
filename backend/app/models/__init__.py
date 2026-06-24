@@ -240,6 +240,27 @@ class Finding(Base):
     dataset: Mapped["Dataset"] = relationship(back_populates="findings")
 
 
+# ── Incidents (correlation-phase output: an attack-chain over >=2 findings) ──
+class Incident(Base):
+    __tablename__ = "incidents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    hunt_id: Mapped[int] = mapped_column(
+        ForeignKey("hunts.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    title: Mapped[str] = mapped_column(String(400), nullable=False)
+    narrative: Mapped[str | None] = mapped_column(Text)      # the attack-chain story
+    severity: Mapped[str | None] = mapped_column(String(20))
+    confidence: Mapped[str | None] = mapped_column(String(20))
+    mitre_chain: Mapped[list | None] = mapped_column(JSON)   # ordered [{tactic,technique,finding_ref}]
+    timeline: Mapped[list | None] = mapped_column(JSON)      # ordered [{time,event,finding_ref}]
+    finding_ids: Mapped[list | None] = mapped_column(JSON)   # member finding ids
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 # ── Client contacts ────────────────────────────────────────────────────────
 class ClientContact(Base):
     __tablename__ = "client_contacts"

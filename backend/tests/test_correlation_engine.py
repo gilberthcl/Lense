@@ -48,3 +48,21 @@ def test_no_entities_no_links():
             {"id": 2, "finding_ref": "F-002", "entities": {}}]
     pkg = ce.build_correlation_package(bare, {})
     assert pkg["links"] == [] and pkg["clusters"] == []
+
+
+def test_run_llm_correlation_parses_output(monkeypatch):
+    payload = (
+        '{"merges": [{"primary_ref":"F-001","duplicate_refs":["F-002"],"reason":"dup"}],'
+        ' "enrichments": [], '
+        '"incidents": [{"title":"chain","finding_refs":["F-001","F-002"]}]}'
+    )
+    monkeypatch.setattr(ce.ollama, "analyst", lambda sys, user: payload)
+    out = ce.run_llm_correlation(_FINDINGS, ce.build_correlation_package(_FINDINGS, _INDEX))
+    assert out["merges"][0]["primary_ref"] == "F-001"
+    assert out["incidents"][0]["finding_refs"] == ["F-001", "F-002"]
+
+
+def test_run_llm_correlation_survives_bad_json(monkeypatch):
+    monkeypatch.setattr(ce.ollama, "analyst", lambda sys, user: "not json at all")
+    out = ce.run_llm_correlation(_FINDINGS, ce.build_correlation_package(_FINDINGS, _INDEX))
+    assert out["merges"] == [] and out["incidents"] == [] and out["parse_error"] is True
