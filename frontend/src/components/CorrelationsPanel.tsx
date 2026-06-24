@@ -3,6 +3,7 @@ import { api, ApiError, pollJob } from "../lib/api";
 import type {
   CorrelationEntity,
   CorrelationResult,
+  CorrelationSummary,
   Hunt,
   Incident,
   Job,
@@ -187,20 +188,30 @@ export default function CorrelationsPanel({
 }) {
   const toast = useToast();
   const [data, setData] = useState<CorrelationResult | null>(null);
-  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [summary, setSummary] = useState<CorrelationSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
   const [job, setJob] = useState<Job | null>(null);
 
   const load = () => {
     setLoading(true);
-    Promise.all([api.getCorrelations(tid, hid), api.getIncidents(tid, hid)])
-      .then(([corr, inc]) => {
+    Promise.all([api.getCorrelations(tid, hid), api.getCorrelationSummary(tid, hid)])
+      .then(([corr, sum]) => {
         setData(corr);
-        setIncidents(inc.incidents ?? []);
+        setSummary(sum);
       })
       .catch((e: ApiError) => toast.error(e.message))
       .finally(() => setLoading(false));
+  };
+
+  const unmerge = async (fid: number) => {
+    try {
+      await api.unmergeFinding(tid, hid, fid);
+      toast.success("Finding restored as separate");
+      load();
+    } catch (e) {
+      toast.error((e as ApiError).message);
+    }
   };
 
   useEffect(() => {
@@ -300,16 +311,97 @@ export default function CorrelationsPanel({
               )}
             </div>
           )}
-          {incidents.length === 0 ? (
+          {!summary || (summary.totals.incidents === 0 && summary.totals.merged === 0 && summary.totals.enriched === 0) ? (
             <EmptyState>
-              No correlated incidents yet. Run the correlation phase after analyzing
-              datasets — it links findings that share entities into attack-chains.
+              No correlation results yet. Run the correlation phase after analyzing
+              datasets — it links findings into attack-chains, merges duplicates,
+              and enriches findings with cross-dataset corroboration.
             </EmptyState>
           ) : (
-            <div className="space-y-3">
-              {incidents.map((inc) => (
-                <IncidentCard key={inc.id} incident={inc} />
-              ))}
+            <div className="space-y-4">
+              {/* What the phase did */}
+              <div className="rounded border border-slate-800 bg-slate-950/50 p-3 text-sm text-slate-300">
+                <p>
+                  Reviewed <b>{summary.totals.active_findings}</b> finding(s) →{" "}
+                  built <b>{summary.totals.incidents}</b> incident(s),{" "}
+                  merged <b>{summary.totals.merged}</b>, enriched{" "}
+                  <b>{summary.totals.enriched}</b>.
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Incidents are new attack-chain groupings. Merges and enrichments
+                  update existing findings (visible on the Findings tab).
+                </p>
+              </div>
+
+              {summary.merged.length > 0 && (
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Merged findings ({summary.merged.length})
+                  </p>
+                  <div className="space-y-1.5">
+                    {summary.merged.map((m) => (
+                      <div
+                        key={m.finding_id}
+                        className="flex flex-wrap items-center gap-2 rounded border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm"
+                      >
+                        <span className="font-mono text-xs text-slate-500">{m.ref}</span>
+                        <span className="text-slate-300">{m.title}</span>
+                        <span className="text-slate-600">→ merged into</span>
+                        <span className="font-mono text-xs text-indigo-300">{m.into_ref}</span>
+                        <button
+                          onClick={() => unmerge(m.finding_id)}
+                          className="ml-auto rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800"
+                        >
+                          Un-merge
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {summary.enriched.length > 0 && (
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Enriched findings ({summary.enriched.length})
+                  </p>
+                  <div className="space-y-1.5">
+                    {summary.enriched.map((e) => (
+                      <div
+                        key={e.ref}
+                        className="rounded border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-xs text-indigo-300">{e.ref}</span>
+                          <span className="text-slate-300">{e.title}</span>
+                        </div>
+                        {e.note && <p className="mt-1 text-xs text-slate-400">{e.note}</p>}
+                        {!!e.corroborating_datasets?.length && (
+                          <p className="mt-1 text-[11px] text-slate-500">
+                            Corroborated by:{" "}
+                            {e.corroborating_datasets
+                              .map((d) => d.filename ?? `dataset ${d.id}`)
+                              .join(", ")}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {summary.incidents.length > 0 && (
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Attack-chain incidents ({summary.incidents.length})
+                  </p>
+                  <div className="space-y-3">
+                    {summary.incidents.map((inc: Incident) => (
+                      <IncidentCard key={inc.id} incident={inc} />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -438,6 +438,63 @@ export interface IncidentResult {
   incidents: Incident[];
 }
 
+export interface MergedFinding {
+  finding_id: number;
+  ref: string;
+  title: string;
+  into_ref?: string | null;
+  into_title?: string | null;
+}
+export interface EnrichedFinding {
+  ref: string;
+  title: string;
+  note?: string | null;
+  corroborating_datasets?: { id: number; filename?: string | null }[] | null;
+}
+export interface CorrelationSummary {
+  hunt_id?: number;
+  totals: {
+    findings: number;
+    active_findings: number;
+    incidents: number;
+    merged: number;
+    enriched: number;
+  };
+  incidents: Incident[];
+  merged: MergedFinding[];
+  enriched: EnrichedFinding[];
+}
+
+// Analysis-phase summary report.
+export interface AnalysisDatasetSummary {
+  id: number;
+  filename: string;
+  status: string;
+  row_count?: number;
+  col_count?: number;
+  assessment?: string | null;
+  finding_count: number;
+  findings: {
+    ref: string;
+    title: string;
+    category?: FindingCategory;
+    severity?: string | null;
+    merged?: boolean;
+  }[];
+}
+export interface AnalysisSummary {
+  hunt_id?: number;
+  totals: {
+    datasets: number;
+    analyzed: number;
+    findings: number;
+    active_findings: number;
+    by_category: Record<string, number>;
+    by_severity: Record<string, number>;
+  };
+  datasets: AnalysisDatasetSummary[];
+}
+
 export type ReportLang = "en" | "es";
 
 // Request payload helpers

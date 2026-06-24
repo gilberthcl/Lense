@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_tenant
 from app.core.config import settings
 from app.core.db import SessionLocal, get_db
-from app.models import AnalysisJob, Hunt, KnowledgeDocument, Tenant
+from app.models import AnalysisJob, Dataset, Finding, Hunt, KnowledgeDocument, Tenant
 from app.schemas import HuntCreate, HuntOut, HuntUpdate, JobOut
 import time
 
@@ -71,6 +71,86 @@ def get_hunt(
     db: Session = Depends(get_db),
 ):
     return _resolve_hunt(db, tenant, hunt_id)
+
+
+@router.get("/{hunt_id}/analysis-summary")
+def analysis_summary(
+    hunt_id: int,
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+):
+    """
+    A readable summary of the ANALYSIS phase: overall totals, and dataset-by-
+    dataset what was observed (the analyst's per-dataset assessment) plus the
+    findings each dataset produced.
+    """
+    hunt = _resolve_hunt(db, tenant, hunt_id)
+    datasets = (
+        db.query(Dataset)
+        .filter_by(tenant_id=tenant.id, hunt_id=hunt_id)
+        .order_by(Dataset.filename)
+        .all()
+    )
+    findings = db.query(Finding).filter_by(tenant_id=tenant.id, hunt_id=hunt_id).all()
+
+    findings_by_ds: dict[int, list] = {}
+    for f in findings:
+        findings_by_ds.setdefault(f.dataset_id, []).append(f)
+
+    # Latest done analysis job per dataset → its assessment text.
+    assessment: dict[int, str] = {}
+    for j in (
+        db.query(AnalysisJob)
+        .filter_by(tenant_id=tenant.id, hunt_id=hunt_id, phase="analysis", status="done")
+        .order_by(AnalysisJob.created_at.desc())
+        .all()
+    ):
+        if j.dataset_id and j.dataset_id not in assessment:
+            assessment[j.dataset_id] = (j.result or {}).get("assessment")
+
+    def fcount(seq, key, value):
+        return sum(1 for f in seq if getattr(f, key) == value)
+
+    active = [f for f in findings if not f.merged_into_id]
+    by_category: dict[str, int] = {}
+    by_severity: dict[str, int] = {}
+    for f in active:
+        if f.category:
+            by_category[f.category] = by_category.get(f.category, 0) + 1
+        if f.severity:
+            by_severity[f.severity] = by_severity.get(f.severity, 0) + 1
+
+    datasets_out = []
+    for d in datasets:
+        fs = findings_by_ds.get(d.id, [])
+        datasets_out.append({
+            "id": d.id,
+            "filename": d.filename,
+            "status": d.status,
+            "row_count": d.row_count,
+            "col_count": d.col_count,
+            "assessment": assessment.get(d.id),
+            "finding_count": len(fs),
+            "findings": [
+                {"ref": f.finding_ref, "title": f.title,
+                 "category": f.category, "severity": f.severity,
+                 "merged": bool(f.merged_into_id)}
+                for f in fs
+            ],
+        })
+
+    return {
+        "hunt_id": hunt_id,
+        "totals": {
+            "datasets": len(datasets),
+            "analyzed": fcount(datasets, "status", "analyzed"),
+            "findings": len(findings),
+            "active_findings": len(active),
+            "by_category": by_category,
+            "by_severity": by_severity,
+        },
+        "datasets": datasets_out,
+    }
 
 
 @router.patch("/{hunt_id}", response_model=HuntOut)

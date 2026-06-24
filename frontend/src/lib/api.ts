@@ -7,6 +7,8 @@ import type {
   ClientOverview,
   Contact,
   CorrelationResult,
+  CorrelationSummary,
+  AnalysisSummary,
   IncidentResult,
   CreateApprovedSoftwareInput,
   CreateCalendarInput,
@@ -354,6 +356,15 @@ export const api = {
   // --- Correlation phase (incidents / attack-chains) ---
   getIncidents: (tid: string, hid: string) =>
     request<IncidentResult>(`/api/tenants/${tid}/hunts/${hid}/correlations/incidents`),
+  getCorrelationSummary: (tid: string, hid: string) =>
+    request<CorrelationSummary>(`/api/tenants/${tid}/hunts/${hid}/correlations/summary`),
+  unmergeFinding: (tid: string, hid: string, fid: number) =>
+    request<{ ok: boolean }>(
+      `/api/tenants/${tid}/hunts/${hid}/correlations/findings/${fid}/unmerge`,
+      { method: "POST" },
+    ),
+  getAnalysisSummary: (tid: string, hid: string) =>
+    request<AnalysisSummary>(`/api/tenants/${tid}/hunts/${hid}/analysis-summary`),
   runCorrelation: (tid: string, hid: string) =>
     request<Job>(`/api/tenants/${tid}/hunts/${hid}/correlations/run`, { method: "POST" }),
   setAutoCorrelate: (tid: string, hid: string, value: boolean) =>

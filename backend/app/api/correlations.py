@@ -90,7 +90,81 @@ def list_incidents(
     }
 
 
-@router.post("/run", response_model=JobOut, status_code=202)
+@router.get("/summary")
+def correlation_summary(
+    hunt_id: int,
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+):
+    """What the correlation phase did: incidents built, findings merged/enriched."""
+    hunt = db.get(Hunt, hunt_id)
+    if not hunt or hunt.tenant_id != tenant.id:
+        raise HTTPException(status_code=404, detail="Hunt not found")
+
+    findings = db.query(Finding).filter_by(tenant_id=tenant.id, hunt_id=hunt_id).all()
+    by_id = {f.id: f for f in findings}
+    ref_by_id = {f.id: f.finding_ref for f in findings}
+
+    merged = []
+    for f in findings:
+        if f.merged_into_id:
+            survivor = by_id.get(f.merged_into_id)
+            merged.append({
+                "finding_id": f.id,
+                "ref": f.finding_ref,
+                "title": f.title,
+                "into_ref": survivor.finding_ref if survivor else None,
+                "into_title": survivor.title if survivor else None,
+            })
+
+    enriched = []
+    for f in findings:
+        if f.enrichment:
+            enriched.append({
+                "ref": f.finding_ref,
+                "title": f.title,
+                "note": (f.enrichment or {}).get("note"),
+                "corroborating_datasets": (f.enrichment or {}).get("corroborating_datasets"),
+            })
+
+    incidents = (
+        db.query(Incident)
+        .filter_by(tenant_id=tenant.id, hunt_id=hunt_id)
+        .order_by(Incident.id)
+        .all()
+    )
+    active = [f for f in findings if not f.merged_into_id]
+    return {
+        "hunt_id": hunt_id,
+        "totals": {
+            "findings": len(findings),
+            "active_findings": len(active),
+            "incidents": len(incidents),
+            "merged": len(merged),
+            "enriched": len(enriched),
+        },
+        "incidents": [_incident_to_dict(i, ref_by_id) for i in incidents],
+        "merged": merged,
+        "enriched": enriched,
+    }
+
+
+@router.post("/findings/{finding_id}/unmerge")
+def unmerge_finding(
+    hunt_id: int,
+    finding_id: int,
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+):
+    """Undo a correlation merge — restore the finding as a separate item."""
+    f = db.get(Finding, finding_id)
+    if not f or f.tenant_id != tenant.id or f.hunt_id != hunt_id:
+        raise HTTPException(status_code=404, detail="Finding not found")
+    f.merged_into_id = None
+    if f.status == "merged":
+        f.status = "draft"
+    db.commit()
+    return {"ok": True, "finding_id": finding_id}
 def run_correlation_phase(
     hunt_id: int,
     background: BackgroundTasks,
