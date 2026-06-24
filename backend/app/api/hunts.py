@@ -7,7 +7,7 @@ from app.api.deps import get_tenant
 from app.core.config import settings
 from app.core.db import SessionLocal, get_db
 from app.models import AnalysisJob, Hunt, KnowledgeDocument, Tenant
-from app.schemas import HuntCreate, HuntOut, JobOut
+from app.schemas import HuntCreate, HuntOut, HuntUpdate, JobOut
 import time
 
 from app.services import doc_loader, jobs, methodology, methodology_parser
@@ -71,6 +71,21 @@ def get_hunt(
     db: Session = Depends(get_db),
 ):
     return _resolve_hunt(db, tenant, hunt_id)
+
+
+@router.patch("/{hunt_id}", response_model=HuntOut)
+def update_hunt(
+    hunt_id: int,
+    payload: HuntUpdate,
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+):
+    hunt = _resolve_hunt(db, tenant, hunt_id)
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(hunt, field, value)
+    db.commit()
+    db.refresh(hunt)
+    return hunt
 
 
 @router.post("/{hunt_id}/methodology", response_model=HuntOut)

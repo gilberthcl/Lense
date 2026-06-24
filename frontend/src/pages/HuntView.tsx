@@ -160,7 +160,7 @@ export default function HuntView() {
       )}
       {tab === "findings" && <FindingsPanel tid={tid} hid={hid} reloadKey={findingsKey} />}
       {tab === "correlations" && (
-        <CorrelationsPanel tid={tid} hid={hid} reloadKey={findingsKey} />
+        <CorrelationsPanel tid={tid} hid={hid} reloadKey={findingsKey} hunt={hunt} onRefresh={loadHunt} />
       )}
     </div>
   );

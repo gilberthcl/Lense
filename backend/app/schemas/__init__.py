@@ -156,6 +156,16 @@ class HuntCreate(BaseModel):
     siem: str | None = None
 
 
+class HuntUpdate(BaseModel):
+    """Partial hunt update (only provided fields change)."""
+    name: str | None = None
+    objective: str | None = None
+    report_language: str | None = None
+    edr: str | None = None
+    siem: str | None = None
+    auto_correlate: bool | None = None
+
+
 class HuntOut(ORMModel):
     id: int
     tenant_id: int
@@ -170,6 +180,7 @@ class HuntOut(ORMModel):
     analysis_plan: dict | None
     plan_state: dict | None
     status: str
+    auto_correlate: bool = False
     created_at: datetime
 
 

@@ -227,6 +227,7 @@ export interface Hunt {
   methodology_sections?: MethodologySections | null;
   analysis_plan?: AnalysisPlan | null;
   plan_state?: PlanState | null;
+  auto_correlate?: boolean;
   created_at: string;
 }
 
@@ -348,6 +349,7 @@ export interface Job {
   model?: string | null;
   log?: JobLogEntry[] | null;
   error?: string | null;
+  result?: Record<string, unknown> | null;
 }
 
 export type FindingCategory =
@@ -406,6 +408,34 @@ export interface CorrelationResult {
   entity_count: number;
   correlations: CorrelationEntity[];
   iocs: CorrelationEntity[];
+}
+
+// Correlation-phase output: an attack-chain over >= 2 findings.
+export interface IncidentMitreStep {
+  tactic?: string;
+  technique?: string;
+  finding_ref?: string;
+}
+export interface IncidentTimelineStep {
+  time?: string;
+  event?: string;
+  finding_ref?: string;
+}
+export interface Incident {
+  id: number;
+  title: string;
+  narrative?: string | null;
+  severity?: string | null;
+  confidence?: string | null;
+  mitre_chain?: IncidentMitreStep[] | null;
+  timeline?: IncidentTimelineStep[] | null;
+  finding_ids?: number[] | null;
+  finding_refs?: (string | null)[];
+  created_at?: string;
+}
+export interface IncidentResult {
+  hunt_id?: number;
+  incidents: Incident[];
 }
 
 export type ReportLang = "en" | "es";

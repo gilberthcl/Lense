@@ -7,6 +7,7 @@ import type {
   ClientOverview,
   Contact,
   CorrelationResult,
+  IncidentResult,
   CreateApprovedSoftwareInput,
   CreateCalendarInput,
   CreateContactInput,
@@ -349,6 +350,17 @@ export const api = {
   // --- Correlations (Phase 2) ---
   getCorrelations: (tid: string, hid: string) =>
     request<CorrelationResult>(`/api/tenants/${tid}/hunts/${hid}/correlations`),
+
+  // --- Correlation phase (incidents / attack-chains) ---
+  getIncidents: (tid: string, hid: string) =>
+    request<IncidentResult>(`/api/tenants/${tid}/hunts/${hid}/correlations/incidents`),
+  runCorrelation: (tid: string, hid: string) =>
+    request<Job>(`/api/tenants/${tid}/hunts/${hid}/correlations/run`, { method: "POST" }),
+  setAutoCorrelate: (tid: string, hid: string, value: boolean) =>
+    request<Hunt>(`/api/tenants/${tid}/hunts/${hid}`, {
+      method: "PATCH",
+      body: JSON.stringify({ auto_correlate: value }),
+    }),
 
   // --- Report (Phase 2): download the generated DOCX ---
   downloadReport: async (tid: string, hid: string, lang: ReportLang = "en") => {
