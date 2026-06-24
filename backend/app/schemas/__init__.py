@@ -205,6 +205,16 @@ class FindingOut(ORMModel):
     recommendations: str | None
     status: str
     reviewer_notes: str | None
+    # Phase A structured detail + correlation-phase outputs (default None so
+    # findings created before this migration still serialize).
+    entities: dict | None = None
+    time_range: dict | None = None
+    behavioral_context: dict | None = None
+    evidence_rows: list | None = None
+    source_dataset: str | None = None
+    enrichment: dict | None = None
+    chain_id: int | None = None
+    merged_into_id: int | None = None
     created_at: datetime
 
 

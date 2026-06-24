@@ -149,6 +149,8 @@ class Hunt(Base):
     # Review/execution state for the plan: {status, feedback, accepted_at}.
     plan_state: Mapped[dict | None] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(30), default="created")
+    # Run the correlation phase automatically when dataset analysis finishes.
+    auto_correlate: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     tenant: Mapped["Tenant"] = relationship(back_populates="hunts")
@@ -179,6 +181,10 @@ class Dataset(Base):
     col_count: Mapped[int] = mapped_column(Integer, default=0)
     columns: Mapped[dict | None] = mapped_column(JSON)   # [{name, dtype}, ...]
     stats: Mapped[dict | None] = mapped_column(JSON)      # computed statistics
+    # Per-dataset entity + behavioral index, persisted at analysis time so the
+    # correlation phase can cross-reference entities across datasets cheaply
+    # (no LLM re-analysis).
+    entity_index: Mapped[dict | None] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(30), default="uploaded")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
@@ -217,6 +223,17 @@ class Finding(Base):
     recommendations: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default="draft")
     reviewer_notes: Mapped[str | None] = mapped_column(Text)  # analyst review notes
+    # ── Structured detail for the correlation phase (Phase A) ──
+    # Everything needed to correlate a finding WITHOUT re-reading the CSVs.
+    entities: Mapped[dict | None] = mapped_column(JSON)            # {users,hosts,ips,domains,hashes,applications}
+    time_range: Mapped[dict | None] = mapped_column(JSON)         # observed activity window
+    behavioral_context: Mapped[dict | None] = mapped_column(JSON) # fan-out/concentration/TI signals
+    evidence_rows: Mapped[list | None] = mapped_column(JSON)      # verbatim rows behind the finding
+    source_dataset: Mapped[str | None] = mapped_column(String(400))  # filename it came from
+    # ── Correlation-phase outputs (filled in Phases C/D) ──
+    enrichment: Mapped[dict | None] = mapped_column(JSON)         # cross-dataset corroboration notes
+    chain_id: Mapped[int | None] = mapped_column(Integer, index=True)        # incident/attack-chain grouping
+    merged_into_id: Mapped[int | None] = mapped_column(Integer, index=True)  # dedup audit (survivor id)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     hunt: Mapped["Hunt"] = relationship(back_populates="findings")

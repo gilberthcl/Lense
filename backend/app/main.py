@@ -16,6 +16,24 @@ import app.models  # noqa: F401 — ensure models are registered on Base
 from app.services import auth, config_store, global_config, jobs
 
 
+# Additive columns introduced after a DB may already exist. create_all() only
+# creates missing TABLES, never alters existing ones, and the dev DB predates
+# Alembic stamping — so we add new columns idempotently here. Safe on fresh DBs
+# (create_all already made them) and on populated ones (no data touched).
+_COLUMN_ADDITIONS = (
+    "ALTER TABLE findings ADD COLUMN IF NOT EXISTS entities JSON",
+    "ALTER TABLE findings ADD COLUMN IF NOT EXISTS time_range JSON",
+    "ALTER TABLE findings ADD COLUMN IF NOT EXISTS behavioral_context JSON",
+    "ALTER TABLE findings ADD COLUMN IF NOT EXISTS evidence_rows JSON",
+    "ALTER TABLE findings ADD COLUMN IF NOT EXISTS source_dataset VARCHAR(400)",
+    "ALTER TABLE findings ADD COLUMN IF NOT EXISTS enrichment JSON",
+    "ALTER TABLE findings ADD COLUMN IF NOT EXISTS chain_id INTEGER",
+    "ALTER TABLE findings ADD COLUMN IF NOT EXISTS merged_into_id INTEGER",
+    "ALTER TABLE datasets ADD COLUMN IF NOT EXISTS entity_index JSON",
+    "ALTER TABLE hunts ADD COLUMN IF NOT EXISTS auto_correlate BOOLEAN DEFAULT FALSE",
+)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Dev convenience: enable pgvector + create tables. Set DB_AUTO_CREATE=false to
@@ -24,6 +42,9 @@ async def lifespan(app: FastAPI):
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
     if settings.db_auto_create:
         Base.metadata.create_all(bind=engine)
+        with engine.begin() as conn:
+            for stmt in _COLUMN_ADDITIONS:
+                conn.execute(text(stmt))
     # Seed the Structured Threat Hunt module config from version-controlled defaults.
     db = SessionLocal()
     try:

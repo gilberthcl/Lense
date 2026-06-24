@@ -19,8 +19,9 @@ from app.models import (
     AnalysisJob, ClientApprovedSoftware, Dataset, Finding, Hunt, KnowledgeDocument,
 )
 from app.services import (
-    categories, config_store, csv_loader, enrichment, findings_engine,
-    global_config, jobs, knowledge, methodology, methodology_parser,
+    categories, config_store, csv_loader, enrichment, finding_details,
+    findings_engine, global_config, jobs, knowledge, methodology,
+    methodology_parser,
 )
 from app.services import ollama_client as ollama
 
@@ -388,6 +389,7 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
         job.progress = 85
         existing = db.query(Finding).filter_by(hunt_id=hunt.id).count()
         for i, f in enumerate(result["findings"], start=existing + 1):
+            detail = finding_details.build(f, evidence)
             db.add(
                 Finding(
                     tenant_id=job.tenant_id,
@@ -404,9 +406,18 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
                     affected_assets=f.get("affected_assets"),
                     affected_users=f.get("affected_users"),
                     recommendations=f.get("recommendations"),
+                    # Phase A: structured detail for the correlation phase.
+                    source_dataset=dataset.filename,
+                    entities=detail["entities"],
+                    time_range=detail["time_range"],
+                    behavioral_context=detail["behavioral_context"],
+                    evidence_rows=detail["evidence_rows"],
                 )
             )
 
+        # Persist the per-dataset entity index so the correlation phase can
+        # cross-reference entities across datasets without re-analysis.
+        dataset.entity_index = finding_details.dataset_index(evidence)
         dataset.status = "analyzed"
         job.status = "done"
         job.progress = 100
