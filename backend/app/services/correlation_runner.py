@@ -14,6 +14,7 @@ the findings' Phase-A structured detail.
 from __future__ import annotations
 
 import logging
+import time
 
 from sqlalchemy.orm import Session
 
@@ -116,13 +117,21 @@ def run_correlation(db: Session, job_id: int) -> None:
     job = db.get(AnalysisJob, job_id)
     if job is None:
         return
+    t0 = time.monotonic()
+
+    def stage(msg: str, pct: int) -> None:
+        if jobs.is_cancelled(db, job_id):
+            raise jobs.JobCancelled()
+        job.current_task = msg
+        job.progress = pct
+        job.log = (job.log or []) + [{"at": round(time.monotonic() - t0, 1), "msg": msg}]
+        db.commit()
+
     try:
         hunt = db.get(Hunt, job.hunt_id)
         job.status = "running"
-        job.progress = 10
-        job.current_task = "Preparing correlation"
-        db.commit()
-
+        job.log = []
+        stage("Clearing previous correlation output", 10)
         _reset_correlation(db, hunt.id)
 
         findings = (
@@ -132,6 +141,7 @@ def run_correlation(db: Session, job_id: int) -> None:
             .order_by(Finding.id)
             .all()
         )
+        stage(f"Loaded {len(findings)} finding(s)", 20)
         if len(findings) < 2:
             job.status = "done"
             job.progress = 100
@@ -147,24 +157,29 @@ def run_correlation(db: Session, job_id: int) -> None:
         dataset_index = {d.id: (d.entity_index or {}) for d in datasets}
         dataset_names = {d.id: d.filename for d in datasets}
 
-        if jobs.is_cancelled(db, job_id):
-            raise jobs.JobCancelled()
-
-        job.current_task = "Building correlation graph"
-        job.progress = 35
-        db.commit()
         fdicts = [_finding_dict(f) for f in findings]
         package = correlation_engine.build_correlation_package(fdicts, dataset_index)
+        stage(
+            f"Graph built — {len(package['links'])} entity link(s), "
+            f"{len(package['clusters'])} candidate chain(s)",
+            35,
+        )
 
-        job.current_task = "Correlating findings (LLM)"
-        job.progress = 55
-        db.commit()
+        stage("Correlating findings with the analyst model…", 55)
         out = correlation_engine.run_llm_correlation(fdicts, package)
+        stage(
+            f"Model proposed {len(out.get('incidents', []))} incident(s), "
+            f"{len(out.get('merges', []))} merge(s), {len(out.get('enrichments', []))} enrichment(s)",
+            80,
+        )
 
-        job.current_task = "Applying correlation results"
-        job.progress = 85
-        db.commit()
+        stage("Applying correlation results", 90)
         summary = _apply(db, hunt.id, job.tenant_id, findings, out, dataset_names)
+        stage(
+            f"Done — {summary['incidents']} incident(s), {summary['merges']} merged, "
+            f"{summary['enrichments']} enriched",
+            100,
+        )
 
         job.status = "done"
         job.progress = 100

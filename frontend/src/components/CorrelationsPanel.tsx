@@ -5,6 +5,7 @@ import type {
   CorrelationResult,
   Hunt,
   Incident,
+  Job,
 } from "../lib/types";
 import { useToast } from "./Toast";
 import {
@@ -189,7 +190,7 @@ export default function CorrelationsPanel({
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
-  const [runMsg, setRunMsg] = useState<string | null>(null);
+  const [job, setJob] = useState<Job | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -209,12 +210,10 @@ export default function CorrelationsPanel({
 
   const runCorrelation = async () => {
     setRunning(true);
-    setRunMsg("Starting correlation…");
+    setJob({ id: "", status: "queued", progress: 0, current_task: "Starting correlation…" });
     try {
-      const job = await api.runCorrelation(tid, hid);
-      const done = await pollJob(tid, hid, String(job.id), (j) =>
-        setRunMsg(j.current_task ?? "Correlating…"),
-      );
+      const started = await api.runCorrelation(tid, hid);
+      const done = await pollJob(tid, hid, String(started.id), setJob);
       if (done.status === "error") {
         toast.error(done.error ?? "Correlation failed");
       } else {
@@ -230,7 +229,6 @@ export default function CorrelationsPanel({
       toast.error((e as ApiError).message);
     } finally {
       setRunning(false);
-      setRunMsg(null);
     }
   };
 
@@ -271,9 +269,35 @@ export default function CorrelationsPanel({
           }
         />
         <div className="p-4">
-          {running && (
-            <div className="mb-3 flex items-center gap-2 text-sm text-slate-400">
-              <Spinner /> {runMsg}
+          {(running || job) && (
+            <div className="mb-3 rounded-lg border border-slate-800 bg-slate-950/60 p-3">
+              <div className="mb-1.5 flex items-center justify-between text-xs">
+                <span className="text-slate-300">
+                  {job?.status === "error"
+                    ? "Correlation failed"
+                    : job?.status === "cancelled"
+                      ? "Cancelled"
+                      : job?.current_task ?? "Starting…"}
+                </span>
+                <span className="font-mono text-slate-500">
+                  {job?.progress != null ? `${Math.round(job.progress)}%` : ""}
+                </span>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded bg-slate-800">
+                <div
+                  className="h-full bg-indigo-500 transition-all"
+                  style={{ width: `${Math.max(3, job?.progress ?? 0)}%` }}
+                />
+              </div>
+              {!!job?.log?.length && (
+                <div className="mt-2 max-h-32 overflow-y-auto rounded bg-black/30 p-2 font-mono text-[11px] text-slate-400">
+                  {job.log.map((l, i) => (
+                    <div key={i}>
+                      <span className="text-slate-600">{l.at.toFixed(1)}s</span> · {l.msg}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           {incidents.length === 0 ? (
