@@ -39,14 +39,16 @@ def ai_defaults() -> dict:
         # model every call. single_model_pipeline runs reviewer+QA on the analyst
         # model (one resident model, no swapping) — far faster.
         "single_model_pipeline": True,
-        "num_predict": 2048,    # cap output (findings for one dataset are small)
-        # Context window. The extractor prompt is now trimmed (see
-        # findings_engine) to fit comfortably here. The analyst is gemma3:27b —
-        # NOT a 7B model — so on a 32 GB Mac the KV cache for a 16k context is a
-        # multi-GB tax on top of the ~17 GB weights, which is what was starving
-        # the browser of RAM and slowing generation. 8192 holds the trimmed
-        # prompt + output with margin and roughly halves the KV-cache footprint.
-        "num_ctx": 8192,
+        # Output cap. 2048 was truncating multi-finding JSON mid-structure on
+        # all but the smallest datasets (→ parse failures → zero findings); a
+        # single dataset's findings can run several thousand tokens.
+        "num_predict": 4096,
+        # Context window. Must hold the trimmed extractor prompt (~5-6k tokens)
+        # PLUS the generated findings (num_predict). 8192 left no room for the
+        # output, so the JSON got cut off; 12288 fits prompt + findings with
+        # margin. Larger contexts cost KV-cache RAM on the 27B model, so this is
+        # a deliberate middle ground, not a max.
+        "num_ctx": 12288,
         "keep_alive": "30m",    # keep the model warm between datasets
         # Each stage is a separate generation. On a slow box, turning Reviewer/QA
         # off runs a single analyst pass (≈3× faster) at some FP-reduction cost.
@@ -91,7 +93,11 @@ def get_ai(db: Session) -> dict:
     # the trimmed prompt). We do NOT force it up to a large value anymore — a
     # 16k context on a 27B model is exactly what was crashing 32 GB machines, so
     # the operator is free to keep num_ctx at the leaner default.
-    if int(data.get("num_ctx", 0)) < 4096:
+    # Floor the output/context limits so a stale saved config can't reintroduce
+    # the truncation that produced zero findings. These are minimums, not caps.
+    if int(data.get("num_predict", 0)) < 4096:
+        data["num_predict"] = ai_defaults()["num_predict"]
+    if int(data.get("num_ctx", 0)) < 12288:
         data["num_ctx"] = ai_defaults()["num_ctx"]
     return data
 

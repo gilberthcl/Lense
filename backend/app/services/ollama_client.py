@@ -134,10 +134,64 @@ def embed(text: str) -> list[float]:
     return vec
 
 
+def _salvage_truncated_json(text: str) -> dict | list | None:
+    """
+    Recover findings from a response that was cut off mid-JSON (the model hit its
+    output-token limit). Cut to the last COMPLETE element and append the closing
+    brackets needed to balance it — a truncated findings array still yields all
+    the findings that finished. String-aware so braces inside string values don't
+    confuse the bracket accounting.
+    """
+    last_complete = None
+    in_str = esc = False
+    for i, ch in enumerate(text):
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch in "}]":
+            last_complete = i + 1
+    if last_complete is None:
+        return None
+    prefix = text[:last_complete]
+    stack: list[str] = []
+    in_str = esc = False
+    for ch in prefix:
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch in "{[":
+            stack.append(ch)
+        elif ch == "}" and stack and stack[-1] == "{":
+            stack.pop()
+        elif ch == "]" and stack and stack[-1] == "[":
+            stack.pop()
+    candidate = prefix + "".join("}" if c == "{" else "]" for c in reversed(stack))
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError:
+        return None
+
+
 def parse_json_response(text: str) -> dict | list:
     """
     Best-effort JSON extraction. Local models sometimes wrap JSON in prose or
-    fenced code blocks; recover the first balanced JSON object/array.
+    fenced code blocks; recover the first balanced JSON object/array. As a last
+    resort, salvage a response truncated by the output-token limit so its
+    completed findings are not lost.
     """
     text = text.strip()
     if text.startswith("```"):
@@ -159,6 +213,10 @@ def parse_json_response(text: str) -> dict | list:
                 return json.loads(text[start : end + 1])
             except json.JSONDecodeError:
                 continue
+    # last resort: the response was cut off mid-JSON — recover what completed.
+    salvaged = _salvage_truncated_json(text)
+    if salvaged is not None:
+        return salvaged
     raise OllamaError("Could not parse JSON from model response")
 
 
