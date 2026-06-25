@@ -164,6 +164,7 @@ class HuntUpdate(BaseModel):
     edr: str | None = None
     siem: str | None = None
     auto_correlate: bool | None = None
+    auto_qa: bool | None = None
 
 
 class HuntOut(ORMModel):
@@ -181,6 +182,7 @@ class HuntOut(ORMModel):
     plan_state: dict | None
     status: str
     auto_correlate: bool = False
+    auto_qa: bool = False
     created_at: datetime
 
 

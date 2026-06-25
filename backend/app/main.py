@@ -8,7 +8,7 @@ from sqlalchemy import text
 
 from app.api import (
     auth as auth_api, config, correlations, datasets, findings, hunts,
-    jobs as jobs_api, knowledge, reports, tenants,
+    jobs as jobs_api, knowledge, qa, reports, tenants,
 )
 from app.core.config import settings
 from app.core.db import Base, SessionLocal, engine
@@ -29,8 +29,10 @@ _COLUMN_ADDITIONS = (
     "ALTER TABLE findings ADD COLUMN IF NOT EXISTS enrichment JSON",
     "ALTER TABLE findings ADD COLUMN IF NOT EXISTS chain_id INTEGER",
     "ALTER TABLE findings ADD COLUMN IF NOT EXISTS merged_into_id INTEGER",
+    "ALTER TABLE findings ADD COLUMN IF NOT EXISTS qa JSON",
     "ALTER TABLE datasets ADD COLUMN IF NOT EXISTS entity_index JSON",
     "ALTER TABLE hunts ADD COLUMN IF NOT EXISTS auto_correlate BOOLEAN DEFAULT FALSE",
+    "ALTER TABLE hunts ADD COLUMN IF NOT EXISTS auto_qa BOOLEAN DEFAULT FALSE",
 )
 
 
@@ -100,6 +102,7 @@ app.include_router(hunts.router)
 app.include_router(datasets.router)
 app.include_router(findings.router)
 app.include_router(correlations.router)
+app.include_router(qa.router)
 app.include_router(reports.router)
 
 

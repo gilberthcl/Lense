@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_tenant
 from app.core.db import get_db
-from app.models import AnalysisJob, Dataset, Finding, Hunt, Tenant
+from app.models import AnalysisJob, Dataset, Finding, Hunt, QAReport, Tenant
 from app.services import report_docx
 
 router = APIRouter(prefix="/api/tenants/{tenant_id}/hunts/{hunt_id}/report", tags=["reports"])
@@ -72,6 +72,26 @@ def generate_report(
     hunt = db.get(Hunt, hunt_id)
     if not hunt or hunt.tenant_id != tenant.id:
         raise HTTPException(status_code=404, detail="Hunt not found")
+
+    # Quality gate: the report may only be generated once QA has passed.
+    qa_report = (
+        db.query(QAReport)
+        .filter_by(tenant_id=tenant.id, hunt_id=hunt_id)
+        .order_by(QAReport.id.desc())
+        .first()
+    )
+    if qa_report is None:
+        raise HTTPException(
+            status_code=409,
+            detail="QA has not run. Run the QA phase before generating the report.",
+        )
+    if qa_report.status != "passed":
+        raise HTTPException(
+            status_code=409,
+            detail=f"QA status is '{qa_report.status}'. Resolve QA issues before "
+                   f"generating the report.",
+        )
+
     # Default to the hunt's configured report language unless overridden.
     lang = lang or _lang_from_hunt(hunt)
 

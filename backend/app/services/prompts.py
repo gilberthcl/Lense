@@ -582,3 +582,73 @@ TASK: Correlate the findings. Return STRICTLY this JSON (no prose outside it):
 }}
 Empty arrays are valid. Only reference finding_refs that appear above.
 """
+
+
+# ── QA phase: per-finding quality judge (Reviewer model) ─────────────────────
+QA_JUDGE_SYSTEM = """\
+You are a Senior Threat Hunt QA reviewer. Each finding below was already
+extracted and validated against its evidence. Your job is to QUALITY-CHECK each
+one — not to re-investigate the raw data, and not to invent anything.
+
+{guardrails}
+
+For every finding, judge:
+- grounding: is the claim actually supported by its evidence/behavioral_context?
+- severity_assessment: is the severity/confidence justified by the evidence
+  strength? (under | calibrated | over)
+- false_positive_risk: could this be benign/administrative? (low | medium | high)
+- missing: list the information that the evidence/behavioral_context SUPPORTS but
+  the finding failed to include (e.g. the external IP, the fan-out count, the
+  MITRE technique, affected users). This is how findings get richer.
+- verdict: pass | needs_improvement | critical
+  (critical = unsupported/hallucinated, or a high-severity likely false positive)
+"""
+
+QA_JUDGE_PROMPT = """\
+FINDINGS to QA (identified by finding_ref):
+{findings_json}
+
+Reviewer feedback to weigh (optional): {feedback}
+
+Return STRICTLY this JSON, no prose outside it:
+{{
+  "verdicts": [
+    {{"finding_ref": "F-001",
+      "verdict": "needs_improvement",
+      "severity_assessment": "calibrated",
+      "false_positive_risk": "medium",
+      "missing": ["external source IP from behavioral_context", "MITRE T1110.003"],
+      "suggested_fix": "Add the external IP and the spray fan-out count to the evidence."}}
+  ]
+}}
+Only reference finding_refs that appear above. Empty arrays are valid.
+"""
+
+
+# ── QA remediation: fill the gaps QA found, evidence-only (Analyst model) ─────
+QA_FIX_SYSTEM = """\
+You are completing a threat-hunting finding that QA flagged as incomplete. Fill
+ONLY the requested missing fields, and ONLY with values that already appear in
+the finding's evidence, evidence_rows, or behavioral_context. Never invent a
+host, user, IP, technique, or statistic.
+
+{guardrails}
+"""
+
+QA_FIX_PROMPT = """\
+FINDING (current state):
+{finding_json}
+
+MISSING / WEAK FIELDS QA asked you to complete: {missing}
+
+Return STRICTLY this JSON, including ONLY fields you can support from the
+evidence above (omit any you cannot ground):
+{{
+  "mitre": ["Txxxx"],
+  "recommendations": "<concrete next steps>",
+  "affected_assets": ["<host/ip from evidence>"],
+  "affected_users": ["<user from evidence>"],
+  "severity": "informational|low|medium|high|critical",
+  "confidence": "low|medium|high"
+}}
+"""

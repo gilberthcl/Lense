@@ -198,6 +198,16 @@ def run_correlation(db: Session, job_id: int) -> None:
             },
         }
         db.commit()
+        # Auto-run QA after correlation if the hunt opted in.
+        try:
+            if getattr(hunt, "auto_qa", False):
+                from app.services import qa_runner  # lazy: avoid import cycle
+                qa_job = AnalysisJob(tenant_id=job.tenant_id, hunt_id=hunt.id,
+                                     phase="qa", status="queued")
+                db.add(qa_job); db.commit(); db.refresh(qa_job)
+                qa_runner.run_qa(db, qa_job.id)
+        except Exception:  # noqa: BLE001 — QA must never break correlation
+            logger.exception("auto-QA after correlation failed (hunt=%s)", hunt.id)
     except jobs.JobCancelled:
         db.rollback()
         job = db.get(AnalysisJob, job_id)

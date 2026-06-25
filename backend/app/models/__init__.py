@@ -151,6 +151,8 @@ class Hunt(Base):
     status: Mapped[str] = mapped_column(String(30), default="created")
     # Run the correlation phase automatically when dataset analysis finishes.
     auto_correlate: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Run the QA phase automatically when correlation finishes.
+    auto_qa: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     tenant: Mapped["Tenant"] = relationship(back_populates="hunts")
@@ -234,6 +236,10 @@ class Finding(Base):
     enrichment: Mapped[dict | None] = mapped_column(JSON)         # cross-dataset corroboration notes
     chain_id: Mapped[int | None] = mapped_column(Integer, index=True)        # incident/attack-chain grouping
     merged_into_id: Mapped[int | None] = mapped_column(Integer, index=True)  # dedup audit (survivor id)
+    # ── QA-phase output ──
+    # {score, status(pass|incomplete|critical), gaps:[...], verdict, missing:[...],
+    #  suggested_fix, issues:[...]}
+    qa: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     hunt: Mapped["Hunt"] = relationship(back_populates="findings")
@@ -258,6 +264,26 @@ class Incident(Base):
     mitre_chain: Mapped[list | None] = mapped_column(JSON)   # ordered [{tactic,technique,finding_ref}]
     timeline: Mapped[list | None] = mapped_column(JSON)      # ordered [{time,event,finding_ref}]
     finding_ids: Mapped[list | None] = mapped_column(JSON)   # member finding ids
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+# ── QA report (quality-assurance phase: one latest per hunt) ───────────────
+# status: passed | needs_attention | critical
+class QAReport(Base):
+    __tablename__ = "qa_reports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    hunt_id: Mapped[int] = mapped_column(
+        ForeignKey("hunts.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(30), default="needs_attention")
+    stage_checks: Mapped[list | None] = mapped_column(JSON)   # [{stage,status,detail,fix}]
+    totals: Mapped[dict | None] = mapped_column(JSON)         # counts/scores
+    critical_issues: Mapped[list | None] = mapped_column(JSON)  # awaiting user decision
+    actions: Mapped[list | None] = mapped_column(JSON)        # auto-actions taken
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
