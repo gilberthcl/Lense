@@ -9,7 +9,7 @@ import { Badge, Button, Select, Spinner, Tabs } from "../components/ui";
 import DatasetsPanel from "../components/DatasetsPanel";
 import FindingsPanel from "../components/FindingsPanel";
 import CorrelationsPanel from "../components/CorrelationsPanel";
-import AnalysisSummaryPanel from "../components/AnalysisSummaryPanel";
+import QAPanel from "../components/QAPanel";
 import MethodologyPanel from "../components/MethodologyPanel";
 
 export default function HuntView() {
@@ -142,7 +142,7 @@ export default function HuntView() {
           { id: "datasets", label: "Datasets" },
           { id: "findings", label: "Findings" },
           { id: "correlations", label: "Correlations" },
-          { id: "summary", label: "Summary" },
+          { id: "qa", label: "QA" },
         ]}
         active={tab}
         onChange={setTab}
@@ -164,7 +164,9 @@ export default function HuntView() {
       {tab === "correlations" && (
         <CorrelationsPanel tid={tid} hid={hid} reloadKey={findingsKey} hunt={hunt} onRefresh={loadHunt} />
       )}
-      {tab === "summary" && <AnalysisSummaryPanel tid={tid} hid={hid} reloadKey={findingsKey} />}
+      {tab === "qa" && (
+        <QAPanel tid={tid} hid={hid} reloadKey={findingsKey} hunt={hunt} onRefresh={loadHunt} />
+      )}
     </div>
   );
 }

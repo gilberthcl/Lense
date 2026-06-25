@@ -9,6 +9,7 @@ import type {
   CorrelationResult,
   CorrelationSummary,
   AnalysisSummary,
+  QAResult,
   IncidentResult,
   CreateApprovedSoftwareInput,
   CreateCalendarInput,
@@ -367,6 +368,20 @@ export const api = {
     request<AnalysisSummary>(`/api/tenants/${tid}/hunts/${hid}/analysis-summary`),
   runCorrelation: (tid: string, hid: string) =>
     request<Job>(`/api/tenants/${tid}/hunts/${hid}/correlations/run`, { method: "POST" }),
+
+  // --- QA phase ---
+  getQA: (tid: string, hid: string) =>
+    request<QAResult>(`/api/tenants/${tid}/hunts/${hid}/qa`),
+  runQA: (tid: string, hid: string, feedback?: string) =>
+    request<Job>(`/api/tenants/${tid}/hunts/${hid}/qa/run`, {
+      method: "POST",
+      body: JSON.stringify({ feedback: feedback ?? null }),
+    }),
+  setAutoQa: (tid: string, hid: string, value: boolean) =>
+    request<Hunt>(`/api/tenants/${tid}/hunts/${hid}`, {
+      method: "PATCH",
+      body: JSON.stringify({ auto_qa: value }),
+    }),
   setAutoCorrelate: (tid: string, hid: string, value: boolean) =>
     request<Hunt>(`/api/tenants/${tid}/hunts/${hid}`, {
       method: "PATCH",

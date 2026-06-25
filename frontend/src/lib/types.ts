@@ -228,6 +228,7 @@ export interface Hunt {
   analysis_plan?: AnalysisPlan | null;
   plan_state?: PlanState | null;
   auto_correlate?: boolean;
+  auto_qa?: boolean;
   created_at: string;
 }
 
@@ -498,6 +499,70 @@ export interface AnalysisSummary {
     by_severity: Record<string, number>;
   };
   datasets: AnalysisDatasetSummary[];
+}
+
+// QA phase.
+export interface QAStageCheck {
+  stage: string;
+  status: "pass" | "warn" | "fail";
+  detail: string;
+  fix?: string | null;
+}
+export interface QACriticalIssue {
+  type: "stage" | "finding";
+  stage?: string;
+  finding_ref?: string;
+  title?: string;
+  detail?: string;
+  fix?: string | null;
+}
+export interface QAAction {
+  action: string;
+  finding_ref?: string;
+  fields?: string[];
+  detail?: string;
+}
+export interface QAReport {
+  status: "passed" | "needs_attention" | "critical";
+  stage_checks: QAStageCheck[];
+  totals: {
+    findings: number;
+    avg_completeness: number;
+    complete: number;
+    incomplete: number;
+    critical: number;
+    gap_filled: number;
+  };
+  critical_issues: QACriticalIssue[];
+  actions: QAAction[];
+  created_at?: string;
+}
+export interface QAFindingJudge {
+  verdict?: string;
+  missing?: string[];
+  false_positive_risk?: string;
+  severity_assessment?: string;
+  suggested_fix?: string;
+}
+export interface QAFindingState {
+  ref: string;
+  title: string;
+  category?: FindingCategory;
+  severity?: string | null;
+  qa?: {
+    score?: number;
+    status?: string;
+    gaps?: string[];
+    detail_gaps?: string[];
+    mitre_issues?: string[];
+    grounding_issues?: string[];
+    judge?: QAFindingJudge;
+  } | null;
+}
+export interface QAResult {
+  hunt_id?: number;
+  report: QAReport | null;
+  findings: QAFindingState[];
 }
 
 export type ReportLang = "en" | "es";
