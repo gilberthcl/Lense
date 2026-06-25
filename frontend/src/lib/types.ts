@@ -379,6 +379,9 @@ export interface Finding {
   status: FindingStatus;
   reviewer_notes?: string | null;
   entities?: Record<string, string[]> | null;
+  time_range?: Record<string, unknown> | null;
+  behavioral_context?: Record<string, unknown> | null;
+  evidence_rows?: Record<string, unknown>[] | null;
   source_dataset?: string | null;
   enrichment?: { note?: string; corroborating_datasets?: { id: number; filename?: string | null }[] } | null;
   chain_id?: number | null;

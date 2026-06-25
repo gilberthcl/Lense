@@ -121,6 +121,62 @@ function FindingDetail({
         </Field>
       )}
 
+      {/* Analysis context — the structured detail behind the finding, for
+          report-writing. */}
+      {(finding.source_dataset ||
+        finding.time_range ||
+        (finding.entities && Object.keys(finding.entities).length > 0) ||
+        finding.behavioral_context ||
+        (finding.evidence_rows && finding.evidence_rows.length > 0)) && (
+        <Field label="Analysis context">
+          <div className="space-y-2 rounded border border-slate-800 bg-slate-950/40 p-3 text-sm text-slate-300">
+            {finding.source_dataset && (
+              <div>
+                <span className="text-xs uppercase tracking-wide text-slate-500">Source dataset: </span>
+                <span className="break-all">{finding.source_dataset}</span>
+              </div>
+            )}
+            {finding.time_range && (
+              <div className="text-xs text-slate-400">
+                <span className="uppercase tracking-wide text-slate-500">Time range: </span>
+                {(finding.time_range as Record<string, unknown>).start
+                  ? `${(finding.time_range as Record<string, unknown>).start} → ${(finding.time_range as Record<string, unknown>).end}`
+                  : prettyJson(finding.time_range)}
+              </div>
+            )}
+            {finding.entities &&
+              Object.entries(finding.entities).map(([type, vals]) =>
+                vals && vals.length ? (
+                  <div key={type}>
+                    <span className="text-xs uppercase tracking-wide text-slate-500">{type}: </span>
+                    <Pills items={vals} />
+                  </div>
+                ) : null,
+              )}
+            {finding.behavioral_context && (
+              <details>
+                <summary className="cursor-pointer text-xs uppercase tracking-wide text-slate-500">
+                  Behavioral signals
+                </summary>
+                <pre className="mt-1 max-h-48 overflow-auto rounded bg-slate-950 p-2 font-mono text-[11px] text-slate-300">
+                  {prettyJson(finding.behavioral_context)}
+                </pre>
+              </details>
+            )}
+            {finding.evidence_rows && finding.evidence_rows.length > 0 && (
+              <details>
+                <summary className="cursor-pointer text-xs uppercase tracking-wide text-slate-500">
+                  Evidence rows ({finding.evidence_rows.length})
+                </summary>
+                <pre className="mt-1 max-h-60 overflow-auto rounded bg-slate-950 p-2 font-mono text-[11px] text-slate-300">
+                  {prettyJson(finding.evidence_rows)}
+                </pre>
+              </details>
+            )}
+          </div>
+        </Field>
+      )}
+
       {finding.enrichment?.note && (
         <Field label="Correlation enrichment">
           <div className="rounded border border-emerald-900/40 bg-emerald-950/20 p-3 text-sm text-slate-300">
