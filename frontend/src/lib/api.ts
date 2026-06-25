@@ -382,6 +382,11 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ auto_qa: value }),
     }),
+  rollbackQA: (tid: string, hid: string) =>
+    request<{ reverted_findings: number; reverted_fields: number }>(
+      `/api/tenants/${tid}/hunts/${hid}/qa/rollback`,
+      { method: "POST" },
+    ),
   setAutoCorrelate: (tid: string, hid: string, value: boolean) =>
     request<Hunt>(`/api/tenants/${tid}/hunts/${hid}`, {
       method: "PATCH",

@@ -87,3 +87,14 @@ def run_qa_phase(
 
     background.add_task(_task, job.id, feedback)
     return job
+
+
+@router.post("/rollback")
+def rollback_qa_changes(
+    hunt_id: int,
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+):
+    """Undo the automatic gap-fill edits made by the latest QA run."""
+    _resolve_hunt(db, tenant, hunt_id)
+    return qa_runner.rollback_qa(db, hunt_id, tenant.id)

@@ -1,7 +1,7 @@
 """QA engine — deterministic process + finding checks."""
 from types import SimpleNamespace
 
-from app.services import qa_engine
+from app.services import qa_engine, qa_runner
 
 _IDX = {8: {"entities": {"users": ["camilo"], "hosts": ["ep-01"]}}}
 
@@ -50,3 +50,66 @@ def test_process_checks_detect_unanalyzed_and_no_correlation():
     assert by_stage["Dataset analysis"] == "fail"    # one errored
     assert by_stage["Correlation"] == "fail"         # never ran
     assert by_stage["Methodology"] == "pass"
+
+
+def test_parse_error_check_carries_dataset_meta():
+    datasets = [SimpleNamespace(status="analyzed", id=7, filename="a.csv"),
+                SimpleNamespace(status="analyzed", id=8, filename="b.csv")]
+    checks = qa_engine.check_process(
+        hunt=SimpleNamespace(methodology_text="m"), datasets=datasets,
+        parse_error_datasets=[8], correlation_done=True,
+    )
+    integ = next(c for c in checks if c["stage"] == "Analysis integrity")
+    assert integ["status"] == "fail"
+    assert integ["fix"] == "reanalyze_datasets"
+    assert integ["meta"]["dataset_ids"] == [8]
+    assert integ["meta"]["dataset_names"] == ["b.csv"]
+
+
+class _FakeDB:
+    """Minimal stand-in for a Session covering rollback_qa's access patterns."""
+
+    def __init__(self, report, findings):
+        self._report = report
+        self._findings = {f.id: f for f in findings}
+        self.committed = False
+
+    def query(self, _model):
+        return self
+
+    def filter_by(self, **_kw):
+        return self
+
+    def order_by(self, *_a):
+        return self
+
+    def first(self):
+        return self._report
+
+    def get(self, _model, fid):
+        return self._findings.get(fid)
+
+    def commit(self):
+        self.committed = True
+
+
+def test_rollback_restores_snapshotted_fields():
+    finding = SimpleNamespace(id=1, tenant_id=2, mitre=["T1110.003"], recommendations="auto")
+    report = SimpleNamespace(
+        id=9, totals={"gap_filled": 1, "activity": ["did stuff"]},
+        actions=[{
+            "action": "gap_filled", "finding_ref": "F-001", "finding_id": 1,
+            "fields": ["mitre", "recommendations"],
+            "before": {"mitre": [], "recommendations": None}, "rolled_back": False,
+        }],
+    )
+    db = _FakeDB(report, [finding])
+
+    out = qa_runner.rollback_qa(db, hunt_id=5, tenant_id=2)
+
+    assert out == {"reverted_findings": 1, "reverted_fields": 2}
+    assert finding.mitre == [] and finding.recommendations is None  # restored
+    assert report.actions[0]["rolled_back"] is True
+    assert report.totals["gap_filled"] == 0
+    # Idempotent: a second pass reverts nothing.
+    assert qa_runner.rollback_qa(db, 5, 2)["reverted_findings"] == 0

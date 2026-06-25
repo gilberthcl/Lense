@@ -511,6 +511,10 @@ export interface QAStageCheck {
   detail: string;
   fix?: string | null;
 }
+export interface QAIssueMeta {
+  dataset_ids?: (number | null)[];
+  dataset_names?: (string | null)[];
+}
 export interface QACriticalIssue {
   type: "stage" | "finding";
   stage?: string;
@@ -518,11 +522,15 @@ export interface QACriticalIssue {
   title?: string;
   detail?: string;
   fix?: string | null;
+  meta?: QAIssueMeta;
 }
 export interface QAAction {
   action: string;
   finding_ref?: string;
+  finding_id?: number;
   fields?: string[];
+  before?: Record<string, unknown>;
+  rolled_back?: boolean;
   detail?: string;
 }
 export interface QAReport {
@@ -533,8 +541,11 @@ export interface QAReport {
     avg_completeness: number;
     complete: number;
     incomplete: number;
+    minor?: number;
     critical: number;
+    judged?: number;
     gap_filled: number;
+    activity?: string[];
   };
   critical_issues: QACriticalIssue[];
   actions: QAAction[];

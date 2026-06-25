@@ -47,9 +47,10 @@ def _parse_error_datasets(db: Session, hunt_id: int, tenant_id: int) -> list[int
     return out
 
 
-def _gap_fill(finding: Finding) -> dict | None:
+def _gap_fill(finding: Finding) -> tuple[dict, dict] | None:
     """Ask the analyst model to fill QA-flagged gaps from the finding's own
-    evidence. Returns the applied fields, or None."""
+    evidence. Returns (applied_fields, before_values) so the change can be rolled
+    back, or None when nothing was filled."""
     qa = finding.qa or {}
     missing = list(qa.get("gaps", [])) + list((qa.get("judge") or {}).get("missing", []))
     if not missing:
@@ -79,6 +80,7 @@ def _gap_fill(finding: Finding) -> dict | None:
     if not isinstance(out, dict):
         return None
     applied: dict = {}
+    before: dict = {}
     for field in _FIX_FIELDS:
         val = out.get(field)
         if val in (None, "", [], {}):
@@ -86,9 +88,10 @@ def _gap_fill(finding: Finding) -> dict | None:
         # Only fill where empty (don't overwrite analyst-authored values).
         current = getattr(finding, field, None)
         if current in (None, "", [], {}):
+            before[field] = current  # snapshot for rollback
             setattr(finding, field, val)
             applied[field] = val
-    return applied or None
+    return (applied, before) if applied else None
 
 
 def _overall_status(stage_checks: list[dict], findings: list[Finding]) -> str:
@@ -159,7 +162,8 @@ def run_qa(db: Session, job_id: int, feedback: str | None = None) -> None:
                 if v.get("verdict") == "critical":
                     qa["status"] = "critical"
                 f.qa = qa
-        stage(f"Judged {len(verdicts)} finding(s)", 60)
+        judged = len(verdicts)
+        stage(f"Judged {judged} finding(s)", 60)
         db.commit()
 
         # 4. Remediation
@@ -173,27 +177,34 @@ def run_qa(db: Session, job_id: int, feedback: str | None = None) -> None:
             actions.append({"action": "ran_correlation", "detail": "Correlation phase executed by QA."})
 
         filled = 0
+        attempted = 0
         to_fix = [f for f in findings if (f.qa or {}).get("status") in ("incomplete", "minor")]
         for i, f in enumerate(to_fix):
             stage(f"Gap-filling finding {f.finding_ref} ({i+1}/{len(to_fix)})",
                   70 + int(18 * (i + 1) / max(1, len(to_fix))))
-            applied = _gap_fill(f)
-            if applied:
+            attempted += 1
+            result = _gap_fill(f)
+            if result:
+                applied, before = result
                 filled += 1
                 # re-check after filling
                 f.qa = {**qa_engine.check_finding(f, dataset_index),
                         "judge": (f.qa or {}).get("judge")}
                 actions.append({"action": "gap_filled", "finding_ref": f.finding_ref,
-                                "fields": list(applied.keys())})
+                                "finding_id": f.id, "fields": list(applied.keys()),
+                                "before": before, "rolled_back": False})
         db.commit()
-        stage(f"Gap-filled {filled} finding(s)", 90)
+        stage(f"Gap-filled {filled} finding(s)"
+              + (f" ({attempted - filled} had nothing fillable)" if attempted > filled else ""),
+              90)
 
         # 5. Critical issues awaiting user decision
         critical_issues = []
         for c in stage_checks:
             if c["status"] == "fail":
                 critical_issues.append({"type": "stage", "stage": c["stage"],
-                                        "detail": c["detail"], "fix": c["fix"]})
+                                        "detail": c["detail"], "fix": c["fix"],
+                                        "meta": c.get("meta") or {}})
         for f in findings:
             qa = f.qa or {}
             if qa.get("status") == "critical":
@@ -207,6 +218,28 @@ def run_qa(db: Session, job_id: int, feedback: str | None = None) -> None:
         # 6. Persist report
         status = _overall_status(stage_checks, findings)
         scores = [(f.qa or {}).get("score", 0) for f in findings]
+
+        # Plain-language record of everything QA did this run, always populated so
+        # the operator can see the phase actually worked even when nothing changed.
+        checks_passed = sum(c["status"] == "pass" for c in stage_checks)
+        activity = [
+            f"Ran {len(stage_checks)} pipeline checks — {checks_passed} passed, "
+            f"{len(stage_checks) - checks_passed} flagged.",
+            f"Completeness + grounding checked on {len(findings)} finding(s).",
+            (f"Reviewer model judged {judged} finding(s)."
+             if judged else "Reviewer model returned no verdicts (parse failure or no findings)."),
+        ]
+        if filled:
+            activity.append(f"Gap-filled {filled} finding(s) from their own evidence "
+                            "(reversible — see Roll back).")
+        elif attempted:
+            activity.append(f"Attempted gap-fill on {attempted} finding(s); "
+                            "nothing could be safely filled from evidence.")
+        else:
+            activity.append("No findings needed gap-filling.")
+        if any(a["action"] == "ran_correlation" for a in actions):
+            activity.append("Correlation phase executed (it had not run).")
+
         db.query(QAReport).filter_by(hunt_id=hunt.id, tenant_id=tid).delete(
             synchronize_session=False
         )
@@ -217,9 +250,12 @@ def run_qa(db: Session, job_id: int, feedback: str | None = None) -> None:
                 "findings": len(findings),
                 "avg_completeness": round(sum(scores) / len(scores)) if scores else 0,
                 "complete": sum(1 for f in findings if (f.qa or {}).get("status") == "pass"),
-                "incomplete": sum(1 for f in findings if (f.qa or {}).get("status") in ("incomplete", "minor")),
+                "incomplete": sum(1 for f in findings if (f.qa or {}).get("status") == "incomplete"),
+                "minor": sum(1 for f in findings if (f.qa or {}).get("status") == "minor"),
                 "critical": sum(1 for f in findings if (f.qa or {}).get("status") == "critical"),
+                "judged": judged,
                 "gap_filled": filled,
+                "activity": activity,
             },
             critical_issues=critical_issues,
             actions=actions,
@@ -242,3 +278,47 @@ def run_qa(db: Session, job_id: int, feedback: str | None = None) -> None:
         job = db.get(AnalysisJob, job_id)
         job.status = "error"; job.error = str(exc)
         db.commit()
+
+
+def rollback_qa(db: Session, hunt_id: int, tenant_id: int) -> dict:
+    """Undo the automatic gap-fill edits from the latest QA run.
+
+    Restores each affected field to the value QA snapshotted before it wrote,
+    marks those actions rolled_back, and returns a count. Idempotent: actions
+    already rolled back are skipped. Does NOT touch correlation (that ran as a
+    real phase and is not a per-finding edit)."""
+    report = (
+        db.query(QAReport)
+        .filter_by(tenant_id=tenant_id, hunt_id=hunt_id)
+        .order_by(QAReport.id.desc())
+        .first()
+    )
+    if report is None:
+        return {"reverted_findings": 0, "reverted_fields": 0}
+
+    actions = list(report.actions or [])
+    reverted_fields = 0
+    reverted_findings = 0
+    for a in actions:
+        if a.get("action") != "gap_filled" or a.get("rolled_back"):
+            continue
+        fid = a.get("finding_id")
+        before = a.get("before") or {}
+        finding = db.get(Finding, fid) if fid else None
+        if finding is None or finding.tenant_id != tenant_id:
+            a["rolled_back"] = True  # finding gone — nothing to restore
+            continue
+        for field, old in before.items():
+            setattr(finding, field, old)
+            reverted_fields += 1
+        a["rolled_back"] = True
+        reverted_findings += 1
+
+    # Persist the mutated action flags (JSON column needs reassignment to flush).
+    report.actions = actions
+    report.totals = {**(report.totals or {}),
+                     "gap_filled": 0,
+                     "activity": list((report.totals or {}).get("activity") or [])
+                     + [f"Rolled back {reverted_findings} gap-fill edit(s)."]}
+    db.commit()
+    return {"reverted_findings": reverted_findings, "reverted_fields": reverted_fields}

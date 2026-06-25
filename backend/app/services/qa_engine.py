@@ -106,12 +106,16 @@ def check_finding(finding: Any, dataset_index: dict[int, dict]) -> dict[str, Any
 
 
 def _chk(stage: str, ok: bool, ok_msg: str, fail_msg: str,
-         fix: str | None = None, severity: str = "fail") -> dict:
+         fix: str | None = None, severity: str = "fail",
+         meta: dict | None = None) -> dict:
     return {
         "stage": stage,
         "status": "pass" if ok else severity,
         "detail": ok_msg if ok else fail_msg,
         "fix": None if ok else fix,
+        # Machine-actionable context for remediation buttons (e.g. which datasets
+        # to re-analyze). Only carried when the check failed.
+        "meta": None if ok else (meta or {}),
     }
 
 
@@ -136,13 +140,20 @@ def check_process(
         f"{len(not_analyzed)} dataset(s) not analyzed"
         + (f" ({len(errored)} errored)" if errored else "") + ".",
         fix="reanalyze_datasets",
+        meta={"dataset_ids": [getattr(d, "id", None) for d in not_analyzed],
+              "dataset_names": [getattr(d, "filename", None) for d in not_analyzed]},
     ))
+    pe_set = set(parse_error_datasets)
+    pe_names = [getattr(d, "filename", None) for d in datasets if getattr(d, "id", None) in pe_set]
     checks.append(_chk(
         "Analysis integrity",
         not parse_error_datasets,
         "No analysis parse errors.",
-        f"{len(parse_error_datasets)} dataset(s) had analysis parse errors.",
+        f"{len(parse_error_datasets)} dataset(s) had analysis parse errors — "
+        "the analyst model's output failed to parse, so those findings may be "
+        "degraded. Re-analyzing usually resolves it.",
         fix="reanalyze_datasets",
+        meta={"dataset_ids": list(parse_error_datasets), "dataset_names": pe_names},
     ))
     checks.append(_chk(
         "Correlation",

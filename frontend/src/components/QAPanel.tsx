@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, ApiError, pollJob } from "../lib/api";
-import type { Hunt, Job, QAResult } from "../lib/types";
+import type { Hunt, Job, QACriticalIssue, QAResult } from "../lib/types";
 import AnalysisSummaryPanel from "./AnalysisSummaryPanel";
 import { useToast } from "./Toast";
 import { Button, Card, EmptyState, PanelHeader, Spinner } from "./ui";
@@ -35,6 +35,7 @@ export default function QAPanel({
   const [running, setRunning] = useState(false);
   const [job, setJob] = useState<Job | null>(null);
   const [feedback, setFeedback] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
 
   const load = () => {
     api
@@ -78,9 +79,69 @@ export default function QAPanel({
     }
   };
 
+  // Act on a critical issue's recommended fix, using the existing phase endpoints.
+  const remediate = async (issue: QACriticalIssue) => {
+    const fix = issue.fix ?? "";
+    try {
+      if (fix === "reanalyze_datasets") {
+        const ids = (issue.meta?.dataset_ids ?? []).filter(
+          (x): x is number => typeof x === "number",
+        );
+        if (!ids.length) {
+          toast.error("No dataset references recorded — re-analyze from the Datasets tab.");
+          return;
+        }
+        setBusy(fix);
+        for (const id of ids) await api.analyzeDataset(tid, hid, String(id));
+        toast.success(
+          `Re-analysis started for ${ids.length} dataset(s). Watch the Datasets tab, then re-run QA.`,
+        );
+        onRefresh();
+      } else if (fix === "run_correlation") {
+        setBusy(fix);
+        const started = await api.runCorrelation(tid, hid);
+        await pollJob(tid, hid, String(started.id), () => {});
+        toast.success("Correlation finished. Re-run QA to re-check.");
+        onRefresh();
+      } else {
+        toast.error("This issue has no automatic fix — resolve it on the relevant tab.");
+      }
+    } catch (e) {
+      toast.error((e as ApiError).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const rollback = async () => {
+    setBusy("rollback");
+    try {
+      const r = await api.rollbackQA(tid, hid);
+      toast.success(
+        r.reverted_findings
+          ? `Reverted ${r.reverted_fields} field(s) across ${r.reverted_findings} finding(s).`
+          : "Nothing to roll back.",
+      );
+      load();
+      onRefresh();
+    } catch (e) {
+      toast.error((e as ApiError).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const FIX_LABEL: Record<string, string> = {
+    reanalyze_datasets: "Re-analyze affected datasets",
+    run_correlation: "Run correlation",
+  };
+
   const report = data?.report ?? null;
   const flagged = (data?.findings ?? []).filter(
     (f) => f.qa && f.qa.status && f.qa.status !== "pass",
+  );
+  const reversible = (report?.actions ?? []).filter(
+    (a) => a.action === "gap_filled" && !a.rolled_back,
   );
 
   return (
@@ -153,7 +214,8 @@ export default function QAPanel({
                 <span className="text-sm text-slate-400">
                   {report.totals.findings} finding(s) · avg completeness {report.totals.avg_completeness}% ·{" "}
                   {report.totals.complete} complete · {report.totals.incomplete} incomplete ·{" "}
-                  {report.totals.critical} critical · {report.totals.gap_filled} auto-filled
+                  {report.totals.minor ?? 0} minor · {report.totals.critical} critical ·{" "}
+                  {report.totals.gap_filled} auto-filled
                 </span>
               </div>
 
@@ -172,40 +234,98 @@ export default function QAPanel({
                 </ul>
               </div>
 
+              {/* What QA actually did this run — always shown, so the phase is
+                  never a black box even when it changed nothing. */}
+              <div className="rounded border border-slate-800 bg-slate-950/40 p-3">
+                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  What QA did this run
+                </p>
+                <ul className="space-y-1 text-sm text-slate-300">
+                  {(report.totals.activity ?? []).map((line, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <span className="text-slate-600">·</span>
+                      <span>{line}</span>
+                    </li>
+                  ))}
+                  {!(report.totals.activity ?? []).length && (
+                    <li className="text-slate-500">
+                      {report.totals.judged ?? 0} finding(s) judged · {report.totals.gap_filled} auto-filled
+                    </li>
+                  )}
+                </ul>
+                {/* Per-finding edits, with rollback */}
+                {report.actions.some((a) => a.action === "gap_filled") && (
+                  <div className="mt-2.5 border-t border-slate-800 pt-2.5">
+                    <div className="mb-1.5 flex items-center justify-between">
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        Findings edited by QA
+                      </span>
+                      {reversible.length > 0 && (
+                        <Button variant="ghost" onClick={rollback} disabled={busy !== null}>
+                          {busy === "rollback" ? <Spinner /> : `Roll back ${reversible.length} edit(s)`}
+                        </Button>
+                      )}
+                    </div>
+                    <ul className="space-y-1 text-sm text-slate-400">
+                      {report.actions
+                        .filter((a) => a.action === "gap_filled")
+                        .map((a, i) => (
+                          <li key={i} className="flex flex-wrap items-center gap-2">
+                            <span className="font-mono text-xs text-indigo-300">{a.finding_ref}</span>
+                            <span>filled {(a.fields ?? []).join(", ")}</span>
+                            {a.rolled_back && (
+                              <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] uppercase text-slate-400">
+                                rolled back
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
               {/* Critical issues awaiting decision */}
               {report.critical_issues.length > 0 && (
                 <div className="rounded border border-rose-900/50 bg-rose-950/20 p-3">
                   <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-rose-300">
                     Critical issues — your decision needed ({report.critical_issues.length})
                   </p>
-                  <ul className="space-y-1.5 text-sm text-slate-300">
+                  <ul className="space-y-2 text-sm text-slate-300">
                     {report.critical_issues.map((ci, i) => (
                       <li key={i} className="flex flex-wrap items-center gap-2">
                         {ci.finding_ref && <span className="font-mono text-xs text-rose-300">{ci.finding_ref}</span>}
                         {ci.stage && <span className="font-mono text-xs text-rose-300">{ci.stage}</span>}
-                        <span>{ci.detail}</span>
+                        <span className="flex-1 min-w-[12rem]">{ci.detail}</span>
+                        {ci.fix && FIX_LABEL[ci.fix] && (
+                          <Button
+                            variant="ghost"
+                            onClick={() => remediate(ci)}
+                            disabled={busy !== null || running}
+                          >
+                            {busy === ci.fix ? <Spinner /> : FIX_LABEL[ci.fix]}
+                          </Button>
+                        )}
                       </li>
                     ))}
                   </ul>
                   <p className="mt-2 text-[11px] text-slate-500">
-                    Resolve these (re-run a phase, or fix/reject the finding on the Findings tab),
-                    then re-run QA. The report stays blocked until QA passes.
+                    Use a fix button above, or resolve on the relevant tab (e.g. reject the finding
+                    on Findings), then re-run QA. The report stays blocked until QA passes.
                   </p>
                 </div>
               )}
 
-              {/* Auto-actions taken */}
-              {report.actions.length > 0 && (
+              {/* Phase-level auto-actions (e.g. correlation run by QA) */}
+              {report.actions.some((a) => a.action !== "gap_filled") && (
                 <div>
-                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Actions taken</p>
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Phase actions</p>
                   <ul className="space-y-1 text-sm text-slate-400">
-                    {report.actions.map((a, i) => (
-                      <li key={i}>
-                        {a.action === "gap_filled"
-                          ? `Gap-filled ${a.finding_ref}: ${(a.fields ?? []).join(", ")}`
-                          : a.detail ?? a.action}
-                      </li>
-                    ))}
+                    {report.actions
+                      .filter((a) => a.action !== "gap_filled")
+                      .map((a, i) => (
+                        <li key={i}>{a.detail ?? a.action}</li>
+                      ))}
                   </ul>
                 </div>
               )}
