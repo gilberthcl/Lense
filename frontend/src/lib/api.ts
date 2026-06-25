@@ -33,6 +33,7 @@ import type {
   ModuleConfig,
   ReportLang,
   Tenant,
+  TrainingStats,
 } from "./types";
 
 export const API_BASE: string =
@@ -387,6 +388,12 @@ export const api = {
       `/api/tenants/${tid}/hunts/${hid}/qa/rollback`,
       { method: "POST" },
     ),
+
+  // --- Per-tenant training data (LoRA fine-tuning, Phase 1) ---
+  getTrainingStats: (tid: string) =>
+    request<TrainingStats>(`/api/tenants/${tid}/training/stats`),
+  exportTrainingSet: (tid: string) =>
+    request<TrainingStats>(`/api/tenants/${tid}/training/export`, { method: "POST" }),
   setAutoCorrelate: (tid: string, hid: string, value: boolean) =>
     request<Hunt>(`/api/tenants/${tid}/hunts/${hid}`, {
       method: "PATCH",

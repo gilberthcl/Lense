@@ -579,6 +579,25 @@ export interface QAResult {
   findings: QAFindingState[];
 }
 
+// Per-tenant training-data export (LoRA fine-tuning, Phase 1).
+export interface TrainingStats {
+  tenant_id: number;
+  total_findings: number;
+  validated: number;
+  rejected: number;
+  eligible_positives: number;
+  thin_validated_skipped: number;
+  by_category: Record<string, number>;
+  min_validated: number;
+  ready_for_training: boolean;
+  written?: {
+    sft_examples: number;
+    negative_examples: number;
+    sft_path: string;
+    negatives_path: string;
+  };
+}
+
 export type ReportLang = "en" | "es";
 
 // Request payload helpers
