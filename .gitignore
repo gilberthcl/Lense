@@ -20,6 +20,10 @@ backend/uploads/
 *.docx
 instance/
 
+# Per-tenant training data + LoRA adapters (NEVER commit client data)
+training/
+backend/training/
+
 # OS / editor
 .DS_Store
 .idea/
