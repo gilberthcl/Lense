@@ -308,6 +308,19 @@ def ensure_methodology_brief(db: Session, hunt: Hunt) -> dict | None:
     return brief
 
 
+def _next_finding_seq(db: Session, hunt_id: int) -> int:
+    """Next F-### sequence number for a hunt: max existing numeric ref + 1.
+
+    Uses max (not count) so re-analyzing a subset never reuses a ref that still
+    belongs to another dataset's finding."""
+    top = 0
+    for (ref,) in db.query(Finding.finding_ref).filter_by(hunt_id=hunt_id):
+        m = re.search(r"(\d+)", ref or "")
+        if m:
+            top = max(top, int(m.group(1)))
+    return top + 1
+
+
 def run_dataset_analysis(db: Session, job_id: int) -> None:
     """Execute the analysis pipeline for the dataset referenced by a job."""
     job = db.get(AnalysisJob, job_id)
@@ -410,8 +423,17 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
 
         job.current_task = "Persisting findings"
         job.progress = 85
-        existing = db.query(Finding).filter_by(hunt_id=hunt.id).count()
-        for i, f in enumerate(result["findings"], start=existing + 1):
+        # Re-analysis must be idempotent: drop this dataset's prior findings
+        # before re-adding, otherwise re-running a dataset duplicates its
+        # findings (they were previously only ever appended).
+        db.query(Finding).filter_by(
+            hunt_id=hunt.id, tenant_id=job.tenant_id, dataset_id=dataset.id
+        ).delete(synchronize_session=False)
+        db.flush()
+        # Continue numbering from the current max ref so refs stay unique even
+        # when only some datasets are re-analyzed (count() could collide).
+        start = _next_finding_seq(db, hunt.id)
+        for i, f in enumerate(result["findings"], start=start):
             detail = finding_details.build(f, evidence)
             db.add(
                 Finding(

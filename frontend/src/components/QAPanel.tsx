@@ -79,7 +79,9 @@ export default function QAPanel({
     }
   };
 
-  // Act on a critical issue's recommended fix, using the existing phase endpoints.
+  // Act on a critical issue's recommended fix, using the existing phase
+  // endpoints. Re-analysis is sequenced (one dataset at a time) — firing them
+  // concurrently overwhelms a local Ollama on limited RAM and they error out.
   const remediate = async (issue: QACriticalIssue) => {
     const fix = issue.fix ?? "";
     try {
@@ -92,11 +94,33 @@ export default function QAPanel({
           return;
         }
         setBusy(fix);
-        for (const id of ids) await api.analyzeDataset(tid, hid, String(id));
-        toast.success(
-          `Re-analysis started for ${ids.length} dataset(s). Watch the Datasets tab, then re-run QA.`,
-        );
-        onRefresh();
+        setRunning(true);
+        let ok = 0;
+        let failed = 0;
+        for (let k = 0; k < ids.length; k++) {
+          setJob({ id: "", status: "running", progress: 0,
+            current_task: `Re-analyzing dataset ${k + 1}/${ids.length}…` });
+          try {
+            const started = await api.analyzeDataset(tid, hid, String(ids[k]));
+            const done = await pollJob(tid, hid, String(started.id), setJob);
+            done.status === "error" ? (failed += 1) : (ok += 1);
+          } catch {
+            failed += 1;
+          }
+        }
+        if (ok) {
+          // Findings changed → correlation and QA are now stale. Re-run both,
+          // in order, so the operator ends on a fresh QA verdict.
+          setJob({ id: "", status: "running", progress: 0, current_task: "Re-running correlation…" });
+          const corr = await api.runCorrelation(tid, hid);
+          await pollJob(tid, hid, String(corr.id), setJob);
+          toast.success(`Re-analyzed ${ok} dataset(s)${failed ? `, ${failed} failed` : ""}. Re-running QA…`);
+          onRefresh();
+          await runQA(); // re-runs QA, polls, reloads
+        } else {
+          toast.error(`All ${failed} re-analysis attempt(s) failed — check 'lense logs backend' for the cause.`);
+          onRefresh();
+        }
       } else if (fix === "run_correlation") {
         setBusy(fix);
         const started = await api.runCorrelation(tid, hid);
@@ -109,6 +133,7 @@ export default function QAPanel({
     } catch (e) {
       toast.error((e as ApiError).message);
     } finally {
+      setRunning(false);
       setBusy(null);
     }
   };
@@ -310,8 +335,10 @@ export default function QAPanel({
                     ))}
                   </ul>
                   <p className="mt-2 text-[11px] text-slate-500">
-                    Use a fix button above, or resolve on the relevant tab (e.g. reject the finding
-                    on Findings), then re-run QA. The report stays blocked until QA passes.
+                    Re-analyzing runs the datasets one at a time (a local model can't analyze
+                    them in parallel), then automatically re-runs correlation and QA — since
+                    each phase feeds the next. Or resolve on the relevant tab (e.g. reject the
+                    finding on Findings) and re-run QA. The report stays blocked until QA passes.
                   </p>
                 </div>
               )}
