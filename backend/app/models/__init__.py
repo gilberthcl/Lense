@@ -287,6 +287,35 @@ class QAReport(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
+# ── Per-tenant fine-tuned model registry (LoRA adapters; Phase 3) ──────────
+# One row per trained candidate. At most one `active` per tenant (enforced in
+# the service). Isolation: a tenant's analysis only ever routes to its OWN
+# active model — adapters are never shared (Critical Rule #1).
+# status: draft | validating | active | rejected | retired
+class TenantModel(Base):
+    __tablename__ = "tenant_models"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "version", name="uq_tenant_model_version"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    base_model: Mapped[str] = mapped_column(String(120), nullable=False)
+    ollama_model_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
+    train_metrics: Mapped[dict | None] = mapped_column(JSON)   # loss curve, iters, etc.
+    eval_metrics: Mapped[dict | None] = mapped_column(JSON)    # candidate's golden-eval metrics
+    baseline_metrics: Mapped[dict | None] = mapped_column(JSON)  # what it was compared against
+    comparison: Mapped[dict | None] = mapped_column(JSON)      # eval_metrics.compare() output
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    trained_at: Mapped[datetime | None] = mapped_column(DateTime)
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
 # ── Client contacts ────────────────────────────────────────────────────────
 class ClientContact(Base):
     __tablename__ = "client_contacts"

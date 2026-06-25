@@ -8,7 +8,8 @@ from sqlalchemy import text
 
 from app.api import (
     auth as auth_api, config, correlations, datasets, eval as eval_api, findings,
-    hunts, jobs as jobs_api, knowledge, qa, reports, tenants, training,
+    hunts, jobs as jobs_api, knowledge, models as models_api, qa, reports,
+    tenants, training,
 )
 from app.core.config import settings
 from app.core.db import Base, SessionLocal, engine
@@ -106,6 +107,7 @@ app.include_router(qa.router)
 app.include_router(reports.router)
 app.include_router(training.router)
 app.include_router(eval_api.router)
+app.include_router(models_api.router)
 
 
 @app.get("/api/health")

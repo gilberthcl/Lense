@@ -101,10 +101,13 @@ def build_holdout_cases(db: Session, tenant_id: int, *, limit: int = HOLDOUT_LIM
 AnalyzeFn = Callable[[dict], "tuple[list[dict], bool]"]
 
 
-def default_analyze_fn(db: Session, tenant_id: int) -> AnalyzeFn:
+def default_analyze_fn(
+    db: Session, tenant_id: int, *, analyst_model: str | None = None
+) -> AnalyzeFn:
     """Bind the real analysis pipeline as the eval's analyze function. Returns
     (produced_findings, parse_error) for a case. Runs the configured Ollama
-    model — only invoked on the operator's box."""
+    model — only invoked on the operator's box. Pass analyst_model to evaluate a
+    specific candidate (Phase 3); None evaluates the global default."""
     from app.services import config_store, findings_engine, global_config
 
     ai = global_config.current_ai()
@@ -123,6 +126,7 @@ def default_analyze_fn(db: Session, tenant_id: int) -> AnalyzeFn:
             finding_categories=cats,
             run_reviewer=ai.get("enable_reviewer", True),
             run_qa=ai.get("enable_qa", True),
+            analyst_model=analyst_model,
         )
         produced = result.get("findings", []) or []
         parse_error = bool((result.get("trace") or {}).get("analyst_parse_error"))
@@ -161,18 +165,22 @@ def run_eval(cases: list[dict], analyze_fn: AnalyzeFn) -> dict:
 
 # ── Orchestration + persistence ──────────────────────────────────────────────
 
-def execute_eval(db: Session, tenant_id: int, *, include_holdout: bool = False) -> dict:
-    """Build cases, run them through the real pipeline, return a full report."""
+def execute_eval(
+    db: Session, tenant_id: int, *, include_holdout: bool = False,
+    analyst_model: str | None = None,
+) -> dict:
+    """Build cases, run them through the real pipeline, return a full report.
+    Pass analyst_model to evaluate a specific candidate model (Phase 3)."""
     from app.services import global_config
 
     cases = load_synthetic_cases()
     holdout = build_holdout_cases(db, tenant_id) if include_holdout else []
     cases = cases + holdout
 
-    report = run_eval(cases, default_analyze_fn(db, tenant_id))
+    report = run_eval(cases, default_analyze_fn(db, tenant_id, analyst_model=analyst_model))
     report.update({
         "tenant_id": tenant_id,
-        "model": global_config.current_ai().get("analyst_model"),
+        "model": analyst_model or global_config.current_ai().get("analyst_model"),
         "sources": {
             "synthetic": sum(1 for c in cases if c.get("source") == "synthetic"),
             "holdout": len(holdout),

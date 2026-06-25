@@ -82,6 +82,7 @@ def analyze_dataset(
     tenant_context: str | None = None,
     run_reviewer: bool = True,
     run_qa: bool = True,
+    analyst_model: str | None = None,
     on_stage=None,
 ) -> dict[str, Any]:
     """Run the full pipeline. Returns {dataset_assessment, findings, trace}."""
@@ -158,7 +159,7 @@ def analyze_dataset(
     )
     stage(f"Analyzing data — extracting findings (~{len(user) // 4} prompt tokens)…", 55)
     _t = time.perf_counter()
-    raw = ollama.analyst(sys, user)
+    raw = ollama.analyst(sys, user, model=analyst_model)
     trace["analyst_secs"] = round(time.perf_counter() - _t, 1)
     stage(f"Extraction finished in {trace['analyst_secs']}s (~{len(raw) // 4} tokens out)", 66)
     try:

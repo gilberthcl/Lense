@@ -174,9 +174,15 @@ tenant_models
    `services/eval_metrics.py` (pure scoring), `services/eval_runner.py`
    (synthetic golden cases + per-tenant holdout + `run_eval`), `api/eval.py`,
    `EvalPanel`. Establishes the baseline metrics we must not regress.
-3. **Trainer + registry + routing** ([2]–[5]) behind a feature flag, one pilot
-   tenant. **NEXT** — needs decisions #1 (base model) below; runs on the
-   operator's Mac with MLX (cannot be exercised in CI).
+3. **Registry + routing + promotion gate** ([4]–[6]). **DONE** —
+   `models.TenantModel`, `services/tenant_models.py` (versioning, one-active-per-
+   tenant, `resolve_analyst_model`, `record_eval`, gated `promote`), routing via
+   `ollama.analyst(model=…)` → `findings_engine` → `analysis_runner`/`eval_runner`
+   (inert until a model is active), `api/models.py`, `ModelsPanel`.
+   **REMAINING:** the offline **MLX trainer CLI** ([2]–[3]) — `lense train
+   <tenant>`: export → MLX-LM LoRA → fuse → GGUF → `ollama create` → call
+   `POST /models/register`. Needs decision #1 (base model) and runs on the
+   operator's Mac (cannot be exercised in CI).
 4. Measure vs. baseline (`eval_metrics.compare`). Promote only if it wins. Iterate.
 
 ## 10. Decisions needed before building

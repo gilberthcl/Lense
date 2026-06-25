@@ -35,6 +35,8 @@ import type {
   Tenant,
   TrainingStats,
   EvalBaseline,
+  TenantModelsList,
+  TenantModelInfo,
 } from "./types";
 
 export const API_BASE: string =
@@ -404,6 +406,19 @@ export const api = {
       `/api/tenants/${tid}/eval/run?include_holdout=${includeHoldout}`,
       { method: "POST" },
     ),
+
+  // --- Per-tenant fine-tuned model registry (LoRA fine-tuning, Phase 3) ---
+  getTenantModels: (tid: string) =>
+    request<TenantModelsList>(`/api/tenants/${tid}/models`),
+  evaluateModel: (tid: string, id: number, includeHoldout: boolean) =>
+    request<{ status: string }>(
+      `/api/tenants/${tid}/models/${id}/evaluate?include_holdout=${includeHoldout}`,
+      { method: "POST" },
+    ),
+  promoteModel: (tid: string, id: number) =>
+    request<TenantModelInfo>(`/api/tenants/${tid}/models/${id}/promote`, { method: "POST" }),
+  rejectModel: (tid: string, id: number) =>
+    request<TenantModelInfo>(`/api/tenants/${tid}/models/${id}/reject`, { method: "POST" }),
   setAutoCorrelate: (tid: string, hid: string, value: boolean) =>
     request<Hunt>(`/api/tenants/${tid}/hunts/${hid}`, {
       method: "PATCH",

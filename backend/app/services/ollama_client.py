@@ -279,8 +279,10 @@ def parse_json_response(text: str) -> dict | list:
 
 
 # Convenience wrappers per agent role -----------------------------------------
-def analyst(system: str, prompt: str, *, json_mode: bool = True) -> str:
-    return generate(global_config.current_ai()["analyst_model"], system, prompt, json_mode=json_mode)
+def analyst(system: str, prompt: str, *, json_mode: bool = True, model: str | None = None) -> str:
+    # `model` lets a tenant route its extractor stage to its own fine-tuned model
+    # (Phase 3). None → the global default, unchanged.
+    return generate(model or global_config.current_ai()["analyst_model"], system, prompt, json_mode=json_mode)
 
 
 def reviewer(system: str, prompt: str, *, json_mode: bool = True) -> str:

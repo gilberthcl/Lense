@@ -635,6 +635,33 @@ export interface EvalBaseline {
   error?: string;
 }
 
+// Per-tenant fine-tuned model registry (LoRA fine-tuning, Phase 3).
+export interface ModelComparison {
+  deltas: Record<string, number>;
+  regressed: boolean | null;
+  tolerance: number;
+}
+export interface TenantModelInfo {
+  id: number;
+  tenant_id: number;
+  base_model: string;
+  ollama_model_name: string;
+  version: number;
+  status: "draft" | "validating" | "active" | "rejected" | "retired" | string;
+  train_metrics?: Record<string, unknown> | null;
+  eval_metrics?: EvalMetrics | null;
+  baseline_metrics?: EvalMetrics | null;
+  comparison?: ModelComparison | null;
+  notes?: string | null;
+  created_at?: string;
+  trained_at?: string | null;
+  activated_at?: string | null;
+}
+export interface TenantModelsList {
+  active_model: string | null;
+  models: TenantModelInfo[];
+}
+
 export type ReportLang = "en" | "es";
 
 // Request payload helpers
