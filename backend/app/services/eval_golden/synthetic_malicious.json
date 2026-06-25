@@ -1,0 +1,30 @@
+{
+  "name": "synthetic-malicious-mimikatz",
+  "source": "synthetic",
+  "description": "Offensive credential-dumping tool present — the model must raise a malicious finding citing the right host and user.",
+  "evidence_package": {
+    "schema": ["timestamp", "host", "user", "process", "command_line"],
+    "stats": {
+      "row_count": 3,
+      "col_count": 5,
+      "top_values": {
+        "process": [{"value": "mimikatz.exe", "count": 3}],
+        "host": [{"value": "EP-01", "count": 3}]
+      }
+    },
+    "entities": {
+      "hosts": ["EP-01"],
+      "users": ["camilo"],
+      "processes": ["mimikatz.exe"]
+    },
+    "offensive_tool_hits": [
+      {"tool": "mimikatz", "value": "mimikatz.exe"}
+    ],
+    "sample_rows": [
+      {"timestamp": "2026-06-01T10:00:00Z", "host": "EP-01", "user": "camilo", "process": "mimikatz.exe", "command_line": "mimikatz.exe sekurlsa::logonpasswords"}
+    ]
+  },
+  "expected": [
+    {"category": "malicious", "entities": ["EP-01", "camilo"], "mitre": ["T1003.001"], "title": "Credential dumping via mimikatz"}
+  ]
+}

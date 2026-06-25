@@ -9,6 +9,7 @@ import { getModule, moduleClientBase } from "../lib/modules";
 import { Badge, Spinner, Tabs } from "../components/ui";
 import KnowledgePanel from "../components/KnowledgePanel";
 import TrainingPanel from "../components/TrainingPanel";
+import EvalPanel from "../components/EvalPanel";
 import HuntsPanel from "../components/HuntsPanel";
 import ClientOverview from "../components/client/ClientOverview";
 import ClientContacts from "../components/client/ClientContacts";
@@ -139,6 +140,7 @@ export default function ClientWorkspace({ moduleId }: { moduleId?: string } = {}
         <>
           <KnowledgePanel tid={tid} />
           <TrainingPanel tid={tid} />
+          <EvalPanel tid={tid} />
         </>
       )}
       {tab === "environment" && <ClientEnvironment tid={tid} />}

@@ -168,13 +168,16 @@ tenant_models
 - Does not touch reviewer/QA models in v1.
 
 ## 9. Phased rollout
-1. **Exporter + dataset inspection** ([1]). Ship first; produces JSONL we can
-   eyeball. Zero inference-path risk. Also immediately useful as analytics.
-2. **Golden eval harness** ([6]) against the *current* model — establishes the
-   baseline metrics we must not regress.
+1. **Exporter + dataset inspection** ([1]). **DONE** — `services/training_export.py`,
+   `api/training.py`, `TrainingPanel` under the client's Knowledge Base tab.
+2. **Golden eval harness** ([6]) against the *current* model. **DONE** —
+   `services/eval_metrics.py` (pure scoring), `services/eval_runner.py`
+   (synthetic golden cases + per-tenant holdout + `run_eval`), `api/eval.py`,
+   `EvalPanel`. Establishes the baseline metrics we must not regress.
 3. **Trainer + registry + routing** ([2]–[5]) behind a feature flag, one pilot
-   tenant.
-4. Measure vs. baseline. Promote only if it wins. Iterate.
+   tenant. **NEXT** — needs decisions #1 (base model) below; runs on the
+   operator's Mac with MLX (cannot be exercised in CI).
+4. Measure vs. baseline (`eval_metrics.compare`). Promote only if it wins. Iterate.
 
 ## 10. Decisions needed before building
 - **Base model for training** — 8B Western-origin candidate? (affects feasibility)

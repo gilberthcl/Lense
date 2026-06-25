@@ -34,6 +34,7 @@ import type {
   ReportLang,
   Tenant,
   TrainingStats,
+  EvalBaseline,
 } from "./types";
 
 export const API_BASE: string =
@@ -394,6 +395,15 @@ export const api = {
     request<TrainingStats>(`/api/tenants/${tid}/training/stats`),
   exportTrainingSet: (tid: string) =>
     request<TrainingStats>(`/api/tenants/${tid}/training/export`, { method: "POST" }),
+
+  // --- Golden-eval baseline (LoRA fine-tuning, Phase 2) ---
+  getEvalBaseline: (tid: string) =>
+    request<EvalBaseline>(`/api/tenants/${tid}/eval/baseline`),
+  runEval: (tid: string, includeHoldout: boolean) =>
+    request<{ status: string }>(
+      `/api/tenants/${tid}/eval/run?include_holdout=${includeHoldout}`,
+      { method: "POST" },
+    ),
   setAutoCorrelate: (tid: string, hid: string, value: boolean) =>
     request<Hunt>(`/api/tenants/${tid}/hunts/${hid}`, {
       method: "PATCH",

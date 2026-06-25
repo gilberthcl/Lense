@@ -1,0 +1,25 @@
+{
+  "name": "synthetic-benign-approved-software",
+  "source": "synthetic",
+  "description": "Only routine, approved software activity — the model must NOT manufacture a finding (false-positive discipline).",
+  "evidence_package": {
+    "schema": ["timestamp", "host", "user", "process"],
+    "stats": {
+      "row_count": 2,
+      "col_count": 4,
+      "top_values": {
+        "process": [{"value": "chrome.exe", "count": 2}]
+      }
+    },
+    "entities": {
+      "hosts": ["WS-09"],
+      "users": ["ana"],
+      "processes": ["chrome.exe"]
+    },
+    "sample_rows": [
+      {"timestamp": "2026-06-01T09:00:00Z", "host": "WS-09", "user": "ana", "process": "chrome.exe"},
+      {"timestamp": "2026-06-01T09:05:00Z", "host": "WS-09", "user": "ana", "process": "chrome.exe"}
+    ]
+  },
+  "expected": []
+}

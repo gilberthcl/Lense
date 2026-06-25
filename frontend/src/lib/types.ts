@@ -598,6 +598,43 @@ export interface TrainingStats {
   };
 }
 
+// Golden-eval baseline (LoRA fine-tuning, Phase 2).
+export interface EvalMetrics {
+  cases: number;
+  tp: number;
+  fp: number;
+  fn: number;
+  precision: number;
+  recall: number;
+  f1: number;
+  hallucination_rate: number;
+  parse_error_rate: number;
+  findings_produced: number;
+}
+export interface EvalCaseRow {
+  name: string;
+  source?: string;
+  tp: number;
+  fp: number;
+  fn: number;
+  n_expected: number;
+  n_produced: number;
+  hallucinated: number;
+  parse_error?: boolean;
+}
+export interface EvalBaseline {
+  status: "none" | "running" | "done" | "error";
+  tenant_id?: number;
+  model?: string | null;
+  sources?: { synthetic: number; holdout: number };
+  metrics?: EvalMetrics;
+  cases?: EvalCaseRow[];
+  created_at?: string;
+  started_at?: string;
+  include_holdout?: boolean;
+  error?: string;
+}
+
 export type ReportLang = "en" | "es";
 
 // Request payload helpers
