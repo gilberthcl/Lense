@@ -121,6 +121,22 @@ function FindingDetail({
         </Field>
       )}
 
+      {finding.enrichment?.note && (
+        <Field label="Correlation enrichment">
+          <div className="rounded border border-emerald-900/40 bg-emerald-950/20 p-3 text-sm text-slate-300">
+            <p>{finding.enrichment.note}</p>
+            {!!finding.enrichment.corroborating_datasets?.length && (
+              <p className="mt-1 text-[11px] text-slate-500">
+                Corroborated by:{" "}
+                {finding.enrichment.corroborating_datasets
+                  .map((d) => d.filename ?? `dataset ${d.id}`)
+                  .join(", ")}
+              </p>
+            )}
+          </div>
+        </Field>
+      )}
+
       <Field label="Evidence">
         <pre className="max-h-72 overflow-auto rounded border border-slate-800 bg-slate-950 p-3 font-mono text-xs text-slate-300">
           {prettyJson(finding.evidence)}
@@ -237,6 +253,17 @@ export default function FindingsPanel({
   const [patchingId, setPatchingId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [showMerged, setShowMerged] = useState(false);
+
+  // After correlation, merged findings are folded into their survivor. Hide them
+  // by default so this tab shows the curated, post-correlation list.
+  const mergedCount = (findings ?? []).filter((f) => f.merged_into_id != null).length;
+  const visible =
+    findings === null
+      ? null
+      : showMerged
+        ? findings
+        : findings.filter((f) => f.merged_into_id == null);
 
   const load = () =>
     api
@@ -308,9 +335,9 @@ export default function FindingsPanel({
     });
 
   const toggleAll = () => {
-    if (!findings) return;
+    if (!visible) return;
     setSelected((prev) =>
-      prev.size === findings.length ? new Set() : new Set(findings.map((f) => f.id)),
+      prev.size === visible.length ? new Set() : new Set(visible.map((f) => f.id)),
     );
   };
 
@@ -336,12 +363,23 @@ export default function FindingsPanel({
     <Card>
       <PanelHeader
         title="Findings"
-        subtitle="AI-generated findings — review, validate, or reject"
+        subtitle="Curated findings — correlation results applied (merges, enrichment, chains)"
         right={
           findings ? (
-            <span className="text-xs text-slate-500">
-              {findings.length} total
-            </span>
+            <div className="flex items-center gap-3 text-xs text-slate-500">
+              <span>
+                {visible?.length ?? 0} shown
+                {mergedCount ? ` · ${mergedCount} merged` : ""}
+              </span>
+              {mergedCount > 0 && (
+                <button
+                  onClick={() => setShowMerged((s) => !s)}
+                  className="rounded border border-slate-700 px-2 py-0.5 text-slate-300 hover:bg-slate-800"
+                >
+                  {showMerged ? "Hide merged" : "Show merged"}
+                </button>
+              )}
+            </div>
           ) : null
         }
       />
@@ -373,6 +411,10 @@ export default function FindingsPanel({
           <EmptyState>
             No findings yet. Upload and analyze a dataset to generate findings.
           </EmptyState>
+        ) : (visible?.length ?? 0) === 0 ? (
+          <EmptyState>
+            All findings were merged during correlation. Use “Show merged” to view them.
+          </EmptyState>
         ) : (
           <div className="overflow-hidden rounded border border-slate-800">
             <table className="w-full text-sm">
@@ -382,7 +424,7 @@ export default function FindingsPanel({
                     <input
                       type="checkbox"
                       aria-label="Select all"
-                      checked={findings.length > 0 && selected.size === findings.length}
+                      checked={(visible?.length ?? 0) > 0 && selected.size === (visible?.length ?? 0)}
                       onChange={toggleAll}
                     />
                   </th>
@@ -395,7 +437,7 @@ export default function FindingsPanel({
                 </tr>
               </thead>
               <tbody>
-                {findings.map((f) => {
+                {(visible ?? []).map((f) => {
                   const open = expanded === f.id;
                   return (
                     <Fragment key={f.id}>
@@ -416,7 +458,28 @@ export default function FindingsPanel({
                         <td className="px-3 py-2.5 font-mono text-xs text-indigo-300">
                           {f.finding_ref}
                         </td>
-                        <td className="px-3 py-2.5 text-slate-200">{f.title}</td>
+                        <td className="px-3 py-2.5 text-slate-200">
+                          <span className={f.merged_into_id ? "text-slate-500 line-through" : ""}>
+                            {f.title}
+                          </span>
+                          <span className="ml-2 inline-flex gap-1 align-middle">
+                            {f.chain_id != null && (
+                              <span className="rounded bg-indigo-900/50 px-1.5 py-0.5 text-[10px] text-indigo-200">
+                                chain
+                              </span>
+                            )}
+                            {f.enrichment?.note && (
+                              <span className="rounded bg-emerald-900/40 px-1.5 py-0.5 text-[10px] text-emerald-200">
+                                enriched
+                              </span>
+                            )}
+                            {f.merged_into_id != null && (
+                              <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-400">
+                                merged
+                              </span>
+                            )}
+                          </span>
+                        </td>
                         <td className="px-3 py-2.5">
                           <CategoryBadge category={f.category} />
                         </td>

@@ -377,6 +377,11 @@ export interface Finding {
   recommendations?: unknown;
   status: FindingStatus;
   reviewer_notes?: string | null;
+  entities?: Record<string, string[]> | null;
+  source_dataset?: string | null;
+  enrichment?: { note?: string; corroborating_datasets?: { id: number; filename?: string | null }[] } | null;
+  chain_id?: number | null;
+  merged_into_id?: number | null;
   [key: string]: unknown;
 }
 
