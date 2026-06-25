@@ -51,6 +51,9 @@ export default function DatasetsPanel({
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [preview, setPreview] = useState<DatasetPreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [errorFor, setErrorFor] = useState<string | null>(null);
+  const [errorText, setErrorText] = useState<string | null>(null);
+  const [errorLoading, setErrorLoading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const stopRef = useRef(false);
 
@@ -289,6 +292,29 @@ export default function DatasetsPanel({
     }
   };
 
+  const toggleError = async (ds: Dataset) => {
+    if (errorFor === ds.id) {
+      setErrorFor(null);
+      return;
+    }
+    setErrorFor(ds.id);
+    setErrorText(null);
+    setErrorLoading(true);
+    try {
+      const jobs = await api.listHuntJobs(tid, hid);
+      // listHuntJobs is newest-first — the first analysis job for this dataset
+      // is the most recent attempt.
+      const j = jobs.find(
+        (x) => x.phase === "analysis" && String(x.dataset_id) === ds.id && x.error,
+      );
+      setErrorText(j?.error ?? "No error message was recorded for the last analysis attempt.");
+    } catch (e) {
+      setErrorText(e instanceof ApiError ? e.message : "Could not load the error.");
+    } finally {
+      setErrorLoading(false);
+    }
+  };
+
   const busy = uploading || runningAll || active !== null;
   const pendingCount = (datasets ?? []).filter((d) => d.status === "uploaded" || d.status === "error").length;
   const hasDatasets = (datasets?.length ?? 0) > 0;
@@ -470,6 +496,18 @@ export default function DatasetsPanel({
                               <span className="inline-flex items-center gap-1.5 text-xs text-indigo-300">
                                 <Spinner className="h-3 w-3" /> analyzing
                               </span>
+                            ) : ds.status === "error" ? (
+                              <button
+                                type="button"
+                                onClick={() => toggleError(ds)}
+                                title="Show why this analysis failed"
+                                className="inline-flex items-center gap-1"
+                              >
+                                <DatasetStatusBadge status={ds.status} />
+                                <span className="text-[11px] text-red-400 underline">
+                                  {errorFor === ds.id ? "hide" : "why?"}
+                                </span>
+                              </button>
                             ) : (
                               <DatasetStatusBadge status={ds.status} />
                             )}
@@ -490,6 +528,31 @@ export default function DatasetsPanel({
                             </div>
                           </td>
                         </tr>
+                        {errorFor === ds.id && (
+                          <tr>
+                            <td colSpan={6} className="bg-slate-950/50 px-3 py-3">
+                              {errorLoading ? (
+                                <div className="flex items-center gap-2 text-xs text-slate-500">
+                                  <Spinner className="h-3 w-3" /> loading error…
+                                </div>
+                              ) : (
+                                <div>
+                                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-red-400">
+                                    Last analysis error
+                                  </p>
+                                  <div className="rounded border border-red-900/50 bg-red-950/30 px-3 py-2 font-mono text-[11px] leading-relaxed text-red-300">
+                                    {errorText}
+                                  </div>
+                                  <p className="mt-1.5 text-[11px] text-slate-500">
+                                    Transient connection failures are retried automatically; a
+                                    timeout means the model was too slow — raise the timeout in
+                                    Config → AI, or the dataset is very wide. Click Analyze to retry.
+                                  </p>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )}
                         {isPreview && (
                           <tr>
                             <td colSpan={6} className="bg-slate-950/50 px-3 py-3">

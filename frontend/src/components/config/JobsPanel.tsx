@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../../lib/api";
 import type { GlobalJob, OllamaStatus } from "../../lib/types";
 import { useToast } from "../Toast";
@@ -164,7 +164,8 @@ export default function JobsPanel() {
               </thead>
               <tbody>
                 {jobs.map((j) => (
-                  <tr key={j.id} className="border-b border-slate-900 last:border-0">
+                  <Fragment key={j.id}>
+                  <tr className={`border-slate-900 ${j.error ? "" : "border-b last:border-0"}`}>
                     <td className="py-2.5 pr-3">
                       <div className="text-slate-200">{j.tenant_name ?? `#${j.tenant_id}`}</div>
                       <div className="text-xs text-slate-500">{j.hunt_name ?? `hunt ${j.hunt_id}`}</div>
@@ -197,6 +198,16 @@ export default function JobsPanel() {
                       )}
                     </td>
                   </tr>
+                  {j.error && (
+                    <tr className="border-b border-slate-900 last:border-0">
+                      <td colSpan={7} className="px-3 pb-2.5">
+                        <div className="rounded border border-red-900/50 bg-red-950/30 px-3 py-2 font-mono text-[11px] text-red-300">
+                          {j.error}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

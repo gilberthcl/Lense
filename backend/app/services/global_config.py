@@ -50,6 +50,11 @@ def ai_defaults() -> dict:
         # a deliberate middle ground, not a max.
         "num_ctx": 12288,
         "keep_alive": "30m",    # keep the model warm between datasets
+        # Transient transport failures (connection reset/refused while Ollama is
+        # under memory pressure or loading the model) are retried this many times
+        # with backoff before the job is marked failed. Timeouts are never
+        # retried — see ollama_client. This is the main analysis-stability knob.
+        "request_retries": 2,
         # Each stage is a separate generation. On a slow box, turning Reviewer/QA
         # off runs a single analyst pass (≈3× faster) at some FP-reduction cost.
         "enable_reviewer": True,

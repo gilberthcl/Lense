@@ -15,14 +15,54 @@ never swaps a multi-GB model between stages.
 from __future__ import annotations
 
 import json
+import logging
+import time
 
 import httpx
 
 from app.services import global_config
 
+logger = logging.getLogger("lens.ollama")
+
 
 class OllamaError(RuntimeError):
-    pass
+    # retryable: a transient transport failure (connection refused/reset, the
+    # model still loading) worth retrying. Timeouts are NOT retryable — the model
+    # is genuinely too slow for the configured budget, so retrying just multiplies
+    # the wait; the operator should raise the timeout or shrink the dataset.
+    retryable: bool = True
+
+
+def _retries() -> int:
+    try:
+        return max(0, int(global_config.current_ai().get("request_retries", 2)))
+    except Exception:  # noqa: BLE001 — config unavailable, use a safe default
+        return 2
+
+
+def _with_retries(label: str, fn):
+    """Run an Ollama call, retrying transient transport failures with backoff.
+
+    This is the difference between "the analysis randomly failed" and a stable
+    pipeline: a local Ollama under memory pressure or mid-model-load will reset
+    or refuse a connection, and the next attempt a couple seconds later succeeds.
+    """
+    attempts = _retries() + 1
+    last: OllamaError | None = None
+    for i in range(attempts):
+        try:
+            return fn()
+        except OllamaError as exc:
+            last = exc
+            if not getattr(exc, "retryable", True) or i + 1 >= attempts:
+                raise
+            delay = 1.5 * (2**i)
+            logger.warning(
+                "Ollama %s failed (attempt %d/%d): %s — retrying in %.1fs",
+                label, i + 1, attempts, exc, delay,
+            )
+            time.sleep(delay)
+    raise last  # pragma: no cover — loop always returns or raises above
 
 
 def _post(path: str, payload: dict) -> dict:
@@ -33,7 +73,15 @@ def _post(path: str, payload: dict) -> dict:
             resp = client.post(url, json=payload)
             resp.raise_for_status()
             return resp.json()
-    except httpx.HTTPError as exc:  # network, timeout, non-2xx
+    except httpx.TimeoutException as exc:
+        err = OllamaError(
+            f"Ollama timed out after {cfg['timeout']}s ({path}). The model is too "
+            "slow for this prompt — raise the timeout in Config, or the dataset is "
+            "very wide/large. Not retried."
+        )
+        err.retryable = False
+        raise err from exc
+    except httpx.HTTPError as exc:  # connection refused/reset, non-2xx
         raise OllamaError(f"Ollama call failed ({path}): {exc}") from exc
 
 
@@ -63,7 +111,7 @@ def generate(model: str, system: str, prompt: str, *, json_mode: bool = False) -
     }
     if json_mode:
         payload["format"] = "json"
-    data = _post("/api/generate", payload)
+    data = _with_retries(f"generate({model})", lambda: _post("/api/generate", payload))
     return data.get("response", "")
 
 
@@ -100,34 +148,44 @@ def generate_stream(
     }
     if json_mode:
         payload["format"] = "json"
-    parts: list[str] = []
-    try:
-        with httpx.Client(timeout=cfg["timeout"]) as client:
-            with client.stream("POST", url, json=payload) as resp:
-                resp.raise_for_status()
-                for line in resp.iter_lines():
-                    if not line:
-                        continue
-                    try:
-                        obj = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    tok = obj.get("response", "")
-                    if tok:
-                        parts.append(tok)
-                        if on_chunk:
-                            on_chunk(tok)
-                    if obj.get("done"):
-                        break
-    except httpx.HTTPError as exc:
-        raise OllamaError(f"Ollama stream failed (/api/generate): {exc}") from exc
-    return "".join(parts)
+
+    def _attempt() -> str:
+        parts: list[str] = []
+        try:
+            with httpx.Client(timeout=cfg["timeout"]) as client:
+                with client.stream("POST", url, json=payload) as resp:
+                    resp.raise_for_status()
+                    for line in resp.iter_lines():
+                        if not line:
+                            continue
+                        try:
+                            obj = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        tok = obj.get("response", "")
+                        if tok:
+                            parts.append(tok)
+                            if on_chunk:
+                                on_chunk(tok)
+                        if obj.get("done"):
+                            break
+        except httpx.TimeoutException as exc:
+            err = OllamaError(f"Ollama stream timed out after {cfg['timeout']}s.")
+            err.retryable = False
+            raise err from exc
+        except httpx.HTTPError as exc:
+            raise OllamaError(f"Ollama stream failed (/api/generate): {exc}") from exc
+        return "".join(parts)
+
+    return _with_retries(f"stream({model})", _attempt)
 
 
 def embed(text: str) -> list[float]:
     """Embed a single string with the configured embedding model."""
     model = global_config.current_ai()["embed_model"]
-    data = _post("/api/embeddings", {"model": model, "prompt": text})
+    data = _with_retries(
+        f"embed({model})", lambda: _post("/api/embeddings", {"model": model, "prompt": text})
+    )
     vec = data.get("embedding")
     if not vec:
         raise OllamaError("Ollama returned no embedding")
