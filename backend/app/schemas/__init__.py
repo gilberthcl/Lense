@@ -154,6 +154,7 @@ class HuntCreate(BaseModel):
     report_language: str = "English"
     edr: str | None = None
     siem: str | None = None
+    kind: str = "live"  # live | training (historic hunt for learning) — W3
 
 
 class HuntUpdate(BaseModel):
@@ -181,6 +182,7 @@ class HuntOut(ORMModel):
     analysis_plan: dict | None
     plan_state: dict | None
     status: str
+    kind: str = "live"
     auto_correlate: bool = False
     auto_qa: bool = False
     created_at: datetime

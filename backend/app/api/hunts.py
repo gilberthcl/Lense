@@ -57,6 +57,7 @@ def create_hunt(
         report_language=payload.report_language or "English",
         edr=payload.edr,
         siem=payload.siem,
+        kind="training" if payload.kind == "training" else "live",
     )
     db.add(hunt)
     db.commit()

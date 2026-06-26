@@ -162,7 +162,18 @@ Original scope notes (for reference):
 - Requires the dataset to still be present.
 - Testable here: ✅ (orchestration with fakes). Needs Mac: ❌ for logic, model run on box.
 
-### W3 — Training Hunts *(point 3; the foundational corpus + best eval set)*
+### W3 — Training Hunts *(point 3; the foundational corpus + best eval set)* — **IN PROGRESS**
+**Slice 1 — DONE:** `Hunt.kind` (live|training) in create API + schema (+ migration
+done in W0), a "Historic training hunt" toggle in the create form, a `training`
+badge in the hunt list, and provenance: findings ingested into a Training Hunt
+(via the existing missed-finding/ingestion wizard) record `source=training_hunt`
+LearningEvents (vs `missed_finding` for live hunts). These validated findings
+already flow into the training corpus + eval holdout. Test: hunt-kind schema.
+**Slice 2 — TODO:** dedicated ingestion-oriented stage variants (paste-structure
+methodology; batch finding import; report-format/depth examples; correlation/QA
+truth), coverage-awareness (full vs report-only), and exporter/eval labelling of
+training-hunt examples.
+
 **Goal:** turn years of historic hunts into the cold-start corpus and the eval baseline.
 - **First-class entry point:** a dedicated **"Create Training (Historic) Hunt"**
   action, distinct from creating a live hunt. A Training Hunt = `Hunt.kind = training`

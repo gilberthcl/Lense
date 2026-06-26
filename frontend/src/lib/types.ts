@@ -229,6 +229,7 @@ export interface Hunt {
   plan_state?: PlanState | null;
   auto_correlate?: boolean;
   auto_qa?: boolean;
+  kind?: string;   // live | training (W3)
   created_at: string;
 }
 
@@ -730,4 +731,5 @@ export interface CreateHuntInput {
   report_language?: string;
   edr?: string;
   siem?: string;
+  kind?: string;   // live | training (W3)
 }

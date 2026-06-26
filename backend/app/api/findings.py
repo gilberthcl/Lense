@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_tenant
 from app.core.config import settings
 from app.core.db import SessionLocal, get_db
-from app.models import Dataset, Finding, KnowledgeDocument, Tenant
+from app.models import Dataset, Finding, Hunt, KnowledgeDocument, Tenant
 from app.schemas import (
     FindingBulkUpdate, FindingDisposition, FindingOut, FindingRegenerate,
     FindingStatusUpdate, LearningNote, MissedFindingCreate, MissedFindingResult,
@@ -55,12 +55,13 @@ def _resolve_finding(db: Session, tenant_id: int, hunt_id: int, finding_id: int)
 
 def _record_missed_async(
     tenant_id: int, hunt_id: int, finding_id: int, description: str, summary: str,
+    source: str = "missed_finding",
 ) -> None:
     db = SessionLocal()
     try:
         learning.record_event(
             db, tenant_id=tenant_id, hunt_id=hunt_id, stage="finding",
-            source="missed_finding", target_type="finding", target_id=finding_id,
+            source=source, target_type="finding", target_id=finding_id,
             disposition="added", feedback_text=description, summary=summary or None,
         )
     finally:
@@ -305,9 +306,13 @@ def add_missed_finding(
     db.commit()
     if doc_id is not None:
         background.add_task(_index_doc_async, doc_id)
+    # Provenance: ingestion into a Training Hunt is training_hunt signal; into a
+    # live hunt it's a missed finding (false negative).
+    hunt = db.get(Hunt, hunt_id)
+    source = "training_hunt" if hunt and hunt.kind == "training" else "missed_finding"
     background.add_task(
         _record_missed_async, tenant.id, hunt_id, finding.id,
-        payload.description, missed_finding.lessons_summary(why, lessons),
+        payload.description, missed_finding.lessons_summary(why, lessons), source,
     )
     return {"finding": finding, "why_missed": why, "lessons": lessons}
 

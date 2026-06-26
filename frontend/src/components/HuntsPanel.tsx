@@ -67,6 +67,7 @@ export default function HuntsPanel({
         report_language: form.report_language || "English",
         edr: form.edr?.trim() || undefined,
         siem: form.siem?.trim() || undefined,
+        kind: form.kind || "live",
       });
       // If a methodology file was provided, upload it and kick off comprehension.
       if (methodFile) {
@@ -184,8 +185,23 @@ export default function HuntsPanel({
             The engine fully comprehends the methodology — plan of action and
             executed queries — before analyzing any dataset.
           </p>
+          <label className="flex cursor-pointer items-start gap-2 rounded border border-slate-800 bg-slate-950/40 p-2.5 text-sm text-slate-300">
+            <input
+              type="checkbox"
+              checked={form.kind === "training"}
+              onChange={(e) => setForm((f) => ({ ...f, kind: e.target.checked ? "training" : "live" }))}
+              className="mt-0.5 h-3.5 w-3.5 accent-indigo-500"
+            />
+            <span>
+              Historic <b>training hunt</b>
+              <span className="block text-xs text-slate-500">
+                A completed past hunt ingested to teach this client's model — its findings become
+                training data, not a live deliverable.
+              </span>
+            </span>
+          </label>
           <Button type="submit" variant="primary" disabled={submitting}>
-            {submitting ? <Spinner /> : "Create Hunt"}
+            {submitting ? <Spinner /> : (form.kind === "training" ? "Create Training Hunt" : "Create Hunt")}
           </Button>
         </form>
       )}
@@ -209,9 +225,14 @@ export default function HuntsPanel({
                     <p className="truncate text-sm font-medium text-slate-200 group-hover:text-indigo-300">
                       {h.name}
                     </p>
-                    <Badge className="shrink-0 border border-slate-700 bg-slate-800 text-slate-300">
-                      {h.status}
-                    </Badge>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      {h.kind === "training" && (
+                        <Badge className="border border-amber-800 bg-amber-950 text-amber-300">training</Badge>
+                      )}
+                      <Badge className="border border-slate-700 bg-slate-800 text-slate-300">
+                        {h.status}
+                      </Badge>
+                    </div>
                   </div>
                   {h.objective && (
                     <p className="mt-1 line-clamp-2 text-xs text-slate-500">
