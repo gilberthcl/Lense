@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { api, ApiError } from "../../lib/api";
 import type { Tenant, UpdateTenantInput } from "../../lib/types";
 import { useToast } from "../Toast";
+import BaseModelSelect from "../BaseModelSelect";
 import { Button, Card, Input, Label, PanelHeader, Select, Spinner, Textarea } from "../ui";
 
 const FIELDS: { key: keyof UpdateTenantInput; label: string; type?: string }[] = [
@@ -130,6 +131,17 @@ export default function ClientSettings({
               </a>
             )}
           </div>
+        </div>
+      </Card>
+
+      {/* Per-client analyst model (W0b) — also surfaced here in Settings. */}
+      <Card>
+        <PanelHeader
+          title="Analyst model"
+          subtitle="The AI model this client's analysis runs on — compliance-gated (Western-origin, local, verified)"
+        />
+        <div className="p-4">
+          <BaseModelSelect tid={String(client.id)} />
         </div>
       </Card>
     </div>

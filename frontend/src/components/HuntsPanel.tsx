@@ -37,8 +37,15 @@ export default function HuntsPanel({
   const toast = useToast();
   const [hunts, setHunts] = useState<Hunt[] | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [formKind, setFormKind] = useState<"live" | "training">("live");
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState<CreateHuntInput>(EMPTY_FORM);
+
+  const openForm = (kind: "live" | "training") => {
+    setFormKind(kind);
+    setForm({ ...EMPTY_FORM, kind });
+    setShowForm(true);
+  };
   const [methodFile, setMethodFile] = useState<File | null>(null);
 
   const load = () =>
@@ -67,7 +74,7 @@ export default function HuntsPanel({
         report_language: form.report_language || "English",
         edr: form.edr?.trim() || undefined,
         siem: form.siem?.trim() || undefined,
-        kind: form.kind || "live",
+        kind: formKind,
       });
       // If a methodology file was provided, upload it and kick off comprehension.
       if (methodFile) {
@@ -91,17 +98,38 @@ export default function HuntsPanel({
     }
   };
 
+  const liveHunts = (hunts ?? []).filter((h) => h.kind !== "training");
+  const trainingHunts = (hunts ?? []).filter((h) => h.kind === "training");
+
   return (
     <Card>
       <PanelHeader
         title="Hunts"
         subtitle="Hypothesis-driven hunt runs scoped to this client"
         right={
-          <Button onClick={() => setShowForm((s) => !s)}>
-            {showForm ? "Close" : "+ New Hunt"}
-          </Button>
+          showForm ? (
+            <Button variant="ghost" onClick={() => setShowForm(false)}>Close</Button>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Button onClick={() => openForm("live")}>+ New Hunt</Button>
+              <Button variant="ghost" onClick={() => openForm("training")}>+ Training Hunt</Button>
+            </div>
+          )
         }
       />
+
+      {showForm && (
+        <div className="border-b border-slate-800 bg-slate-950/40 px-4 pt-3 text-xs text-slate-400">
+          {formKind === "training" ? (
+            <span className="text-amber-300">
+              Creating a <b>Historic Training Hunt</b> — its findings become training data for this
+              client's model, not a live deliverable.
+            </span>
+          ) : (
+            <span>Creating a new live hunt.</span>
+          )}
+        </div>
+      )}
 
       {showForm && (
         <form
@@ -185,28 +213,13 @@ export default function HuntsPanel({
             The engine fully comprehends the methodology — plan of action and
             executed queries — before analyzing any dataset.
           </p>
-          <label className="flex cursor-pointer items-start gap-2 rounded border border-slate-800 bg-slate-950/40 p-2.5 text-sm text-slate-300">
-            <input
-              type="checkbox"
-              checked={form.kind === "training"}
-              onChange={(e) => setForm((f) => ({ ...f, kind: e.target.checked ? "training" : "live" }))}
-              className="mt-0.5 h-3.5 w-3.5 accent-indigo-500"
-            />
-            <span>
-              Historic <b>training hunt</b>
-              <span className="block text-xs text-slate-500">
-                A completed past hunt ingested to teach this client's model — its findings become
-                training data, not a live deliverable.
-              </span>
-            </span>
-          </label>
           <Button type="submit" variant="primary" disabled={submitting}>
-            {submitting ? <Spinner /> : (form.kind === "training" ? "Create Training Hunt" : "Create Hunt")}
+            {submitting ? <Spinner /> : (formKind === "training" ? "Create Training Hunt" : "Create Hunt")}
           </Button>
         </form>
       )}
 
-      <div className="p-4">
+      <div className="space-y-4 p-4">
         {hunts === null ? (
           <div className="flex items-center gap-2 text-sm text-slate-500">
             <Spinner /> Loading…
@@ -214,40 +227,56 @@ export default function HuntsPanel({
         ) : hunts.length === 0 ? (
           <EmptyState>No hunts yet. Create one to start analyzing datasets.</EmptyState>
         ) : (
-          <ul className="space-y-2">
-            {hunts.map((h) => (
-              <li key={h.id}>
-                <Link
-                  to={`${clientBase}/${tid}/hunts/${h.id}`}
-                  className="group block rounded border border-slate-800 bg-slate-950/40 px-3 py-2.5 transition-colors hover:border-indigo-700"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="truncate text-sm font-medium text-slate-200 group-hover:text-indigo-300">
-                      {h.name}
-                    </p>
-                    <div className="flex shrink-0 items-center gap-1.5">
-                      {h.kind === "training" && (
-                        <Badge className="border border-amber-800 bg-amber-950 text-amber-300">training</Badge>
-                      )}
-                      <Badge className="border border-slate-700 bg-slate-800 text-slate-300">
-                        {h.status}
-                      </Badge>
-                    </div>
-                  </div>
-                  {h.objective && (
-                    <p className="mt-1 line-clamp-2 text-xs text-slate-500">
-                      {h.objective}
-                    </p>
-                  )}
-                  <p className="mt-1 text-xs text-slate-600">
-                    {fmtDate(h.created_at)}
-                  </p>
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <>
+            {renderHuntSection("Live hunts", liveHunts)}
+            {trainingHunts.length > 0 && renderHuntSection("Training hunts (historic)", trainingHunts)}
+          </>
         )}
       </div>
     </Card>
   );
+
+  function renderHuntSection(title: string, list: Hunt[]) {
+    if (list.length === 0) {
+      return (
+        <div>
+          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</p>
+          <p className="text-sm text-slate-600">None yet.</p>
+        </div>
+      );
+    }
+    return (
+      <div>
+        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</p>
+        <ul className="space-y-2">
+          {list.map((h) => (
+            <li key={h.id}>
+              <Link
+                to={`${clientBase}/${tid}/hunts/${h.id}`}
+                className="group block rounded border border-slate-800 bg-slate-950/40 px-3 py-2.5 transition-colors hover:border-indigo-700"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <p className="truncate text-sm font-medium text-slate-200 group-hover:text-indigo-300">
+                    {h.name}
+                  </p>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {h.kind === "training" && (
+                      <Badge className="border border-amber-800 bg-amber-950 text-amber-300">training</Badge>
+                    )}
+                    <Badge className="border border-slate-700 bg-slate-800 text-slate-300">
+                      {h.status}
+                    </Badge>
+                  </div>
+                </div>
+                {h.objective && (
+                  <p className="mt-1 line-clamp-2 text-xs text-slate-500">{h.objective}</p>
+                )}
+                <p className="mt-1 text-xs text-slate-600">{fmtDate(h.created_at)}</p>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
 }
