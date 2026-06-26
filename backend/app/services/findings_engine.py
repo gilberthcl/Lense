@@ -182,7 +182,7 @@ def analyze_dataset(
         )
         try:
             _t = time.perf_counter()
-            reviewed = ollama.parse_json_response(ollama.reviewer(r_sys, r_user))
+            reviewed = ollama.parse_json_response(ollama.reviewer(r_sys, r_user, model=analyst_model))
             trace["reviewer_secs"] = round(time.perf_counter() - _t, 1)
             stage(f"Reviewer finished in {trace['reviewer_secs']}s", 80)
             if isinstance(reviewed, dict):
@@ -211,7 +211,7 @@ def analyze_dataset(
         )
         try:
             _t = time.perf_counter()
-            written = ollama.parse_json_response(ollama.qa(w_sys, w_user))
+            written = ollama.parse_json_response(ollama.qa(w_sys, w_user, model=analyst_model))
             trace["writer_secs"] = round(time.perf_counter() - _t, 1)
             stage(f"Writer finished in {trace['writer_secs']}s", 94)
             if isinstance(written, list):

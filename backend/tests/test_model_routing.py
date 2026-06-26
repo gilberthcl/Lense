@@ -3,6 +3,7 @@ never the global default. Regression guard for the critical W0b precedence bug."
 from app.services import (
     correlation_engine as ce,
     finding_feedback as ff,
+    findings_engine,
     methodology,
     missed_finding,
     training_import,
@@ -63,6 +64,36 @@ def test_methodology_comprehend_routes_tenant_model(monkeypatch):
     seen = _capture(monkeypatch, methodology)
     methodology.comprehend("some methodology text", model="tenant-model:7b")
     assert seen["model"] == "tenant-model:7b"
+
+
+def test_dataset_analysis_routes_all_three_substeps_to_tenant_model(monkeypatch):
+    # The analyst, the Senior Reviewer, AND the Writer must ALL run the tenant's
+    # model — no sub-step may leak to the global default.
+    calls = {}
+    monkeypatch.setattr(
+        findings_engine.ollama, "analyst",
+        lambda s, u, **kw: (calls.__setitem__("analyst", kw.get("model")),
+                            '{"findings":[{"title":"t","category":"suspicious"}]}')[1],
+    )
+    monkeypatch.setattr(
+        findings_engine.ollama, "reviewer",
+        lambda s, u, **kw: (calls.__setitem__("reviewer", kw.get("model")),
+                            '{"reviewed_findings":[{"title":"t","category":"suspicious"}]}')[1],
+    )
+    monkeypatch.setattr(
+        findings_engine.ollama, "qa",
+        lambda s, u, **kw: (calls.__setitem__("qa", kw.get("model")),
+                            '[{"title":"t","category":"suspicious"}]')[1],
+    )
+    findings_engine.analyze_dataset(
+        dataset_name="ds.csv",
+        evidence_package={"entities": {"users": ["jdoe"]}, "sample_rows": [{"u": "jdoe"}]},
+        methodology="m",
+        analyst_model="tenant-model:7b",
+    )
+    assert calls["analyst"] == "tenant-model:7b"
+    assert calls["reviewer"] == "tenant-model:7b"   # was leaking to global before the fix
+    assert calls["qa"] == "tenant-model:7b"         # was leaking to global before the fix
 
 
 def test_none_model_falls_back_to_global(monkeypatch):
