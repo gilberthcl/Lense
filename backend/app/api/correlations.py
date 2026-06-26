@@ -165,6 +165,9 @@ def unmerge_finding(
         f.status = "draft"
     db.commit()
     return {"ok": True, "finding_id": finding_id}
+
+
+@router.post("/run", response_model=JobOut, status_code=202)
 def run_correlation_phase(
     hunt_id: int,
     background: BackgroundTasks,
