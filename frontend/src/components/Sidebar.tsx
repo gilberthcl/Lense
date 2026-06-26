@@ -67,18 +67,22 @@ function HealthDot() {
 export default function Sidebar() {
   return (
     <aside className="flex h-full w-64 shrink-0 flex-col border-r border-slate-800/80 bg-slate-900/40">
-      {/* Brand */}
-      <div className="flex items-center gap-3 px-5 py-5">
-        <BrandLogo className="h-9 w-9 rounded-lg" />
+      {/* Brand — clickable, takes the user to the global home page */}
+      <NavLink
+        to="/"
+        title="LENS home"
+        className="flex items-center gap-3 px-5 py-5 transition-opacity hover:opacity-80"
+      >
+        <BrandLogo className="h-12 w-12 rounded-lg" iconSize={28} />
         <div className="leading-tight">
-          <div className="font-mono text-sm font-bold tracking-[0.25em] text-slate-100">
+          <div className="font-mono text-base font-bold tracking-[0.25em] text-slate-100">
             LENS
           </div>
           <div className="text-[10px] uppercase tracking-wide text-slate-500">
             Threat Hunt Platform
           </div>
         </div>
-      </div>
+      </NavLink>
 
       <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-2">
         {/* Global entities */}

@@ -505,24 +505,6 @@ export default function FindingsPanel({
     );
   };
 
-  const bulk = async (status: FindingStatus) => {
-    if (selected.size === 0) return;
-    setBulkBusy(true);
-    try {
-      const updated = await api.bulkPatchFindings(tid, hid, [...selected], status);
-      const byId = new Map(updated.map((u) => [u.id, u]));
-      setFindings((prev) =>
-        prev ? prev.map((f) => (byId.has(f.id) ? { ...f, ...byId.get(f.id)! } : f)) : prev,
-      );
-      toast.success(`${updated.length} finding(s) ${status}.`);
-      setSelected(new Set());
-    } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "Bulk update failed.");
-    } finally {
-      setBulkBusy(false);
-    }
-  };
-
   return (
     <Card>
       <PanelHeader
@@ -551,12 +533,8 @@ export default function FindingsPanel({
       {selected.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 bg-slate-950/40 px-4 py-2.5">
           <span className="text-xs text-slate-400">{selected.size} selected</span>
-          <Button variant="success" disabled={bulkBusy} onClick={() => bulk("validated")}>
-            {bulkBusy ? <Spinner /> : "Validate selected"}
-          </Button>
-          <Button variant="danger" disabled={bulkBusy} onClick={() => bulk("rejected")}>
-            Reject selected
-          </Button>
+          {/* Accept / reject is per-finding only (with feedback) — see each finding's
+              detail panel. Bulk disposition without feedback was removed by design. */}
           <Button variant="danger" disabled={bulkBusy} onClick={bulkDelete}>
             {bulkBusy ? <Spinner /> : "Delete selected"}
           </Button>
