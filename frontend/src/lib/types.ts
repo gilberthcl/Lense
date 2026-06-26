@@ -715,6 +715,19 @@ export interface TrainStatus {
   examples?: number;
 }
 
+// Tools — Data Sanitizer.
+export interface SanitizeReplacement {
+  value: string;
+  placeholder: string;
+  type: string;
+  action: string;
+}
+export interface SanitizeResult {
+  sanitized: string;
+  replacements: SanitizeReplacement[];
+  kept: { value: string; reason: string }[];
+}
+
 export type ReportLang = "en" | "es";
 
 // Request payload helpers

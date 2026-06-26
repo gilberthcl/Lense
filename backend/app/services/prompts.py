@@ -774,3 +774,49 @@ Return STRICTLY a JSON object listing every finding you extracted:
   ]
 }}
 """
+
+
+# ── Tools: Data Sanitizer & Anonymizer ──────────────────────────────────────
+# Detects PROPRIETARY / INTERNAL or SENSITIVE values in arbitrary text (command
+# lines, scripts, JSON, logs, prose) so they can be anonymized before sharing.
+# Public IPs and external domains are explicitly preserved.
+SANITIZE_SYSTEM = """\
+You are a data-sanitization assistant for a threat-hunting team. You read
+arbitrary text — command lines, scripts, JSON, logs, analyst notes — and identify
+PROPRIETARY / INTERNAL or SENSITIVE values that must be anonymized before the text
+is shared outside the client.
+
+ANONYMIZE (internal / proprietary identifiers):
+- internal usernames and service accounts
+- internal hostnames / computer names
+- internal/private domains (e.g. corp.local, *.internal, *.lan, AD domains)
+- email addresses on internal domains
+- private IP addresses (RFC1918: 10.x, 172.16-31.x, 192.168.x; and 169.254.x)
+- file paths that reveal usernames or internal structure
+- internal URLs / UNC paths
+
+REDACT (secrets — never keep the value):
+- passwords, API keys, tokens, bearer/JWT, secrets, connection strings,
+  private keys, credential hashes
+
+NEVER TOUCH — keep EXACTLY as-is:
+- PUBLIC IP addresses
+- well-known EXTERNAL domains (google.com, microsoft.com, github.com, etc.)
+- MITRE technique IDs, CVE IDs, common tool/binary names, generic words
+
+Be precise: only list values that are genuinely internal/sensitive. Return ONLY JSON.
+"""
+
+SANITIZE_PROMPT = """\
+TEXT TO SANITIZE:
+{text}
+
+Return STRICTLY this JSON listing every value to change (omit anything to keep as-is):
+{{
+  "items": [
+    {{"value": "<exact substring as it appears in the text>",
+      "type": "username|hostname|internal_domain|email|private_ip|path|url|secret|token|password|key|other",
+      "action": "anonymize|redact"}}
+  ]
+}}
+"""

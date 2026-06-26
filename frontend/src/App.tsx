@@ -5,6 +5,7 @@ import ClientWorkspace from "./pages/ClientWorkspace";
 import StructuredHunts from "./pages/StructuredHunts";
 import HuntView from "./pages/HuntView";
 import ConfigPage from "./pages/ConfigPage";
+import ToolsPage from "./pages/ToolsPage";
 import ModulePlaceholder from "./pages/ModulePlaceholder";
 
 export default function App() {
@@ -41,6 +42,7 @@ export default function App() {
           element={<ModulePlaceholder moduleId="intel-weekly" />}
         />
 
+        <Route path="/tools" element={<ToolsPage />} />
         <Route path="/config" element={<ConfigPage />} />
 
         {/* Legacy redirects */}

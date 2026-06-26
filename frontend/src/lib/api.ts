@@ -42,6 +42,7 @@ import type {
   AvailableModels,
   TrainStatus,
   LearningSummary,
+  SanitizeResult,
 } from "./types";
 
 export const API_BASE: string =
@@ -446,6 +447,13 @@ export const api = {
     }),
   getLearningSummary: (tid: string, hid: string) =>
     request<LearningSummary>(`/api/tenants/${tid}/hunts/${hid}/learning-summary`),
+
+  // --- Tools ---
+  sanitizeText: (text: string) =>
+    request<SanitizeResult>(`/api/tools/sanitize`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    }),
 
   // --- Per-tenant training data (LoRA fine-tuning, Phase 1) ---
   getTrainingStats: (tid: string) =>

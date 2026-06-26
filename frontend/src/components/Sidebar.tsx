@@ -13,6 +13,15 @@ import {
 
 type IconC = ComponentType<SVGProps<SVGSVGElement>>;
 
+function IconTools(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}
+      strokeLinecap="round" strokeLinejoin="round" width={18} height={18} {...props}>
+      <path d="M14.7 6.3a4 4 0 0 0-5.4 5.3L3 18v3h3l6.4-6.3a4 4 0 0 0 5.3-5.4l-2.5 2.5-2.1-.6-.6-2.1z" />
+    </svg>
+  );
+}
+
 const MODULE_ICONS: Record<string, IconC> = {
   "structured-hunts": IconStructured,
   "unstructured-hunts": IconUnstructured,
@@ -80,6 +89,10 @@ export default function Sidebar() {
           <NavLink to="/clients" className={({ isActive }) => navClass(isActive)}>
             <IconClients className="shrink-0 text-current opacity-80" />
             <span>Clients</span>
+          </NavLink>
+          <NavLink to="/tools" className={({ isActive }) => navClass(isActive)}>
+            <IconTools className="shrink-0 text-current opacity-80" />
+            <span>Tools</span>
           </NavLink>
         </div>
 
