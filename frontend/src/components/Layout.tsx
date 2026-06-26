@@ -1,6 +1,7 @@
 import { type ReactNode } from "react";
 import { Link, NavLink } from "react-router-dom";
 import Sidebar from "./Sidebar";
+import AssistantWidget from "./AssistantWidget";
 import { ThemeBalls } from "./Theme";
 import { lockApp } from "./PinGate";
 import { IconChevron, IconConfig, IconLock } from "./icons";
@@ -46,6 +47,7 @@ export function Layout({ children }: { children: ReactNode }) {
           <div className="mx-auto max-w-6xl px-8 py-8">{children}</div>
         </main>
       </div>
+      <AssistantWidget />
     </div>
   );
 }

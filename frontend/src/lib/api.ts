@@ -467,6 +467,18 @@ export const api = {
   getLearningSummary: (tid: string, hid: string) =>
     request<LearningSummary>(`/api/tenants/${tid}/hunts/${hid}/learning-summary`),
 
+  // --- Sable assistant (global; no client data) ---
+  askSable: (question: string, history: { role: string; content: string }[]) =>
+    request<{ id: number; answer: string; model: string | null }>(`/api/assistant/chat`, {
+      method: "POST",
+      body: JSON.stringify({ question, history }),
+    }),
+  rateSable: (exchangeId: number, score: number, feedback?: string) =>
+    request<{ ok: boolean; id: number; score: number }>(
+      `/api/assistant/exchanges/${exchangeId}/rate`,
+      { method: "POST", body: JSON.stringify({ score, feedback: feedback ?? null }) },
+    ),
+
   // --- Tools ---
   sanitizeText: (text: string, decode?: string) =>
     request<SanitizeResult>(`/api/tools/sanitize`, {
