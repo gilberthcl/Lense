@@ -159,8 +159,11 @@ def check_process(
         "Correlation",
         correlation_done,
         "Correlation phase ran.",
-        "Correlation phase has not run.",
-        fix="run_correlation",
+        # A not-yet-run correlation is a WARNING, not a failure — nothing broke,
+        # the optional cross-dataset pass simply hasn't been run yet.
+        "Correlation phase hasn't run yet — run it to merge duplicates and build "
+        "attack-chains across datasets (optional, but recommended).",
+        fix="run_correlation", severity="warn",
     ))
     return checks
 

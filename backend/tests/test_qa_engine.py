@@ -48,7 +48,7 @@ def test_process_checks_detect_unanalyzed_and_no_correlation():
     )
     by_stage = {c["stage"]: c["status"] for c in checks}
     assert by_stage["Dataset analysis"] == "fail"    # one errored
-    assert by_stage["Correlation"] == "fail"         # never ran
+    assert by_stage["Correlation"] == "warn"         # not run yet ≠ failed
     assert by_stage["Methodology"] == "pass"
 
 
