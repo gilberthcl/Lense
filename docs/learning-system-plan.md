@@ -211,9 +211,10 @@ report-format/depth examples; correlation/QA truth) and coverage-awareness
 avg-score/dispositions/recent). Reusable `StageFeedback` + `LearningSummaryPanel`
 UI, wired into the QA tab (rate the QA stage + the hunt's learning summary at the
 bottom). Tests: summarize_events. Suite 121.
-**Slice 2 — TODO:** drop `StageFeedback` into the remaining stage panels
-(methodology, plan, correlation, writing) and surface a model-distilled
-(grounded) summary per stage.
+**Slice 2 — DONE:** `StageFeedback` wired into Methodology, Analysis Plan,
+Datasets/Analysis, Correlation, and QA panels — the "same options at all stages"
+is now real (writing stage pending its own UI). Optional model-distilled
+per-stage summary still a future nicety.
 
 **Goal:** the same disposition+feedback+score primitive at every AI stage.
 - Stages: **methodology comprehension, analysis plan, correlation, QA, finding

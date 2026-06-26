@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { api, ApiError, pollJob } from "../lib/api";
 import type { Dataset, DatasetPreview, Hunt, Job } from "../lib/types";
 import { useToast } from "./Toast";
+import StageFeedback from "./StageFeedback";
 import {
   Badge,
   Button,
@@ -328,6 +329,7 @@ export default function DatasetsPanel({
           subtitle="Splits the per-dataset analysis into comfortable batches (workload only) from the methodology + dataset metadata — datasets are analyzed independently"
           right={
             <div className="flex items-center gap-2">
+              <StageFeedback tid={tid} hid={hid} stage="plan" label="Plan" />
               {plan && (
                 <Button variant="danger" onClick={deletePlan} disabled={planning}>
                   Delete plan
@@ -420,6 +422,7 @@ export default function DatasetsPanel({
           subtitle="CSV evidence (max 20MB each) — analyzed against the methodology & client context"
           right={
             <div className="flex items-center gap-2">
+              <StageFeedback tid={tid} hid={hid} stage="analysis" label="Analysis" />
               {hasDatasets && (
                 <Button variant="ghost" disabled={busy} onClick={resetAnalysis}>
                   Reset analysis

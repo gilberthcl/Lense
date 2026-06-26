@@ -17,6 +17,7 @@ import {
   PanelHeader,
   Spinner,
 } from "./ui";
+import StageFeedback from "./StageFeedback";
 
 const ENTITY_LABEL: Record<string, string> = {
   host: "Host",
@@ -263,6 +264,7 @@ export default function CorrelationsPanel({
           subtitle="Merges duplicates, enriches findings across datasets, and reconstructs attack-chains"
           right={
             <div className="flex items-center gap-3">
+              <StageFeedback tid={tid} hid={hid} stage="correlation" label="Correlation" />
               <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-400">
                 <input
                   type="checkbox"

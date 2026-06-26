@@ -3,6 +3,7 @@ import { api, ApiError, pollJob } from "../lib/api";
 import type { Hunt, Job, MethodologyBrief, QueryRow } from "../lib/types";
 import { useToast } from "./Toast";
 import { IconChevron } from "./icons";
+import StageFeedback from "./StageFeedback";
 import { Badge, Button, Card, EmptyState, PanelHeader, Spinner } from "./ui";
 
 type SubTab = "description" | "plan" | "queries" | "ai";
@@ -149,6 +150,7 @@ export default function MethodologyPanel({
         subtitle="Comprehended and structured before any dataset is analyzed"
         right={
           <div className="flex items-center gap-2">
+            <StageFeedback tid={tid} hid={hid} stage="methodology" label="Methodology" />
             <input
               ref={fileRef}
               type="file"
