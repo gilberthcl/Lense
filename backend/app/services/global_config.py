@@ -59,6 +59,10 @@ def ai_defaults() -> dict:
         # off runs a single analyst pass (≈3× faster) at some FP-reduction cost.
         "enable_reviewer": True,
         "enable_qa": True,
+        # Anonymise training examples on export (W5): replace concrete entities
+        # with placeholders so the model learns patterns, not specific hostnames.
+        # Off by default — per-client isolation already covers safety.
+        "anonymize_training": False,
     }
 
 
@@ -139,7 +143,7 @@ def _validate_ai(patch: dict) -> dict:
         out["num_ctx"] = max(2048, min(int(out["num_ctx"]), 32768))
     if "single_model_pipeline" in out:
         out["single_model_pipeline"] = bool(out["single_model_pipeline"])
-    for k in ("enable_reviewer", "enable_qa"):
+    for k in ("enable_reviewer", "enable_qa", "anonymize_training"):
         if k in out:
             out[k] = bool(out[k])
     return out

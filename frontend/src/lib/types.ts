@@ -264,6 +264,7 @@ export interface AiEngineConfig {
   keep_alive?: string;
   enable_reviewer?: boolean;
   enable_qa?: boolean;
+  anonymize_training?: boolean;
 }
 
 export interface PlatformConfig {
@@ -619,6 +620,7 @@ export interface TrainingStats {
   by_category: Record<string, number>;
   min_validated: number;
   ready_for_training: boolean;
+  anonymized?: boolean;
   written?: {
     sft_examples: number;
     negative_examples: number;

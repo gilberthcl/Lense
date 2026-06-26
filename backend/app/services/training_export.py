@@ -48,6 +48,14 @@ SYSTEM_INSTRUCTION = (
 _REQUIRED_FOR_POSITIVE = ("title", "summary", "evidence")
 
 
+def _anonymize_enabled(db: Session) -> bool:
+    try:
+        from app.services import global_config
+        return bool(global_config.get_ai(db).get("anonymize_training", False))
+    except Exception:  # noqa: BLE001 — config unavailable → safe default (off)
+        return False
+
+
 def _prune(obj: Any) -> Any:
     """Drop None / empty values so the prompt context stays compact."""
     if isinstance(obj, dict):
@@ -198,6 +206,17 @@ def export_tenant(
     positives = [f for f in findings if f.status == "validated" and _is_trainable_positive(f)]
     negatives = [f for f in findings if f.status == "rejected"]
 
+    # Anonymisation (W5) — optional, toggled in Config → AI. Replaces concrete
+    # entities with placeholders so the model learns patterns, not hostnames.
+    anonymize = _anonymize_enabled(db)
+
+    def _emit(f, builder) -> str:
+        ex = builder(f)
+        if anonymize:
+            from app.services import anonymize as anon  # lazy: keep import light
+            ex = anon.anonymize_example(ex, f)
+        return json.dumps(ex, ensure_ascii=False)
+
     root = (out_root or TRAINING_ROOT) / f"tenant_{tenant_id}"
     root.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -206,15 +225,16 @@ def export_tenant(
 
     with sft_path.open("w", encoding="utf-8") as fh:
         for f in positives:
-            fh.write(json.dumps(build_positive(f), ensure_ascii=False) + "\n")
+            fh.write(_emit(f, build_positive) + "\n")
     with neg_path.open("w", encoding="utf-8") as fh:
         for f in negatives:
-            fh.write(json.dumps(build_negative(f), ensure_ascii=False) + "\n")
+            fh.write(_emit(f, build_negative) + "\n")
 
     stats = training_stats(db, tenant_id)
     stats.update({
         "min_validated": min_validated,
         "ready_for_training": len(positives) >= min_validated,
+        "anonymized": anonymize,
         "written": {
             "sft_examples": len(positives),
             "negative_examples": len(negatives),

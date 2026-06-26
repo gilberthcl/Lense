@@ -229,8 +229,16 @@ per-stage summary still a future nicety.
   (once per hunt), so prioritise analysis/correlation/QA first.
 - Large — likely split per stage.
 
-### W5 — Anonymisation layer *(optional quality lever, not safety)*
+### W5 — Anonymisation layer — **DONE** *(optional quality lever, not safety)*
 **Goal:** make the model learn *patterns*, not memorise its own hostnames.
+- Shipped: `services/anonymize.py` (entity-aware, consistent placeholders
+  HOST_1/USER_1/IP_1/…, longest-first case-insensitive scrub, skips <3-char
+  tokens), an `anonymize_training` flag in the AI config (default off, bool
+  sanitised), exporter applies it per example (meta tagged `anonymized`), a
+  Config → AI toggle, and an "anonymised" marker on the export result. Tests: 5.
+  Suite 130.
+
+Original scope notes (for reference):
 - Entity-aware scrubbing → consistent placeholders (`HOST_1`, `USER_1`, `IP_1`)
   across all fields of a training example, using the finding's known entities.
 - Toggle per export. With per-client isolation this is **quality**, not isolation

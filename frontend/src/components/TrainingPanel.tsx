@@ -112,7 +112,9 @@ export default function TrainingPanel({ tid }: { tid: string }) {
             {/* Last export */}
             {stats.written && (
               <div className="rounded border border-slate-800 bg-slate-950/40 p-3 text-xs text-slate-400">
-                <p className="mb-1 font-semibold text-slate-300">Last export</p>
+                <p className="mb-1 font-semibold text-slate-300">
+                  Last export {stats.anonymized && <span className="text-emerald-300">· anonymised</span>}
+                </p>
                 <p className="font-mono">{stats.written.sft_path}</p>
                 <p className="font-mono">{stats.written.negatives_path}</p>
               </div>

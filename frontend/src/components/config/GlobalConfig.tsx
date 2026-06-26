@@ -322,6 +322,22 @@ export default function GlobalConfig() {
               3× faster on a slow box, at some quality cost. Use the per-dataset timing in the log to
               decide.
             </p>
+            <label className="sm:col-span-2 flex items-start gap-2 rounded border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={ai.anonymize_training ?? false}
+                onChange={(e) => setAi({ ...ai, anonymize_training: e.target.checked })}
+              />
+              <span>
+                Anonymise training data <span className="text-slate-500">(W5)</span>
+                <span className="block text-xs text-slate-500">
+                  On export, replace concrete entities (hosts, users, IPs) with placeholders so the
+                  per-client model learns patterns, not specific names. Optional — per-client
+                  isolation already covers data safety.
+                </span>
+              </span>
+            </label>
           </div>
           <div className="sm:col-span-2">
             <div className="mb-3 rounded border border-amber-500/20 bg-amber-500/[0.04] px-3 py-2 text-xs text-amber-300/90">
