@@ -47,15 +47,30 @@ def _parse_brief(raw: str) -> dict[str, Any]:
     return parsed
 
 
+def _feedback_block(feedback: str | None) -> str:
+    """An appended instruction to correct a prior comprehension. Empty when none."""
+    fb = (feedback or "").strip()
+    if not fb:
+        return ""
+    return (
+        "\n\nREVIEWER FEEDBACK — the previous comprehension was not quite right. "
+        "Incorporate this correction in your revised understanding:\n"
+        f"{fb[:1500]}\n"
+    )
+
+
 def comprehend_stream(
     methodology_text: str,
     *,
     edr: str | None = None,
     siem: str | None = None,
     language: str = "English",
+    feedback: str | None = None,
     on_chunk=None,
 ) -> dict[str, Any]:
-    """Streaming comprehension pass (for live progress). Returns the brief dict."""
+    """Streaming comprehension pass (for live progress). Returns the brief dict.
+    When `feedback` is given, the model revises its prior understanding to address
+    it (the regenerate-with-feedback loop)."""
     if not methodology_text or not methodology_text.strip():
         return {"hunt_overview": "", "topics": [], "executed_queries": [],
                 "note": "No methodology document was provided for this hunt."}
@@ -64,7 +79,7 @@ def comprehend_stream(
         edr=edr or "unspecified", siem=siem or "unspecified",
         language=language or "English",
         methodology=methodology_text[:_MAX_METHODOLOGY_CHARS],
-    )
+    ) + _feedback_block(feedback)
     raw = ollama.generate_stream(
         analyst_model(), sys, user, on_chunk=on_chunk, json_mode=True,
     )

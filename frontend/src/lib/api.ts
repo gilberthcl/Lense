@@ -246,9 +246,10 @@ export const api = {
       body: fd,
     });
   },
-  analyzeMethodology: (tid: string, hid: string) =>
+  analyzeMethodology: (tid: string, hid: string, feedback?: string) =>
     request<Job>(`/api/tenants/${tid}/hunts/${hid}/methodology/analyze`, {
       method: "POST",
+      body: JSON.stringify(feedback ? { feedback } : {}),
     }),
 
   // --- Global module configuration (Structured Threat Hunt) ---

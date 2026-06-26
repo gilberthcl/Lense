@@ -4,7 +4,7 @@ import type { Hunt, Job, MethodologyBrief, QueryRow } from "../lib/types";
 import { useToast } from "./Toast";
 import { IconChevron } from "./icons";
 import StageFeedback from "./StageFeedback";
-import { Badge, Button, Card, EmptyState, PanelHeader, Spinner } from "./ui";
+import { Badge, Button, Card, EmptyState, PanelHeader, Spinner, Textarea } from "./ui";
 
 type SubTab = "description" | "plan" | "queries" | "ai";
 
@@ -62,6 +62,8 @@ export default function MethodologyPanel({
   const [running, setRunning] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [sub, setSub] = useState<SubTab>("description");
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [feedback, setFeedback] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const sections = hunt?.methodology_sections ?? null;
@@ -102,10 +104,10 @@ export default function MethodologyPanel({
     }
   };
 
-  const analyze = async () => {
+  const analyze = async (feedback?: string) => {
     setJob({ id: "", status: "queued", progress: 0 });
     try {
-      const started = await api.analyzeMethodology(tid, hid);
+      const started = await api.analyzeMethodology(tid, hid, feedback);
       await watch(started.id);
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Analysis failed.");
@@ -162,7 +164,7 @@ export default function MethodologyPanel({
               {uploading ? <Spinner /> : hasMethodology ? "Replace doc" : "Upload doc"}
             </Button>
             {hasMethodology && (
-              <Button variant={analyzed ? "ghost" : "primary"} onClick={analyze} disabled={running}>
+              <Button variant={analyzed ? "ghost" : "primary"} onClick={() => analyze()} disabled={running}>
                 {running ? (
                   <>
                     <Spinner /> {job?.progress ?? 0}%
@@ -172,6 +174,15 @@ export default function MethodologyPanel({
                 ) : (
                   "Analyze"
                 )}
+              </Button>
+            )}
+            {hasMethodology && analyzed && (
+              <Button
+                variant={showFeedback ? "primary" : "ghost"}
+                onClick={() => setShowFeedback((s) => !s)}
+                disabled={running}
+              >
+                Re-analyze with feedback
               </Button>
             )}
           </div>
@@ -215,6 +226,33 @@ export default function MethodologyPanel({
             >
               {brief ? "AI analyzed ✓" : "Not AI-analyzed"}
             </Badge>
+          </div>
+        )}
+
+        {/* Re-analyze with feedback — corrects the model's prior understanding */}
+        {showFeedback && analyzed && !running && (
+          <div className="rounded-lg border border-indigo-500/30 bg-indigo-500/[0.05] p-3">
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-indigo-300">
+              What did the model get wrong?
+            </p>
+            <Textarea
+              rows={3}
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+              placeholder="e.g. You misread topic 3 — the persistence check is about scheduled tasks, not services. Treat the 'no results' queries as cleared, not skipped."
+            />
+            <div className="mt-2 flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => { setShowFeedback(false); setFeedback(""); }}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                disabled={!feedback.trim()}
+                onClick={() => { analyze(feedback.trim()); setShowFeedback(false); setFeedback(""); }}
+              >
+                Re-analyze with this feedback
+              </Button>
+            </div>
           </div>
         )}
 

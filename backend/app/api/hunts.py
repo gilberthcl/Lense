@@ -1,5 +1,5 @@
 from fastapi import (
-    APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile,
+    APIRouter, BackgroundTasks, Body, Depends, File, HTTPException, UploadFile,
 )
 from sqlalchemy.orm import Session
 
@@ -300,8 +300,12 @@ def analyze_methodology(
     background: BackgroundTasks,
     tenant: Tenant = Depends(get_tenant),
     db: Session = Depends(get_db),
+    feedback: str | None = Body(default=None, embed=True),
 ):
-    """Kick off the methodology comprehension pass (background)."""
+    """Kick off the methodology comprehension pass (background). When `feedback`
+    is given, the model REVISES its prior understanding to address it
+    (regenerate-with-feedback), and the correction is recorded as a learning
+    signal for this client."""
     hunt = _resolve_hunt(db, tenant, hunt_id)
     if not (hunt.methodology_text or "").strip():
         raise HTTPException(status_code=422, detail="No methodology to analyze")
@@ -310,6 +314,7 @@ def analyze_methodology(
     if existing:
         return existing
 
+    fb = (feedback or "").strip() or None
     job = AnalysisJob(
         tenant_id=tenant.id, hunt_id=hunt_id, dataset_id=None,
         phase="methodology", status="queued",
@@ -318,7 +323,13 @@ def analyze_methodology(
     db.commit()
     db.refresh(job)
 
-    def _task(job_id: int, h_id: int):
+    if fb:
+        background.add_task(
+            _stage_feedback_async, tenant.id, hunt_id, "methodology",
+            None, None, fb, "methodology", None,
+        )
+
+    def _task(job_id: int, h_id: int, feedback_text: str | None = fb):
         task_db = SessionLocal()
         t0 = time.monotonic()
 
@@ -349,7 +360,10 @@ def analyze_methodology(
 
                 # 2) LLM comprehension (streamed) for the "understanding" layer.
                 j.current_task = f"Comprehending with {j.model}"
-                emit(j, f"Sending methodology to {j.model} for comprehension…", 22)
+                if feedback_text:
+                    emit(j, "Revising comprehension to address your feedback…", 22)
+                else:
+                    emit(j, f"Sending methodology to {j.model} for comprehension…", 22)
                 h.methodology_brief = None
                 task_db.commit()
 
@@ -367,7 +381,7 @@ def analyze_methodology(
 
                 brief = methodology.comprehend_stream(
                     h.methodology_text or "", edr=h.edr, siem=h.siem,
-                    language=h.report_language, on_chunk=on_chunk,
+                    language=h.report_language, feedback=feedback_text, on_chunk=on_chunk,
                 )
                 h.methodology_brief = brief
                 topics = len((brief or {}).get("topics", []))
