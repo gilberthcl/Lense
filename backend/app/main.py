@@ -34,6 +34,11 @@ _COLUMN_ADDITIONS = (
     "ALTER TABLE datasets ADD COLUMN IF NOT EXISTS entity_index JSON",
     "ALTER TABLE hunts ADD COLUMN IF NOT EXISTS auto_correlate BOOLEAN DEFAULT FALSE",
     "ALTER TABLE hunts ADD COLUMN IF NOT EXISTS auto_qa BOOLEAN DEFAULT FALSE",
+    # Learning spine (W0). New tables (learning_events, finding_revisions) are
+    # made by create_all; these are the new columns on existing tables.
+    "ALTER TABLE hunts ADD COLUMN IF NOT EXISTS kind VARCHAR(20) DEFAULT 'live'",
+    "ALTER TABLE findings ADD COLUMN IF NOT EXISTS disposition VARCHAR(20)",
+    "ALTER TABLE findings ADD COLUMN IF NOT EXISTS score INTEGER",
 )
 
 

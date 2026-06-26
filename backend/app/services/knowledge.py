@@ -26,6 +26,7 @@ RETRIEVABLE_DOC_TYPES = (
     "approved_software",
     "previous_report",
     "report_standard",
+    "learning_note",  # mirrored learning signals (feedback/lessons) — W0 spine
 )
 
 _CHUNK_SIZE = 1200      # ~chars per chunk

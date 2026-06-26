@@ -149,6 +149,9 @@ class Hunt(Base):
     # Review/execution state for the plan: {status, feedback, accepted_at}.
     plan_state: Mapped[dict | None] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(30), default="created")
+    # kind: live (normal hunt) | training (historic hunt ingested for learning;
+    # never emits live client findings). Learning spine (W0/W3).
+    kind: Mapped[str] = mapped_column(String(20), default="live", index=True)
     # Run the correlation phase automatically when dataset analysis finishes.
     auto_correlate: Mapped[bool] = mapped_column(Boolean, default=False)
     # Run the QA phase automatically when correlation finishes.
@@ -225,6 +228,10 @@ class Finding(Base):
     recommendations: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default="draft")
     reviewer_notes: Mapped[str | None] = mapped_column(Text)  # analyst review notes
+    # ── Learning spine (W0) ──
+    # disposition: accepted | partial | rejected | added | None (pending)
+    disposition: Mapped[str | None] = mapped_column(String(20))
+    score: Mapped[int | None] = mapped_column(Integer)        # operator 1–10 rating
     # ── Structured detail for the correlation phase (Phase A) ──
     # Everything needed to correlate a finding WITHOUT re-reading the CSVs.
     entities: Mapped[dict | None] = mapped_column(JSON)            # {users,hosts,ips,domains,hashes,applications}
@@ -314,6 +321,51 @@ class TenantModel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     trained_at: Mapped[datetime | None] = mapped_column(DateTime)
     activated_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+# ── Learning spine (W0) ────────────────────────────────────────────────────
+# One row per learning signal from ANY source/stage. The unifying record that
+# both the RAG mirror and the training exporter read from. Strictly tenant-scoped.
+class LearningEvent(Base):
+    __tablename__ = "learning_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    hunt_id: Mapped[int | None] = mapped_column(
+        ForeignKey("hunts.id", ondelete="CASCADE"), index=True
+    )
+    # stage: methodology | plan | analysis | correlation | qa | writing | finding
+    stage: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    target_type: Mapped[str | None] = mapped_column(String(40))  # finding | incident | ...
+    target_id: Mapped[int | None] = mapped_column(Integer)
+    # disposition: accepted | partial | rejected | added | None
+    disposition: Mapped[str | None] = mapped_column(String(20))
+    score: Mapped[int | None] = mapped_column(Integer)
+    feedback_text: Mapped[str | None] = mapped_column(Text)
+    summary: Mapped[str | None] = mapped_column(Text)
+    # source: live_feedback | training_hunt | missed_finding | import
+    source: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    author: Mapped[str | None] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+# Each partial-accept regeneration of a finding (before→feedback→after chain).
+class FindingRevision(Base):
+    __tablename__ = "finding_revisions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    finding_id: Mapped[int] = mapped_column(
+        ForeignKey("findings.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[dict | None] = mapped_column(JSON)        # snapshot of the finding
+    feedback_text: Mapped[str | None] = mapped_column(Text)   # what prompted this revision
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
 # ── Client contacts ────────────────────────────────────────────────────────

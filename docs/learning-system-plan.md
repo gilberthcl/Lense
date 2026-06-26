@@ -77,15 +77,22 @@ Alembic (CLAUDE.md already flags this as the Phase-2 trigger).
 
 ## 3. Workstreams (each shippable on its own)
 
-### W0 — Foundations: isolation harness + learning spine + Alembic
+### W0 — Foundations: isolation harness + learning spine — **DONE**
 **Goal:** lay the data model and lock the isolation guarantees before adding surfaces.
-- `LearningEvent`, `FindingRevision`, `Hunt.kind`, `Finding.disposition/score`.
-- Introduce **Alembic** (first real migration; needed for new columns).
-- **Isolation test harness:** a reusable test that asserts no service returns
-  cross-tenant rows; run it against every learning query.
-- Unified `learning.record_event()` that writes the event **and** mirrors it into
-  RAG knowledge (immediate channel) in one call.
-- Testable here: ✅ fully. Needs Mac: ❌.
+- `LearningEvent`, `FindingRevision` (new tables), `Hunt.kind`,
+  `Finding.disposition/score` (new columns). ✅
+- **Migration approach:** extended the codebase's existing idempotent
+  `_COLUMN_ADDITIONS` (`ADD COLUMN IF NOT EXISTS`) in `main.py` rather than
+  introducing Alembic now — it's the project's current mechanism, safe on fresh +
+  populated DBs, and keeps the app runnable with zero operator steps. (Full Alembic
+  still deferred per CLAUDE.md; revisit when schema churn or production warrants.)
+- **Isolation test harness:** `tests/isolation.py::assert_tenant_scoped`, applied to
+  the spine queries. ✅
+- Unified `services/learning.py::record_event()` writes the event **and** mirrors
+  the lesson into RAG as a `learning_note` doc (new retrievable type) — fail-open. ✅
+- `add_revision` / `list_events` / `list_revisions`, all tenant-scoped. ✅
+- Tests: 6 (recording, scoping, stage filter, revision versioning, RAG mirror,
+  mirror-skip). Full suite 90 passed.
 
 ### W0b — Per-client model selection (compliance-gated, lockable) *(quick early win)*
 **Goal:** each client explicitly chooses the model it runs on; the choice is locked
