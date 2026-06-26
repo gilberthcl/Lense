@@ -7,9 +7,10 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.api import (
-    assistant as assistant_api, auth as auth_api, config, correlations, datasets,
-    eval as eval_api, findings, hunts, jobs as jobs_api, knowledge,
-    models as models_api, qa, reports, tenants, tools as tools_api, training,
+    admin_models, assistant as assistant_api, auth as auth_api, config,
+    correlations, datasets, eval as eval_api, findings, hunts, jobs as jobs_api,
+    knowledge, models as models_api, qa, reports, tenants, tools as tools_api,
+    training,
 )
 from app.core.config import settings
 from app.core.db import Base, SessionLocal, engine
@@ -42,6 +43,8 @@ _COLUMN_ADDITIONS = (
     "ALTER TABLE findings ADD COLUMN IF NOT EXISTS score INTEGER",
     # Per-client base model (W0b).
     "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS analyst_model VARCHAR(160)",
+    # Per-client model variant profile (Option A — isolated config, deduped weights).
+    "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS model_profile JSON",
 )
 
 
@@ -118,6 +121,7 @@ app.include_router(eval_api.router)
 app.include_router(models_api.router)
 app.include_router(tools_api.router)
 app.include_router(assistant_api.router)
+app.include_router(admin_models.router)
 
 
 @app.get("/api/health")

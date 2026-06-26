@@ -54,6 +54,11 @@ class Tenant(Base):
     # Per-client base analyst model (W0b). None → global default. Must pass the
     # compliance allowlist (model_compliance) — enforced at the API.
     analyst_model: Mapped[str | None] = mapped_column(String(160))
+    # Optional per-client model VARIANT profile (Option A): a dedicated Ollama
+    # model created FROM a shared base with isolated config (system prompt /
+    # params). Weights are deduped, so this is isolation without duplication.
+    # {backend, base_model, variant_name, system, temperature, num_ctx}.
+    model_profile: Mapped[dict | None] = mapped_column(JSON)
 
     # ── Technology stack ──
     edr_platform: Mapped[str | None] = mapped_column(String(120))

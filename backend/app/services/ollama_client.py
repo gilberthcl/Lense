@@ -180,6 +180,71 @@ def generate_stream(
     return _with_retries(f"stream({model})", _attempt)
 
 
+def list_models() -> list[dict]:
+    """Installed Ollama models with name + size (bytes). [] if unreachable."""
+    cfg = global_config.current_ai()
+    try:
+        with httpx.Client(timeout=5) as client:
+            resp = client.get(f"{cfg['base_url']}/api/tags")
+            resp.raise_for_status()
+            return [
+                {"name": m.get("name", ""), "size": m.get("size", 0)}
+                for m in resp.json().get("models", []) if m.get("name")
+            ]
+    except httpx.HTTPError:
+        return []
+
+
+def pull_model(name: str, on_progress=None) -> None:
+    """Pull a model (Ollama name or `hf.co/<repo>` GGUF ref), streaming progress.
+    Calls on_progress(status_str, pct_or_None) as it goes. Raises OllamaError on
+    failure. GGUF-only by nature — Ollama never executes model-side code."""
+    cfg = global_config.current_ai()
+    try:
+        with httpx.Client(timeout=None) as client:
+            with client.stream("POST", f"{cfg['base_url']}/api/pull",
+                               json={"name": name, "stream": True}) as resp:
+                resp.raise_for_status()
+                for line in resp.iter_lines():
+                    if not line:
+                        continue
+                    try:
+                        ev = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if ev.get("error"):
+                        raise OllamaError(f"Pull failed: {ev['error']}")
+                    pct = None
+                    if ev.get("total"):
+                        pct = round(100 * ev.get("completed", 0) / ev["total"], 1)
+                    if on_progress:
+                        on_progress(ev.get("status", "pulling"), pct)
+    except httpx.HTTPError as exc:
+        raise OllamaError(f"Pull failed for {name}: {exc}") from exc
+
+
+def create_model(name: str, modelfile: str) -> None:
+    """Create (or overwrite) a named Ollama model from a Modelfile string. Used to
+    provision per-client model variants — a variant FROM a base shares the base's
+    weight blob (content-addressed dedup), so this costs ~no extra disk. Raises
+    OllamaError on failure."""
+    _with_retries(
+        f"create({name})",
+        lambda: _post("/api/create", {"name": name, "modelfile": modelfile, "stream": False}),
+    )
+
+
+def delete_model(name: str) -> None:
+    """Remove a named Ollama model (its manifest). Shared weight blobs survive if
+    another model still references them. Best-effort — never raises."""
+    cfg = global_config.current_ai()
+    try:
+        with httpx.Client(timeout=cfg["timeout"]) as client:
+            client.request("DELETE", f"{cfg['base_url']}/api/delete", json={"name": name})
+    except httpx.HTTPError:
+        pass
+
+
 def embed(text: str) -> list[float]:
     """Embed a single string with the configured embedding model."""
     model = global_config.current_ai()["embed_model"]
