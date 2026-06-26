@@ -10,7 +10,10 @@ from app.models import AnalysisJob, Dataset, Finding, Hunt, KnowledgeDocument, T
 from app.schemas import HuntCreate, HuntOut, HuntUpdate, JobOut, StageFeedback
 import time
 
-from app.services import doc_loader, jobs, learning, methodology, methodology_parser
+from app.services import (
+    doc_loader, jobs, learning, methodology, methodology_parser, training_review,
+)
+from app.services import ollama_client as ollama
 from app.services.analysis_runner import ensure_methodology_brief
 
 router = APIRouter(prefix="/api/tenants/{tenant_id}/hunts", tags=["hunts"])
@@ -100,6 +103,127 @@ def reopen_hunt(
     db.commit()
     db.refresh(hunt)
     return hunt
+
+
+# ── Training-hunt review (W3): "what I learned" + accept/reject loop ──────────
+
+def _require_training(hunt: Hunt) -> None:
+    if hunt.kind != "training":
+        raise HTTPException(
+            status_code=422,
+            detail="The learning review is only for training hunts.",
+        )
+
+
+def _training_findings(db: Session, tenant_id: int, hunt_id: int) -> list[dict]:
+    rows = (
+        db.query(Finding)
+        .filter_by(tenant_id=tenant_id, hunt_id=hunt_id)
+        .filter(Finding.merged_into_id.is_(None))
+        .all()
+    )
+    return [
+        {
+            "finding_ref": f.finding_ref, "title": f.title, "category": f.category,
+            "severity": f.severity, "summary": f.summary,
+            "affected_assets": f.affected_assets, "affected_users": f.affected_users,
+            "mitre": f.mitre,
+        }
+        for f in rows
+    ]
+
+
+def _training_datasets(db: Session, tenant_id: int, hunt_id: int) -> list[dict]:
+    rows = db.query(Dataset).filter_by(tenant_id=tenant_id, hunt_id=hunt_id).all()
+    return [
+        {
+            "filename": d.filename, "status": d.status,
+            "rows": d.row_count, "cols": d.col_count,
+            "columns": [c.get("name") for c in (d.columns or []) if isinstance(c, dict)][:40],
+        }
+        for d in rows
+    ]
+
+
+@router.post("/{hunt_id}/training/review", response_model=HuntOut)
+def training_review_run(
+    hunt_id: int,
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+    feedback: str | None = Body(default=None, embed=True),
+):
+    """Run (or regenerate-with-feedback) the 'what I learned' review of a training
+    hunt: the model studies the confirmed findings + datasets and articulates the
+    detection logic it learned. Stored on the hunt for the analyst to accept/reject."""
+    hunt = _resolve_hunt(db, tenant, hunt_id)
+    _require_training(hunt)
+    findings = _training_findings(db, tenant.id, hunt_id)
+    if not findings:
+        raise HTTPException(
+            status_code=409,
+            detail="Add the hunt's findings first — there's nothing to learn from yet.",
+        )
+    try:
+        report = training_review.summarize_learning(
+            findings, _training_datasets(db, tenant.id, hunt_id), feedback=feedback,
+        )
+    except ollama.OllamaError as exc:
+        raise HTTPException(status_code=502, detail=f"Review failed: {exc}") from exc
+    hunt.training_review = {
+        "report": report,
+        "disposition": None,        # pending the analyst's accept/reject
+        "feedback": (feedback or "").strip() or None,
+    }
+    db.commit()
+    db.refresh(hunt)
+    return hunt
+
+
+@router.post("/{hunt_id}/training/review/disposition", response_model=HuntOut)
+def training_review_disposition(
+    hunt_id: int,
+    background: BackgroundTasks,
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+    action: str = Body(..., embed=True),                 # accept | reject
+    feedback: str | None = Body(default=None, embed=True),
+):
+    """Accept or reject the learning review. Accepting records it as a learning
+    signal (source=training_hunt) so the detection logic informs future hunts."""
+    hunt = _resolve_hunt(db, tenant, hunt_id)
+    _require_training(hunt)
+    if action not in ("accept", "reject"):
+        raise HTTPException(status_code=422, detail="action must be 'accept' or 'reject'.")
+    review = dict(hunt.training_review or {})
+    if not review.get("report"):
+        raise HTTPException(status_code=409, detail="Run the review first.")
+    review["disposition"] = "accepted" if action == "accept" else "rejected"
+    if feedback:
+        review["feedback"] = feedback
+    hunt.training_review = review
+    db.commit()
+    db.refresh(hunt)
+
+    if action == "accept":
+        # Mirror the distilled detection logic into the client's knowledge base as
+        # a training-hunt learning signal (informs future hunts; no retraining).
+        note = training_review.review_as_note(review["report"])
+        background.add_task(_record_training_note, tenant.id, hunt_id, note)
+    return hunt
+
+
+def _record_training_note(tenant_id: int, hunt_id: int, note: str) -> None:
+    if not (note or "").strip():
+        return
+    db = SessionLocal()
+    try:
+        learning.record_event(
+            db, tenant_id=tenant_id, hunt_id=hunt_id, stage="analysis",
+            source="training_hunt", target_type="training_review",
+            summary=note,
+        )
+    finally:
+        db.close()
 
 
 def _stage_feedback_async(

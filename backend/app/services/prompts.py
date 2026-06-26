@@ -724,6 +724,41 @@ Return STRICTLY this JSON:
 """
 
 
+# ── Training-hunt review (W3) — "what I learned" from a historic hunt ────────
+TRAINING_REVIEW_SYSTEM = """\
+You are a senior threat-hunting analyst studying a COMPLETED historic hunt to
+learn from it. You are given the hunt's confirmed findings (the analyst's
+ground-truth conclusions) and the datasets they came from. Your job is to
+articulate the DETECTION LOGIC you have learned: what patterns in the data
+indicate each kind of finding, why they matter, and what separates a real
+finding from a benign look-alike.
+
+This is about learning analytical SKILL, not restating the findings. Be specific
+and grounded in the evidence — never invent hosts, users, IPs, or commands.
+"""
+
+TRAINING_REVIEW_PROMPT = """\
+CONFIRMED FINDINGS (the ground truth for this hunt):
+{findings_json}
+
+DATASETS ANALYZED (filenames + the model's assessment of each):
+{datasets_json}
+
+Articulate what you learned. Return STRICTLY this JSON:
+{{
+  "overview": "<2-4 sentences: what this hunt was about and the core detection logic>",
+  "patterns": [
+    {{"name": "<the detectable behaviour>",
+      "signal": "<what in the data reveals it — fields, values, sequences>",
+      "category": "malicious|suspicious|risky|policy_violation|unconfirmed",
+      "rationale": "<why this is the right call, and how to tell it apart from benign>"}}
+  ],
+  "false_positive_lessons": ["<benign patterns that look suspicious but aren't>"],
+  "takeaways": ["<generalisable rules to apply on FUTURE hunts for this client>"]
+}}
+"""
+
+
 # ── Missed finding (W2) — false-negative capture ────────────────────────────
 # The analyst found something MANUALLY that an automated pass missed. Reconstruct
 # it (grounded in the dataset evidence), diagnose why it was missed, and distil

@@ -183,6 +183,7 @@ class HuntOut(ORMModel):
     plan_state: dict | None
     status: str
     kind: str = "live"
+    training_review: dict | None = None
     auto_correlate: bool = False
     auto_qa: bool = False
     created_at: datetime

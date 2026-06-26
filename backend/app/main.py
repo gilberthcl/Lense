@@ -37,6 +37,7 @@ _COLUMN_ADDITIONS = (
     # Learning spine (W0). New tables (learning_events, finding_revisions) are
     # made by create_all; these are the new columns on existing tables.
     "ALTER TABLE hunts ADD COLUMN IF NOT EXISTS kind VARCHAR(20) DEFAULT 'live'",
+    "ALTER TABLE hunts ADD COLUMN IF NOT EXISTS training_review JSON",
     "ALTER TABLE findings ADD COLUMN IF NOT EXISTS disposition VARCHAR(20)",
     "ALTER TABLE findings ADD COLUMN IF NOT EXISTS score INTEGER",
     # Per-client base model (W0b).

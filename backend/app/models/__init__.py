@@ -156,6 +156,10 @@ class Hunt(Base):
     # kind: live (normal hunt) | training (historic hunt ingested for learning;
     # never emits live client findings). Learning spine (W0/W3).
     kind: Mapped[str] = mapped_column(String(20), default="live", index=True)
+    # Training hunts only: the model's "what I learned" review — the detection
+    # logic it understood from this hunt's findings + datasets, plus the analyst's
+    # disposition. {report, disposition, feedback, reviewed_at}. (W3)
+    training_review: Mapped[dict | None] = mapped_column(JSON)
     # Run the correlation phase automatically when dataset analysis finishes.
     auto_correlate: Mapped[bool] = mapped_column(Boolean, default=False)
     # Run the QA phase automatically when correlation finishes.
