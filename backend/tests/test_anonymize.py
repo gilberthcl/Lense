@@ -6,8 +6,8 @@ from app.services import anonymize as anon
 
 def _finding(**kw):
     base = dict(
-        entities={"hosts": ["EP-01"], "users": ["camilo"], "ips": ["10.0.0.5"]},
-        affected_assets=["EP-01"], affected_users=["camilo"],
+        entities={"hosts": ["WKSTN-01"], "users": ["jdoe"], "ips": ["10.0.0.5"]},
+        affected_assets=["WKSTN-01"], affected_users=["jdoe"],
     )
     base.update(kw)
     return SimpleNamespace(**base)
@@ -15,8 +15,8 @@ def _finding(**kw):
 
 def test_build_map_assigns_typed_placeholders():
     m = anon.build_map(_finding())
-    assert m["ep-01"] == "HOST_1"
-    assert m["camilo"] == "USER_1"
+    assert m["wkstn-01"] == "HOST_1"
+    assert m["jdoe"] == "USER_1"
     assert m["10.0.0.5"] == "IP_1"
 
 
@@ -26,21 +26,21 @@ def test_build_map_skips_short_tokens():
 
 
 def test_scrub_text_case_insensitive_and_longest_first():
-    m = {"ep-01": "HOST_1", "camilo": "USER_1"}
-    out = anon.scrub_text("Host EP-01 and user Camilo and ep-01 again", m)
+    m = {"wkstn-01": "HOST_1", "jdoe": "USER_1"}
+    out = anon.scrub_text("Host WKSTN-01 and user Jdoe and wkstn-01 again", m)
     assert out == "Host HOST_1 and user USER_1 and HOST_1 again"
 
 
 def test_anonymize_example_scrubs_messages_not_meta():
     ex = {
         "messages": [
-            {"role": "user", "content": "evidence on EP-01 by camilo"},
-            {"role": "assistant", "content": '{"findings":[{"affected_assets":["EP-01"]}]}'},
+            {"role": "user", "content": "evidence on WKSTN-01 by jdoe"},
+            {"role": "assistant", "content": '{"findings":[{"affected_assets":["WKSTN-01"]}]}'},
         ],
         "meta": {"finding_ref": "F-001"},
     }
     out = anon.anonymize_example(ex, _finding())
-    assert "EP-01" not in out["messages"][0]["content"]
+    assert "WKSTN-01" not in out["messages"][0]["content"]
     assert "HOST_1" in out["messages"][0]["content"]
     assert "HOST_1" in out["messages"][1]["content"]
     assert out["meta"]["finding_ref"] == "F-001"   # meta preserved

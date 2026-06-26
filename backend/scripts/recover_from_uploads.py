@@ -43,10 +43,10 @@ HASH_PREFIX = re.compile(r"^[0-9a-f]{32}_")
 # Best-effort client names inferred from the surviving logo filenames. Edit
 # these (or rename later in the UI) — only YOU know the real names.
 NAME_OVERRIDES: dict[int, str] = {
-    1: "LATAM",
-    2: "Saputo",
+    1: "Client 1 (rename me)",
+    2: "Client 2 (rename me)",
     3: "Client 3 (rename me)",
-    4: "HD Hyundai",
+    4: "Client 4 (rename me)",
 }
 # Optional human titles for known hunts; otherwise a placeholder is used.
 HUNT_NAMES: dict[int, str] = {

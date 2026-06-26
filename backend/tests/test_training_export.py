@@ -10,11 +10,11 @@ def _finding(**kw):
         id=1, finding_ref="F-001", tenant_id=2, hunt_id=7, dataset_id=8,
         status="validated", title="ROPC spray", category="suspicious",
         severity="high", confidence="high", summary="A did B",
-        evidence={"verbatim_values": ["camilo", "EP-01"]},
+        evidence={"verbatim_values": ["jdoe", "WKSTN-01"]},
         mitre=[{"technique_id": "T1110.003", "name": "Password Spraying"}],
-        affected_assets=["EP-01"], affected_users=["camilo"],
+        affected_assets=["WKSTN-01"], affected_users=["jdoe"],
         recommendations="Investigate", reviewer_notes=None,
-        entities={"users": ["camilo"]}, time_range={"start": "t"},
+        entities={"users": ["jdoe"]}, time_range={"start": "t"},
         behavioral_context={"fan_out": []}, evidence_rows=[{"x": 1}],
         source_dataset="ds8.csv", dataset=None,
     )
@@ -26,7 +26,7 @@ def test_positive_example_is_valid_chat_jsonl():
     ex = tx.build_positive(_finding())
     assert [m["role"] for m in ex["messages"]] == ["system", "user", "assistant"]
     # user turn carries the evidence, not the answer
-    assert "camilo" in ex["messages"][1]["content"]
+    assert "jdoe" in ex["messages"][1]["content"]
     # assistant turn is the finding in the analyst output shape
     target = json.loads(ex["messages"][2]["content"])
     assert target["findings"][0]["title"] == "ROPC spray"

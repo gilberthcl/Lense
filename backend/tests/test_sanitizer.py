@@ -3,13 +3,13 @@ from app.services import sanitizer as s
 
 
 def test_anonymize_consistent_placeholders():
-    text = "User camilo on EP-01 ran a tool; camilo again on EP-01."
+    text = "User jdoe on WKSTN-01 ran a tool; jdoe again on WKSTN-01."
     items = [
-        {"value": "camilo", "type": "username", "action": "anonymize"},
-        {"value": "EP-01", "type": "hostname", "action": "anonymize"},
+        {"value": "jdoe", "type": "username", "action": "anonymize"},
+        {"value": "WKSTN-01", "type": "hostname", "action": "anonymize"},
     ]
     out = s.apply(text, items)
-    assert "camilo" not in out["sanitized"] and "EP-01" not in out["sanitized"]
+    assert "jdoe" not in out["sanitized"] and "WKSTN-01" not in out["sanitized"]
     assert out["sanitized"].count("USER_1") == 2   # consistent + every occurrence
     assert out["sanitized"].count("HOST_1") == 2
 
@@ -42,13 +42,13 @@ def test_external_domain_preserved():
 
 
 def test_longest_first_avoids_partial_replacement():
-    # "EP-01" must not be partially mangled when "EP-01-BACKUP" is also a target
-    out = s.apply("hosts EP-01-BACKUP and EP-01", [
-        {"value": "EP-01", "type": "hostname", "action": "anonymize"},
-        {"value": "EP-01-BACKUP", "type": "hostname", "action": "anonymize"},
+    # "WKSTN-01" must not be partially mangled when "WKSTN-01-BACKUP" is also a target
+    out = s.apply("hosts WKSTN-01-BACKUP and WKSTN-01", [
+        {"value": "WKSTN-01", "type": "hostname", "action": "anonymize"},
+        {"value": "WKSTN-01-BACKUP", "type": "hostname", "action": "anonymize"},
     ])
     # both fully replaced to distinct placeholders, no leftover fragments
-    assert "EP-01-BACKUP" not in out["sanitized"] and "EP-01 " not in out["sanitized"]
+    assert "WKSTN-01-BACKUP" not in out["sanitized"] and "WKSTN-01 " not in out["sanitized"]
     assert "HOST_" in out["sanitized"]
 
 

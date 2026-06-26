@@ -2,16 +2,16 @@
 from app.services import eval_metrics, eval_runner
 
 _EVIDENCE = {
-    "entities": {"hosts": ["EP-01"], "users": ["camilo"]},
-    "sample_rows": [{"host": "EP-01", "user": "camilo", "process": "mimikatz.exe"}],
+    "entities": {"hosts": ["WKSTN-01"], "users": ["jdoe"]},
+    "sample_rows": [{"host": "WKSTN-01", "user": "jdoe", "process": "mimikatz.exe"}],
 }
 
 
-def _expected(cat="malicious", ents=("EP-01", "camilo")):
+def _expected(cat="malicious", ents=("WKSTN-01", "jdoe")):
     return {"category": cat, "entities": list(ents)}
 
 
-def _produced(cat="malicious", assets=("EP-01",), users=("camilo",)):
+def _produced(cat="malicious", assets=("WKSTN-01",), users=("jdoe",)):
     return {"category": cat, "affected_assets": list(assets), "affected_users": list(users)}
 
 

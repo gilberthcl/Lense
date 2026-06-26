@@ -27,7 +27,7 @@ def test_map_action():
 def test_snapshot_includes_grounding_not_just_revisable():
     f = SimpleNamespace(
         title="t", category="suspicious", severity="high", confidence="high",
-        summary="s", mitre=[], affected_assets=["EP-01"], affected_users=["u"],
+        summary="s", mitre=[], affected_assets=["WKSTN-01"], affected_users=["u"],
         recommendations="r", evidence={"v": 1}, evidence_rows=[{"x": 1}], entities={"users": ["u"]},
     )
     snap = ff.snapshot(f)

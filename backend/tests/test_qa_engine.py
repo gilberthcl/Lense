@@ -3,14 +3,14 @@ from types import SimpleNamespace
 
 from app.services import qa_engine, qa_runner
 
-_IDX = {8: {"entities": {"users": ["camilo"], "hosts": ["ep-01"]}}}
+_IDX = {8: {"entities": {"users": ["jdoe"], "hosts": ["wkstn-01"]}}}
 
 
 def _finding(**kw):
     base = dict(
         finding_ref="F-001", dataset_id=8, category="suspicious", severity="medium",
         summary="x", evidence={"a": 1}, mitre=["T1110.003"], recommendations="do x",
-        affected_assets=["EP-01"], affected_users=["camilo"], entities={"users": ["camilo"]},
+        affected_assets=["WKSTN-01"], affected_users=["jdoe"], entities={"users": ["jdoe"]},
         time_range={"start": "t"}, behavioral_context={"fan_out": []},
         source_dataset="ds8.csv", evidence_rows=[{"x": 1}],
     )
