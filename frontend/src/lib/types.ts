@@ -703,6 +703,17 @@ export interface AvailableModels {
   current: string | null;       // tenant's chosen base, or null = global default
   models: AvailableModel[];
 }
+export interface TrainStatus {
+  status: "none" | "running" | "done" | "error";
+  step?: string;
+  pct?: number;
+  base_model?: string;
+  log?: string[];
+  error?: string;
+  version?: number;
+  ollama_model_name?: string;
+  examples?: number;
+}
 
 export type ReportLang = "en" | "es";
 

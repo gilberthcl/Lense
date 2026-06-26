@@ -40,6 +40,7 @@ import type {
   MissedFindingResult,
   ImportFindingsResult,
   AvailableModels,
+  TrainStatus,
   LearningSummary,
 } from "./types";
 
@@ -476,6 +477,13 @@ export const api = {
       `/api/tenants/${tid}/models/${id}/evaluate?include_holdout=${includeHoldout}`,
       { method: "POST" },
     ),
+  trainModel: (tid: string, baseModel?: string) =>
+    request<{ status: string; base_model: string; examples: number }>(
+      `/api/tenants/${tid}/models/train`,
+      { method: "POST", body: JSON.stringify(baseModel ? { base_model: baseModel } : {}) },
+    ),
+  getTrainStatus: (tid: string) =>
+    request<TrainStatus>(`/api/tenants/${tid}/models/train-status`),
   promoteModel: (tid: string, id: number) =>
     request<TenantModelInfo>(`/api/tenants/${tid}/models/${id}/promote`, { method: "POST" }),
   rejectModel: (tid: string, id: number) =>

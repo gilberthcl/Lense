@@ -13,7 +13,10 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_tenant
 from app.core.db import SessionLocal, get_db
 from app.models import Finding, Tenant, TenantModel
-from app.services import eval_runner, global_config, model_compliance, tenant_models
+from app.services import (
+    eval_runner, global_config, model_compliance, tenant_models, trainer,
+    training_export,
+)
 
 router = APIRouter(prefix="/api/tenants/{tenant_id}/models", tags=["models"])
 
@@ -130,6 +133,46 @@ def register_model(
         ollama_model_name=ollama_model_name, notes=notes,
     )
     return _serialize(m)
+
+
+@router.get("/train-status")
+def train_status(
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+):
+    """Latest training run status for this client (UI polls this)."""
+    return trainer.read_status(tenant.id) or {"status": "none"}
+
+
+@router.post("/train", status_code=202)
+def train_model(
+    background: BackgroundTasks,
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+    base_model: str = Body(default=trainer.DEFAULT_BASE_MODEL, embed=True),
+    tag: str = Body(default="v1", embed=True),
+):
+    """Launch a per-client LoRA fine-tune in the background (runs on the Mac).
+    Registers a candidate (validating) — promotion stays manual via the gate."""
+    allowed, reason = model_compliance.classify(base_model)
+    if not allowed:
+        raise HTTPException(status_code=422, detail=f"Base model not allowed — {reason}.")
+    stats = training_export.training_stats(db, tenant.id)
+    if stats["eligible_positives"] == 0:
+        raise HTTPException(
+            status_code=409,
+            detail="No training examples yet — validate findings or import a training hunt first.",
+        )
+    # Don't start a second run on top of a running one.
+    cur = trainer.read_status(tenant.id)
+    if cur and cur.get("status") == "running":
+        raise HTTPException(status_code=409, detail="A training run is already in progress.")
+
+    trainer.write_status(tenant.id, {"status": "running", "step": "queued", "pct": 0,
+                                     "base_model": base_model})
+    background.add_task(trainer.start_background, tenant.id, base_model, tag)
+    return {"status": "started", "base_model": base_model,
+            "examples": stats["eligible_positives"]}
 
 
 @router.post("/{model_id}/evaluate", status_code=202)

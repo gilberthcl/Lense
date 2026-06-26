@@ -1,9 +1,87 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../lib/api";
-import type { TenantModelInfo, TenantModelsList } from "../lib/types";
+import type { TenantModelInfo, TenantModelsList, TrainStatus } from "../lib/types";
 import { useToast } from "./Toast";
 import BaseModelSelect from "./BaseModelSelect";
 import { Badge, Button, Card, PanelHeader, Spinner } from "./ui";
+
+/** One-click in-app fine-tune (W6) — launches the LoRA pipeline on the Mac. */
+function TrainSection({ tid, onTrained }: { tid: string; onTrained: () => void }) {
+  const toast = useToast();
+  const [st, setSt] = useState<TrainStatus | null>(null);
+  const [starting, setStarting] = useState(false);
+  const timer = useRef<number | null>(null);
+
+  const load = () => api.getTrainStatus(tid).then(setSt).catch(() => setSt(null));
+  useEffect(() => {
+    load();
+    return () => { if (timer.current) window.clearInterval(timer.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tid]);
+  useEffect(() => {
+    if (st?.status === "running" && !timer.current) {
+      timer.current = window.setInterval(load, 2500);
+    } else if (st?.status !== "running" && timer.current) {
+      window.clearInterval(timer.current);
+      timer.current = null;
+      if (st?.status === "done") onTrained();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [st?.status]);
+
+  const train = async () => {
+    if (!window.confirm("Train this client's dedicated model now? This runs on your Mac and can take a while (it won't go live until you Evaluate + Promote it).")) return;
+    setStarting(true);
+    try {
+      const r = await api.trainModel(tid);
+      toast.success(`Training started on ${r.base_model} with ${r.examples} example(s).`);
+      await load();
+    } catch (e) {
+      toast.error((e as ApiError).message);
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  const running = st?.status === "running";
+  return (
+    <div className="mb-4 rounded border border-slate-800 bg-slate-950/40 p-3">
+      <div className="mb-1.5 flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Train this client's model
+        </p>
+        <Button onClick={train} disabled={starting || running}>
+          {starting || running ? <Spinner /> : "Train now"}
+        </Button>
+      </div>
+      {running ? (
+        <div>
+          <div className="mb-1 flex items-center justify-between text-xs">
+            <span className="text-slate-300">{st?.step ?? "Starting…"}</span>
+            <span className="font-mono text-slate-500">{st?.pct ?? 0}%</span>
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded bg-slate-800">
+            <div className="h-full bg-indigo-500 transition-all" style={{ width: `${Math.max(3, st?.pct ?? 0)}%` }} />
+          </div>
+        </div>
+      ) : st?.status === "error" ? (
+        <div className="rounded border border-red-900/50 bg-red-950/30 px-2 py-1.5 font-mono text-[11px] text-red-300">
+          {st.error}
+        </div>
+      ) : st?.status === "done" ? (
+        <p className="text-[11px] text-emerald-300">
+          Done — candidate {st.ollama_model_name} registered. Evaluate it below, then Promote if it wins.
+        </p>
+      ) : (
+        <p className="text-[11px] text-slate-500">
+          Bakes this client's accumulated feedback (findings, corrections, missed-findings, training
+          hunts) into a dedicated LoRA model on llama3.1:8b. Needs <code>mlx-lm</code> + the base model
+          pulled — see docs/training-runbook.md. Until then, learning still flows live via RAG.
+        </p>
+      )}
+    </div>
+  );
+}
 
 /**
  * Per-tenant fine-tuned model registry (LoRA fine-tuning, Phase 3).
@@ -69,6 +147,7 @@ export default function ModelsPanel({ tid }: { tid: string }) {
           <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Base model</p>
           <BaseModelSelect tid={tid} />
         </div>
+        <TrainSection tid={tid} onTrained={load} />
         {!data ? (
           <div className="flex items-center gap-2 text-sm text-slate-500">
             <Spinner /> Loading…

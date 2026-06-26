@@ -1,7 +1,7 @@
 """Trainer data-prep + Modelfile helpers (W6, pure — no MLX/Ollama)."""
 import json
 
-from tools import train_lora as tl
+from app.services import trainer as tl
 
 
 def _write_sft(path, n):
@@ -51,3 +51,10 @@ def test_build_modelfile():
     mf = tl.build_modelfile("/x/model.gguf", "llama3.1:8b")
     assert "FROM /x/model.gguf" in mf
     assert "llama3.1:8b" in mf
+
+
+def test_status_roundtrip(tmp_path, monkeypatch):
+    monkeypatch.setattr(tl, "WORK_ROOT", tmp_path)
+    assert tl.read_status(1) is None
+    tl.write_status(1, {"status": "running", "pct": 30})
+    assert tl.read_status(1)["pct"] == 30
