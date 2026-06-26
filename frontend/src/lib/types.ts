@@ -748,6 +748,25 @@ export interface SanitizeResult {
 }
 export type DecodeMode = "" | "auto" | "base64" | "hex" | "url";
 
+// Partial-accept regeneration — the visible outcome the analyst sees.
+export interface RevisionChange {
+  field: string;
+  before: unknown;
+  after: unknown;
+}
+export interface RevisionChecklistItem {
+  point: string;
+  addressed: boolean;
+  how: string | null;
+}
+export interface FindingRevisionResult {
+  finding: Finding;
+  reasoning: string | null;
+  addressed: RevisionChecklistItem[];
+  changes: RevisionChange[];
+  no_op: boolean;
+}
+
 export type ReportLang = "en" | "es";
 
 // Request payload helpers

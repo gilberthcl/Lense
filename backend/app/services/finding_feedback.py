@@ -73,6 +73,38 @@ def apply_revised_fields(finding: Any, revised: dict) -> dict:
     return applied
 
 
+def diff_changes(before: dict, finding: Any) -> list[dict]:
+    """Per-field before→after for the revisable fields that actually changed.
+    `before` is a snapshot() taken prior to applying the revision."""
+    changes: list[dict] = []
+    for field in REVISABLE_FIELDS:
+        old = before.get(field)
+        new = getattr(finding, field, None)
+        if old != new:
+            changes.append({"field": field, "before": old, "after": new})
+    return changes
+
+
+def revision_meta(revised: dict) -> dict:
+    """Pull the model's self-explanation out of a revise() response. Defensive:
+    the model may omit or malform these. Never raises."""
+    if not isinstance(revised, dict):
+        return {"reasoning": None, "addressed": []}
+    reasoning = revised.get("reasoning")
+    addressed = []
+    for item in revised.get("addressed") or []:
+        if isinstance(item, dict) and str(item.get("point", "")).strip():
+            addressed.append({
+                "point": str(item["point"]).strip(),
+                "addressed": bool(item.get("addressed", False)),
+                "how": str(item.get("how") or "").strip() or None,
+            })
+    return {
+        "reasoning": str(reasoning).strip() if reasoning else None,
+        "addressed": addressed,
+    }
+
+
 def revise(finding_payload: dict, feedback: str) -> dict:
     """Ask the analyst model to rewrite a finding to satisfy feedback. Raises
     OllamaError on transport failure; returns {} if the response isn't an object."""

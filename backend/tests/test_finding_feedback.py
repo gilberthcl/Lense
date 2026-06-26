@@ -54,3 +54,36 @@ def test_apply_revised_fields_only_changes_nonempty_revisable():
 def test_apply_revised_fields_handles_non_dict():
     f = SimpleNamespace(title="x")
     assert ff.apply_revised_fields(f, ["not", "a", "dict"]) == {}
+
+
+def test_diff_changes_reports_only_changed_revisable_fields():
+    before = {"title": "old", "severity": "low", "summary": "s", "evidence": {"v": 1}}
+    f = SimpleNamespace(
+        title="new", severity="low", summary="s2", category=None, confidence=None,
+        mitre=None, affected_assets=None, affected_users=None, recommendations=None,
+    )
+    changes = ff.diff_changes(before, f)
+    fields = {c["field"] for c in changes}
+    assert fields == {"title", "summary"}           # severity unchanged, evidence not revisable
+    title = next(c for c in changes if c["field"] == "title")
+    assert title["before"] == "old" and title["after"] == "new"
+
+
+def test_revision_meta_extracts_reasoning_and_checklist():
+    meta = ff.revision_meta({
+        "reasoning": "  Raised severity and added MITRE.  ",
+        "addressed": [
+            {"point": "raise severity", "addressed": True, "how": "set to high"},
+            {"point": "add T1003", "addressed": False, "how": "no evidence of LSASS access"},
+            {"bad": "no point key"},   # dropped
+        ],
+    })
+    assert meta["reasoning"] == "Raised severity and added MITRE."
+    assert len(meta["addressed"]) == 2
+    assert meta["addressed"][0] == {"point": "raise severity", "addressed": True, "how": "set to high"}
+    assert meta["addressed"][1]["addressed"] is False
+
+
+def test_revision_meta_defensive_on_garbage():
+    assert ff.revision_meta(None) == {"reasoning": None, "addressed": []}
+    assert ff.revision_meta({"addressed": "nope"}) == {"reasoning": None, "addressed": []}

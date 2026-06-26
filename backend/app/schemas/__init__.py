@@ -255,6 +255,29 @@ class FindingRegenerate(BaseModel):
     feedback: str             # required — what to fix
 
 
+class RevisionChange(BaseModel):
+    field: str
+    before: object | None = None
+    after: object | None = None
+
+
+class RevisionChecklistItem(BaseModel):
+    point: str
+    addressed: bool = False
+    how: str | None = None
+
+
+class FindingRevisionResult(BaseModel):
+    """Visible outcome of a partial-accept regeneration: the updated finding plus
+    the model's reasoning, a per-feedback-point checklist, and a before→after
+    diff so the analyst can see exactly what changed."""
+    finding: FindingOut
+    reasoning: str | None = None
+    addressed: list[RevisionChecklistItem] = []
+    changes: list[RevisionChange] = []
+    no_op: bool = False       # model reviewed but changed nothing
+
+
 class MissedFindingCreate(BaseModel):
     dataset_id: int
     description: str           # the finding the analyst found manually (free text)

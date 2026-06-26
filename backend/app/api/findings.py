@@ -8,8 +8,8 @@ from app.core.db import SessionLocal, get_db
 from app.models import Dataset, Finding, Hunt, KnowledgeDocument, Tenant
 from app.schemas import (
     FindingBulkUpdate, FindingDisposition, FindingOut, FindingRegenerate,
-    FindingStatusUpdate, ImportFindingsCreate, ImportFindingsResult, LearningNote,
-    MissedFindingCreate, MissedFindingResult,
+    FindingRevisionResult, FindingStatusUpdate, ImportFindingsCreate,
+    ImportFindingsResult, LearningNote, MissedFindingCreate, MissedFindingResult,
 )
 from app.services import (
     categories, csv_loader, finding_details, finding_feedback, knowledge,
@@ -239,7 +239,7 @@ def disposition_finding(
     return finding
 
 
-@router.post("/{finding_id}/regenerate", response_model=FindingOut)
+@router.post("/{finding_id}/regenerate", response_model=FindingRevisionResult)
 def regenerate_finding(
     hunt_id: int,
     finding_id: int,
@@ -249,35 +249,46 @@ def regenerate_finding(
     db: Session = Depends(get_db),
 ):
     """Partial-accept loop (W1): snapshot the current finding, rewrite it to
-    satisfy the feedback (evidence-grounded), and record the revision. Repeatable
-    until the analyst accepts."""
+    satisfy the feedback (evidence-grounded), and return a VISIBLE outcome — the
+    model's reasoning, a per-feedback-point checklist, and a before→after diff —
+    so the analyst can see exactly what changed. Repeatable until they accept."""
     if not payload.feedback.strip():
         raise HTTPException(status_code=422, detail="Feedback is required to regenerate.")
     finding = _resolve_finding(db, tenant.id, hunt_id, finding_id)
 
+    before = finding_feedback.snapshot(finding)
     # Snapshot BEFORE the rewrite — the before→feedback→after chain is the signal.
     learning.add_revision(
         db, tenant_id=tenant.id, finding_id=finding.id,
-        content=finding_feedback.snapshot(finding), feedback_text=payload.feedback,
+        content=before, feedback_text=payload.feedback,
     )
     try:
-        revised = finding_feedback.revise(finding_feedback.snapshot(finding), payload.feedback)
+        revised = finding_feedback.revise(before, payload.feedback)
     except ollama.OllamaError as exc:
         raise HTTPException(status_code=502, detail=f"Regeneration failed: {exc}") from exc
+
     applied = finding_feedback.apply_revised_fields(finding, revised)
-    if not applied:
-        raise HTTPException(
-            status_code=422,
-            detail="The model returned no usable revision — try rephrasing the feedback.",
+    changes = finding_feedback.diff_changes(before, finding)
+    meta = finding_feedback.revision_meta(revised)
+
+    if applied:
+        finding.disposition = "partial"
+        finding.status = "draft"
+        db.commit()
+        db.refresh(finding)
+        background.add_task(
+            _record_learning_async, tenant.id, hunt_id, finding.id,
+            "partial", None, payload.feedback,
         )
-    finding.disposition = "partial"
-    finding.status = "draft"
-    db.commit()
-    db.refresh(finding)
-    background.add_task(
-        _record_learning_async, tenant.id, hunt_id, finding.id, "partial", None, payload.feedback,
+
+    # Even a no-op returns the model's reasoning so the action is never silent.
+    return FindingRevisionResult(
+        finding=finding,
+        reasoning=meta["reasoning"],
+        addressed=meta["addressed"],
+        changes=changes,
+        no_op=not applied,
     )
-    return finding
 
 
 @router.post("/missed", response_model=MissedFindingResult)

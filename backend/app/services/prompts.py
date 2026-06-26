@@ -675,7 +675,9 @@ REVIEWER FEEDBACK to address:
 {feedback}
 
 Return STRICTLY a JSON object with the revised finding. Include only fields you
-can support from the evidence above; keep every cited entity grounded:
+can support from the evidence above; keep every cited entity grounded. Also
+explain your work so the reviewer can see exactly what you changed and how each
+point of their feedback was handled:
 {{
   "title": "<short descriptive title>",
   "category": "<finding category>",
@@ -685,7 +687,13 @@ can support from the evidence above; keep every cited entity grounded:
   "mitre": [{{"technique_id": "Txxxx", "name": "..."}}],
   "affected_assets": ["<host/ip from evidence>"],
   "affected_users": ["<user from evidence>"],
-  "recommendations": "<concrete next steps>"
+  "recommendations": "<concrete next steps>",
+  "reasoning": "<2-4 sentences: what you changed and why, or why you kept it as-is>",
+  "addressed": [
+    {{"point": "<one specific thing the feedback asked for>",
+      "addressed": true|false,
+      "how": "<how you addressed it, or why you could not (e.g. evidence doesn't support it)>"}}
+  ]
 }}
 """
 

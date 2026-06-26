@@ -26,6 +26,7 @@ import type {
   CreateTenantInput,
   Dataset,
   Finding,
+  FindingRevisionResult,
   FindingStatus,
   Hunt,
   Job,
@@ -365,7 +366,7 @@ export const api = {
       body: JSON.stringify(body),
     }),
   regenerateFinding: (tid: string, hid: string, fid: string, feedback: string) =>
-    request<Finding>(`/api/tenants/${tid}/hunts/${hid}/findings/${fid}/regenerate`, {
+    request<FindingRevisionResult>(`/api/tenants/${tid}/hunts/${hid}/findings/${fid}/regenerate`, {
       method: "POST",
       body: JSON.stringify({ feedback }),
     }),

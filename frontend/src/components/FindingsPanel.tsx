@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState } from "react";
 import { api, ApiError } from "../lib/api";
-import type { Finding, FindingStatus } from "../lib/types";
+import type { Finding, FindingRevisionResult, FindingStatus } from "../lib/types";
 import { useToast } from "./Toast";
 import MissedFindingWizard from "./MissedFindingWizard";
 import {
@@ -108,7 +108,7 @@ function FindingDetail({
   finding: Finding;
   onPatch: (body: PatchBody) => void;
   onDispose: (action: "accept" | "reject" | "partial", feedback?: string, score?: number) => void;
-  onRegenerate: (feedback: string) => void;
+  onRegenerate: (feedback: string) => Promise<FindingRevisionResult | null>;
   onDelete: () => void;
   patching: boolean;
 }) {
@@ -117,6 +117,7 @@ function FindingDetail({
   const [mode, setMode] = useState<"accept" | "partial" | "reject" | null>(null);
   const [feedback, setFeedback] = useState("");
   const [score, setScore] = useState<number | null>(null);
+  const [revision, setRevision] = useState<FindingRevisionResult | null>(null);
   return (
     <div className="space-y-4 border-t border-slate-800 bg-slate-950/60 p-4">
       {finding.summary && (
@@ -326,7 +327,10 @@ function FindingDetail({
                 <Button
                   variant="primary"
                   disabled={patching || !feedback.trim()}
-                  onClick={() => onRegenerate(feedback)}
+                  onClick={async () => {
+                    const r = await onRegenerate(feedback);
+                    if (r) setRevision(r);
+                  }}
                 >
                   {patching ? <Spinner /> : "Regenerate from feedback"}
                 </Button>
@@ -362,7 +366,83 @@ function FindingDetail({
             )}
           </div>
         )}
+
+        {revision && <RevisionResultPanel revision={revision} onDismiss={() => setRevision(null)} />}
       </div>
+    </div>
+  );
+}
+
+/** What the model did on a partial-accept regeneration: reasoning, a per-point
+ *  checklist, and the before→after diff — so the action is never invisible. */
+function RevisionResultPanel({
+  revision,
+  onDismiss,
+}: {
+  revision: FindingRevisionResult;
+  onDismiss: () => void;
+}) {
+  const fmt = (v: unknown) =>
+    v == null || v === "" ? "—" : typeof v === "string" ? v : JSON.stringify(v);
+  return (
+    <div className="mt-3 rounded-lg border border-indigo-500/30 bg-indigo-500/[0.05] p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wide text-indigo-300">
+          What the model did{revision.no_op ? " — no change" : ""}
+        </p>
+        <button onClick={onDismiss} className="text-xs text-slate-500 hover:text-slate-300">
+          Dismiss
+        </button>
+      </div>
+
+      {revision.reasoning && (
+        <p className="mb-3 text-sm leading-relaxed text-slate-300">{revision.reasoning}</p>
+      )}
+
+      {revision.addressed.length > 0 && (
+        <div className="mb-3">
+          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Your feedback, point by point
+          </p>
+          <ul className="space-y-1.5">
+            {revision.addressed.map((a, i) => (
+              <li key={i} className="flex gap-2 text-sm">
+                <span className={a.addressed ? "text-emerald-400" : "text-amber-400"}>
+                  {a.addressed ? "✓" : "✗"}
+                </span>
+                <span className="text-slate-300">
+                  <b className="text-slate-200">{a.point}</b>
+                  {a.how && <span className="text-slate-400"> — {a.how}</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {revision.changes.length > 0 ? (
+        <div>
+          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Changed fields ({revision.changes.length})
+          </p>
+          <ul className="space-y-1.5">
+            {revision.changes.map((c, i) => (
+              <li key={i} className="rounded border border-slate-800 bg-slate-950/50 p-2 text-xs">
+                <span className="font-mono uppercase tracking-wide text-slate-500">{c.field}</span>
+                <div className="mt-1 flex flex-col gap-1 sm:flex-row sm:items-start sm:gap-2">
+                  <span className="text-rose-300/90 line-through">{fmt(c.before)}</span>
+                  <span className="hidden text-slate-600 sm:inline">→</span>
+                  <span className="text-emerald-300">{fmt(c.after)}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <p className="text-xs text-slate-500">
+          No fields were changed — the model kept the finding as-is for the reason above.
+        </p>
+      )}
     </div>
   );
 }
@@ -446,16 +526,22 @@ export default function FindingsPanel({
     }
   };
 
-  const onRegenerate = async (finding: Finding, feedback: string) => {
+  const onRegenerate = async (
+    finding: Finding,
+    feedback: string,
+  ): Promise<FindingRevisionResult | null> => {
     setPatchingId(finding.id);
     try {
-      const updated = await api.regenerateFinding(tid, hid, finding.id, feedback);
+      const result = await api.regenerateFinding(tid, hid, finding.id, feedback);
       setFindings((prev) =>
-        prev ? prev.map((f) => (f.id === finding.id ? { ...f, ...updated } : f)) : prev,
+        prev ? prev.map((f) => (f.id === finding.id ? { ...f, ...result.finding } : f)) : prev,
       );
-      toast.success("Finding regenerated — review and accept, or refine again.");
+      if (result.no_op) toast.info("Model reviewed it and made no change — see its reasoning below.");
+      else toast.success(`Regenerated — ${result.changes.length} field(s) changed. Review and accept, or refine again.`);
+      return result;
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Regeneration failed.");
+      return null;
     } finally {
       setPatchingId(null);
     }
