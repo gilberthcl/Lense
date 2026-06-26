@@ -1,4 +1,5 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { forwardRef } from "react";
+import type { ButtonHTMLAttributes, ReactNode, TextareaHTMLAttributes } from "react";
 import type { DocType, FindingCategory } from "../lib/types";
 
 // --- Generic surfaces ---
@@ -85,16 +86,18 @@ export function Input(
   );
 }
 
-export function Textarea(
-  props: React.TextareaHTMLAttributes<HTMLTextAreaElement>,
-) {
+export const Textarea = forwardRef<
+  HTMLTextAreaElement,
+  TextareaHTMLAttributes<HTMLTextAreaElement>
+>(function Textarea(props, ref) {
   return (
     <textarea
+      ref={ref}
       {...props}
       className={`w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none ${props.className ?? ""}`}
     />
   );
-}
+});
 
 export function Select(
   props: React.SelectHTMLAttributes<HTMLSelectElement>,

@@ -449,10 +449,10 @@ export const api = {
     request<LearningSummary>(`/api/tenants/${tid}/hunts/${hid}/learning-summary`),
 
   // --- Tools ---
-  sanitizeText: (text: string) =>
+  sanitizeText: (text: string, decode?: string) =>
     request<SanitizeResult>(`/api/tools/sanitize`, {
       method: "POST",
-      body: JSON.stringify({ text }),
+      body: JSON.stringify(decode ? { text, decode } : { text }),
     }),
 
   // --- Per-tenant training data (LoRA fine-tuning, Phase 1) ---

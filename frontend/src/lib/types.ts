@@ -724,11 +724,29 @@ export interface SanitizeReplacement {
   type: string;
   action: string;
 }
+export interface SanitizeUncertain {
+  value: string;
+  type: string;
+  reason: string;
+}
+export interface SanitizeSummary {
+  replaced: number;
+  anonymized: number;
+  redacted: number;
+  kept: number;
+  uncertain: number;
+  by_type: Record<string, number>;
+}
 export interface SanitizeResult {
   sanitized: string;
   replacements: SanitizeReplacement[];
   kept: { value: string; reason: string }[];
+  uncertain?: SanitizeUncertain[];
+  summary?: SanitizeSummary;
+  decoded?: { codec: string | null; changed: boolean };
+  input?: string;
 }
+export type DecodeMode = "" | "auto" | "base64" | "hex" | "url";
 
 export type ReportLang = "en" | "es";
 

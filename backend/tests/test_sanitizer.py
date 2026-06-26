@@ -55,3 +55,60 @@ def test_longest_first_avoids_partial_replacement():
 def test_short_values_skipped():
     out = s.apply("a b c", [{"value": "a", "type": "username", "action": "anonymize"}])
     assert out["sanitized"] == "a b c" and out["replacements"] == []
+
+
+def test_path_replaces_only_the_username_not_the_whole_path():
+    text = r"C:\Users\jdoe\Documents\report.docx"
+    out = s.apply(text, [{"value": text, "type": "path", "action": "anonymize"}])
+    # the username is swapped, the surrounding path structure is preserved
+    assert "jdoe" not in out["sanitized"]
+    assert r"C:\Users\USER_1\Documents\report.docx" == out["sanitized"]
+
+
+def test_unc_path_isolates_host():
+    out = s.apply(r"copy \\FILESRV01\share\x", [
+        {"value": r"\\FILESRV01\share\x", "type": "path", "action": "anonymize"},
+    ])
+    assert "FILESRV01" not in out["sanitized"] and "HOST_1" in out["sanitized"]
+    assert r"\share\x" in out["sanitized"]   # structure kept
+
+
+def test_compound_without_isolable_atom_goes_to_uncertain():
+    val = "/opt/app/config/settings.yaml"
+    out = s.apply(f"path {val}", [{"value": val, "type": "path", "action": "anonymize"}])
+    assert out["sanitized"] == f"path {val}"          # nothing blindly replaced
+    assert any(u["value"] == val for u in out["uncertain"])
+
+
+def test_low_confidence_item_is_surfaced_not_applied():
+    out = s.apply("maybe ACME is a company", [
+        {"value": "ACME", "type": "other", "action": "anonymize",
+         "confidence": 0.2, "reason": "could be generic"},
+    ])
+    assert "ACME" in out["sanitized"]                  # untouched
+    assert out["uncertain"][0]["value"] == "ACME"
+    assert out["summary"]["uncertain"] == 1
+
+
+def test_summary_counts_by_type_and_action():
+    out = s.apply("jdoe on WKSTN-01 token=SEKRET123456", [
+        {"value": "jdoe", "type": "username", "action": "anonymize"},
+        {"value": "WKSTN-01", "type": "hostname", "action": "anonymize"},
+        {"value": "SEKRET123456", "type": "token", "action": "redact"},
+    ])
+    assert out["summary"]["replaced"] == 3
+    assert out["summary"]["anonymized"] == 2 and out["summary"]["redacted"] == 1
+    assert out["summary"]["by_type"]["username"] == 1
+
+
+def test_decode_base64_then_unchanged_passthrough():
+    import base64 as b64
+    payload = b64.b64encode(b"user jdoe logged in").decode()
+    d = s.decode_text(payload, "base64")
+    assert d["codec"] == "base64" and d["changed"] is True
+    assert "jdoe" in d["decoded"]
+
+
+def test_decode_noop_when_not_encoded():
+    d = s.decode_text("plain readable text", "auto")
+    assert d["codec"] is None and d["changed"] is False

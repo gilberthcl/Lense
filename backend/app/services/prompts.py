@@ -804,6 +804,18 @@ NEVER TOUCH — keep EXACTLY as-is:
 - well-known EXTERNAL domains (google.com, microsoft.com, github.com, etc.)
 - MITRE technique IDs, CVE IDs, common tool/binary names, generic words
 
+SMALLEST SENSITIVE SUBSTRING ONLY — this is critical:
+- Return ONLY the sensitive substring, NEVER a whole path or combined string.
+- C:\\Users\\jdoe\\Documents\\report.docx  → return "jdoe"  (NOT the whole path)
+- \\\\FILESRV01\\share\\data              → return "FILESRV01"
+- jdoe@corp.local                         → return "jdoe" AND "corp.local" separately
+- CORP\\jdoe                               → return "CORP" and "jdoe" separately
+The structure around the secret part must be preserved; only the identifier moves.
+
+CONFIDENCE: if you are NOT sure an item is internal/sensitive (could be generic,
+external, or you can't tell), set "confidence" below 0.5 and add a short "reason".
+Those go to the analyst for confirmation rather than being changed automatically.
+
 Be precise: only list values that are genuinely internal/sensitive. Return ONLY JSON.
 """
 
@@ -814,9 +826,11 @@ TEXT TO SANITIZE:
 Return STRICTLY this JSON listing every value to change (omit anything to keep as-is):
 {{
   "items": [
-    {{"value": "<exact substring as it appears in the text>",
+    {{"value": "<smallest sensitive substring exactly as it appears>",
       "type": "username|hostname|internal_domain|email|private_ip|path|url|secret|token|password|key|other",
-      "action": "anonymize|redact"}}
+      "action": "anonymize|redact",
+      "confidence": 0.0-1.0,
+      "reason": "<only when confidence < 0.5: why you are unsure>"}}
   ]
 }}
 """
