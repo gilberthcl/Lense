@@ -343,6 +343,22 @@ export const api = {
     }),
   deleteFinding: (tid: string, hid: string, fid: string) =>
     request<void>(`/api/tenants/${tid}/hunts/${hid}/findings/${fid}`, { method: "DELETE" }),
+  // W1 rich disposition: accept | reject | partial, with optional score + feedback.
+  dispositionFinding: (
+    tid: string,
+    hid: string,
+    fid: string,
+    body: { action: "accept" | "reject" | "partial"; feedback?: string; score?: number },
+  ) =>
+    request<Finding>(`/api/tenants/${tid}/hunts/${hid}/findings/${fid}/disposition`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  regenerateFinding: (tid: string, hid: string, fid: string, feedback: string) =>
+    request<Finding>(`/api/tenants/${tid}/hunts/${hid}/findings/${fid}/regenerate`, {
+      method: "POST",
+      body: JSON.stringify({ feedback }),
+    }),
   bulkPatchFindings: (
     tid: string,
     hid: string,

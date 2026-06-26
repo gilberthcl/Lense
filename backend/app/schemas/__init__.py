@@ -218,6 +218,8 @@ class FindingOut(ORMModel):
     recommendations: str | None
     status: str
     reviewer_notes: str | None
+    disposition: str | None = None   # accepted | partial | rejected | added (W1)
+    score: int | None = None         # operator 1–10 rating (W1)
     # Phase A structured detail + correlation-phase outputs (default None so
     # findings created before this migration still serialize).
     entities: dict | None = None
@@ -239,6 +241,16 @@ class FindingStatusUpdate(BaseModel):
 class FindingBulkUpdate(BaseModel):
     finding_ids: list[int]
     status: str  # validated | rejected | draft
+
+
+class FindingDisposition(BaseModel):
+    action: str               # accept | reject | partial (W1)
+    feedback: str | None = None
+    score: int | None = None  # 1–10
+
+
+class FindingRegenerate(BaseModel):
+    feedback: str             # required — what to fix
 
 
 # ── Approved software ──────────────────────────────────────────────────────

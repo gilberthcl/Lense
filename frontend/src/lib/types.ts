@@ -378,6 +378,8 @@ export interface Finding {
   recommendations?: unknown;
   status: FindingStatus;
   reviewer_notes?: string | null;
+  disposition?: string | null;   // accepted | partial | rejected | added (W1)
+  score?: number | null;         // operator 1–10 rating (W1)
   entities?: Record<string, string[]> | null;
   time_range?: Record<string, unknown> | null;
   behavioral_context?: Record<string, unknown> | null;

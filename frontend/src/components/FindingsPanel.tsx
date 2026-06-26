@@ -99,18 +99,23 @@ function Pills({ items }: { items: string[] }) {
 function FindingDetail({
   finding,
   onPatch,
+  onDispose,
+  onRegenerate,
   onDelete,
   patching,
 }: {
   finding: Finding;
   onPatch: (body: PatchBody) => void;
+  onDispose: (action: "accept" | "reject" | "partial", feedback?: string, score?: number) => void;
+  onRegenerate: (feedback: string) => void;
   onDelete: () => void;
   patching: boolean;
 }) {
   const [notes, setNotes] = useState(finding.reviewer_notes ?? "");
   const notesDirty = notes !== (finding.reviewer_notes ?? "");
-  const [rejecting, setRejecting] = useState(false);
+  const [mode, setMode] = useState<"accept" | "partial" | "reject" | null>(null);
   const [feedback, setFeedback] = useState("");
+  const [score, setScore] = useState<number | null>(null);
   return (
     <div className="space-y-4 border-t border-slate-800 bg-slate-950/60 p-4">
       {finding.summary && (
@@ -227,7 +232,7 @@ function FindingDetail({
           rows={2}
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          placeholder="Add review rationale — saved with the finding and fed to the knowledge base on validation."
+          placeholder="Persistent annotation — saved with the finding and fed to the knowledge base on accept."
         />
         <div className="mt-2">
           <Button
@@ -240,56 +245,123 @@ function FindingDetail({
         </div>
       </Field>
 
-      <div className="flex items-center gap-2 pt-1">
-        <Button
-          variant="success"
-          disabled={patching || finding.status === "validated"}
-          onClick={() => onPatch({ status: "validated" })}
-        >
-          {patching ? <Spinner /> : "Validate"}
-        </Button>
-        <Button variant="danger" disabled={patching} onClick={() => setRejecting((s) => !s)}>
-          Reject…
-        </Button>
-      </div>
-
-      {rejecting && (
-        <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Reject this finding
-          </p>
-          <Textarea
-            rows={2}
-            value={feedback}
-            onChange={(e) => setFeedback(e.target.value)}
-            placeholder="Optional feedback — why it's a false positive / what's wrong. Saved with the rejection."
-          />
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <Button
-              variant="ghost"
-              disabled={patching}
-              onClick={() => {
-                onPatch({ status: "rejected", reviewer_notes: feedback || notes });
-                setRejecting(false);
-              }}
-            >
-              Reject &amp; keep feedback
-            </Button>
-            <Button
-              variant="danger"
-              disabled={patching}
-              onClick={() => {
-                if (window.confirm("Delete this finding permanently? It is removed everywhere, including the knowledge base.")) {
-                  onDelete();
-                }
-              }}
-            >
-              Delete permanently
-            </Button>
-            <Button variant="ghost" onClick={() => setRejecting(false)}>Cancel</Button>
-          </div>
+      {/* Disposition (W1): every action teaches the model — feedback + 1–10 score.
+          Accept/reject record the verdict; partial rewrites the finding and lets
+          you iterate until it's right, then accept. */}
+      <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Disposition</span>
+          {finding.disposition && (
+            <span className="text-[11px] text-slate-400">
+              current: <b className="text-slate-300">{finding.disposition}</b>
+              {finding.score ? ` · ${finding.score}/10` : ""}
+            </span>
+          )}
         </div>
-      )}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant={mode === "accept" ? "success" : "ghost"}
+            disabled={patching}
+            onClick={() => { setMode(mode === "accept" ? null : "accept"); setFeedback(""); setScore(null); }}
+          >
+            Accept
+          </Button>
+          <Button
+            variant={mode === "partial" ? "primary" : "ghost"}
+            disabled={patching}
+            onClick={() => { setMode(mode === "partial" ? null : "partial"); setFeedback(""); setScore(null); }}
+          >
+            Partial — fix &amp; retry
+          </Button>
+          <Button
+            variant={mode === "reject" ? "danger" : "ghost"}
+            disabled={patching}
+            onClick={() => { setMode(mode === "reject" ? null : "reject"); setFeedback(""); setScore(null); }}
+          >
+            Reject
+          </Button>
+        </div>
+
+        {mode && (
+          <div className="mt-3 space-y-2">
+            <Textarea
+              rows={2}
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+              placeholder={
+                mode === "accept"
+                  ? "Optional: why is this a good finding? (teaches the model what 'good' looks like)"
+                  : mode === "partial"
+                  ? "Required: what's missing or wrong? The model rewrites the finding to address this."
+                  : "Required: why is this a false positive / not reportable?"
+              }
+            />
+            {mode !== "partial" && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="mr-1 text-[11px] uppercase tracking-wide text-slate-500">Score</span>
+                {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setScore(score === n ? null : n)}
+                    className={`h-6 w-6 rounded text-xs ${score === n ? "bg-indigo-600 text-white" : "bg-slate-800 text-slate-400 hover:bg-slate-700"}`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              {mode === "accept" && (
+                <Button
+                  variant="success"
+                  disabled={patching}
+                  onClick={() => { onDispose("accept", feedback || undefined, score ?? undefined); setMode(null); }}
+                >
+                  {patching ? <Spinner /> : "Confirm accept"}
+                </Button>
+              )}
+              {mode === "partial" && (
+                <Button
+                  variant="primary"
+                  disabled={patching || !feedback.trim()}
+                  onClick={() => onRegenerate(feedback)}
+                >
+                  {patching ? <Spinner /> : "Regenerate from feedback"}
+                </Button>
+              )}
+              {mode === "reject" && (
+                <>
+                  <Button
+                    variant="danger"
+                    disabled={patching || !feedback.trim()}
+                    onClick={() => { onDispose("reject", feedback, score ?? undefined); setMode(null); }}
+                  >
+                    {patching ? <Spinner /> : "Confirm reject"}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    disabled={patching}
+                    onClick={() => {
+                      if (window.confirm("Delete this finding permanently? It is removed everywhere, including the knowledge base.")) {
+                        onDelete();
+                      }
+                    }}
+                  >
+                    Delete permanently
+                  </Button>
+                </>
+              )}
+              <Button variant="ghost" onClick={() => setMode(null)}>Cancel</Button>
+            </div>
+            {mode === "partial" && (
+              <p className="text-[11px] text-slate-500">
+                Regenerate as many times as needed — each round is recorded. When it’s right, switch to Accept.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -348,6 +420,41 @@ export default function FindingsPanel({
       toast.success(body.status ? `Finding ${body.status}.` : "Notes saved.");
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Update failed.");
+    } finally {
+      setPatchingId(null);
+    }
+  };
+
+  const onDispose = async (
+    finding: Finding,
+    action: "accept" | "reject" | "partial",
+    feedback?: string,
+    score?: number,
+  ) => {
+    setPatchingId(finding.id);
+    try {
+      const updated = await api.dispositionFinding(tid, hid, finding.id, { action, feedback, score });
+      setFindings((prev) =>
+        prev ? prev.map((f) => (f.id === finding.id ? { ...f, ...updated } : f)) : prev,
+      );
+      toast.success(`Finding ${action}ed${score ? ` · ${score}/10` : ""}.`);
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Disposition failed.");
+    } finally {
+      setPatchingId(null);
+    }
+  };
+
+  const onRegenerate = async (finding: Finding, feedback: string) => {
+    setPatchingId(finding.id);
+    try {
+      const updated = await api.regenerateFinding(tid, hid, finding.id, feedback);
+      setFindings((prev) =>
+        prev ? prev.map((f) => (f.id === finding.id ? { ...f, ...updated } : f)) : prev,
+      );
+      toast.success("Finding regenerated — review and accept, or refine again.");
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Regeneration failed.");
     } finally {
       setPatchingId(null);
     }
@@ -556,6 +663,8 @@ export default function FindingsPanel({
                               finding={f}
                               patching={patchingId === f.id}
                               onPatch={(body) => onPatch(f, body)}
+                              onDispose={(action, feedback, score) => onDispose(f, action, feedback, score)}
+                              onRegenerate={(feedback) => onRegenerate(f, feedback)}
                               onDelete={() => onDelete(f)}
                             />
                           </td>

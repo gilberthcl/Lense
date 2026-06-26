@@ -111,8 +111,17 @@ to that client and enforced against the compliance allowlist.
 - Ships independently and early — useful with your 2 clients now, no trainer needed.
 - Testable here: ✅ fully. Needs Mac: ❌.
 
-### W1 — Rich finding disposition loop *(point 2 core; highest-frequency signal)*
+### W1 — Rich finding disposition loop — **DONE** *(point 2 core; highest-frequency signal)*
 **Goal:** replace the bare accept/reject with the full loop, on findings first.
+- Shipped: `services/finding_feedback.py` (validate/map/snapshot/apply + model
+  `revise`), `prompts.FINDING_REVISE_*`, `Finding.disposition/score`,
+  `POST /findings/{id}/disposition` (accept/reject/partial + score + feedback) and
+  `POST /findings/{id}/regenerate` (snapshot → model rewrite → FindingRevision,
+  repeatable). Each disposition → `learning.record_event` (background) → RAG mirror.
+  Findings-tab UI reworked into Accept / Partial-fix&retry / Reject with a 1–10
+  score selector. Tests: 6 (pure helpers). Suite 96 passed; tsc+build clean.
+
+Original scope notes (for reference):
 - **Reject** (feedback required) · **Accept** (feedback optional) · **Score 1–10** on every disposition.
 - **Partial-accept:** capture feedback → **regenerate the finding** from it (reuse
   the QA "re-run with feedback" plumbing) → store a `FindingRevision` → repeat until
