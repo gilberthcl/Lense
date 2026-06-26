@@ -31,11 +31,27 @@ export default function MissedFindingWizard({
   const [bulkResult, setBulkResult] = useState<{ count: number; refs: string[] } | null>(null);
   const [context, setContext] = useState("");
   const [savingContext, setSavingContext] = useState(false);
+  const [step, setStep] = useState(0);
 
   useEffect(() => {
     if (!open) return;
     api.listDatasets(tid, hid).then(setDatasets).catch(() => setDatasets([]));
   }, [open, tid, hid]);
+
+  // Live working indicator while the model runs (the call is a single pass, so
+  // we narrate the stages it goes through rather than fake a percentage).
+  const STAGES = bulk
+    ? ["Reading the dataset…", "Extracting each reported finding…", "Grounding entities in the evidence…", "Structuring and saving…"]
+    : ["Reading the dataset…", "Reconstructing the structured finding…", "Diagnosing why it was missed…", "Capturing the lesson…"];
+  useEffect(() => {
+    if (!submitting) {
+      setStep(0);
+      return;
+    }
+    const t = window.setInterval(() => setStep((s) => Math.min(s + 1, STAGES.length - 1)), 4000);
+    return () => window.clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submitting, bulk]);
 
   const submit = async () => {
     if (!datasetId || !description.trim()) {
@@ -143,6 +159,22 @@ export default function MissedFindingWizard({
         <Button variant="primary" disabled={submitting} onClick={submit}>
           {submitting ? <Spinner /> : bulk ? "Extract & import all" : "Analyse & add"}
         </Button>
+
+        {submitting && (
+          <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+            <div className="flex items-center gap-2 text-xs text-slate-300">
+              <Spinner /> {STAGES[step]}
+            </div>
+            <ul className="mt-2 space-y-0.5 text-[11px]">
+              {STAGES.map((s, i) => (
+                <li key={i} className={i < step ? "text-emerald-400/80" : i === step ? "text-slate-300" : "text-slate-600"}>
+                  {i < step ? "✓" : i === step ? "▸" : "·"} {s}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-1 text-[11px] text-slate-600">The model is running locally — this can take a little while.</p>
+          </div>
+        )}
       </div>
 
       {bulkResult && (
