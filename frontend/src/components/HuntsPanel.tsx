@@ -37,6 +37,7 @@ export default function HuntsPanel({
   const toast = useToast();
   const [hunts, setHunts] = useState<Hunt[] | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [listTab, setListTab] = useState<"live" | "historic" | "training">("live");
   const [formKind, setFormKind] = useState<"live" | "training">("live");
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState<CreateHuntInput>(EMPTY_FORM);
@@ -98,8 +99,26 @@ export default function HuntsPanel({
     }
   };
 
-  const liveHunts = (hunts ?? []).filter((h) => h.kind !== "training");
+  const liveHunts = (hunts ?? []).filter((h) => h.kind !== "training" && h.status !== "completed");
+  const historicHunts = (hunts ?? []).filter((h) => h.kind !== "training" && h.status === "completed");
   const trainingHunts = (hunts ?? []).filter((h) => h.kind === "training");
+
+  const setHuntStatus = async (h: Hunt, complete: boolean) => {
+    try {
+      await (complete ? api.completeHunt(tid, h.id) : api.reopenHunt(tid, h.id));
+      toast.success(complete ? "Hunt completed — moved to Historic." : "Hunt reopened.");
+      await load();
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Failed.");
+    }
+  };
+
+  const TABS: { id: "live" | "historic" | "training"; label: string; list: Hunt[] }[] = [
+    { id: "live", label: `Live (${liveHunts.length})`, list: liveHunts },
+    { id: "historic", label: `Historic (${historicHunts.length})`, list: historicHunts },
+    { id: "training", label: `Training (${trainingHunts.length})`, list: trainingHunts },
+  ];
+  const active = TABS.find((t) => t.id === listTab) ?? TABS[0];
 
   return (
     <Card>
@@ -219,7 +238,7 @@ export default function HuntsPanel({
         </form>
       )}
 
-      <div className="space-y-4 p-4">
+      <div className="p-4">
         {hunts === null ? (
           <div className="flex items-center gap-2 text-sm text-slate-500">
             <Spinner /> Loading…
@@ -228,55 +247,68 @@ export default function HuntsPanel({
           <EmptyState>No hunts yet. Create one to start analyzing datasets.</EmptyState>
         ) : (
           <>
-            {renderHuntSection("Live hunts", liveHunts)}
-            {trainingHunts.length > 0 && renderHuntSection("Training hunts (historic)", trainingHunts)}
+            {/* Sub-tabs: Live / Historic / Training */}
+            <div className="mb-3 flex gap-1 border-b border-slate-800">
+              {TABS.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setListTab(t.id)}
+                  className={`-mb-px border-b-2 px-3 py-1.5 text-sm ${
+                    active.id === t.id
+                      ? "border-indigo-500 text-indigo-300"
+                      : "border-transparent text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            {active.list.length === 0 ? (
+              <p className="text-sm text-slate-600">No {active.id} hunts.</p>
+            ) : (
+              <ul className="space-y-2">
+                {active.list.map((h) => (
+                  <li
+                    key={h.id}
+                    className="group rounded border border-slate-800 bg-slate-950/40 transition-colors hover:border-indigo-700"
+                  >
+                    <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+                      <Link to={`${clientBase}/${tid}/hunts/${h.id}`} className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-slate-200 group-hover:text-indigo-300">
+                          {h.name}
+                        </p>
+                        {h.objective && (
+                          <p className="mt-1 line-clamp-2 text-xs text-slate-500">{h.objective}</p>
+                        )}
+                        <p className="mt-1 text-xs text-slate-600">{fmtDate(h.created_at)}</p>
+                      </Link>
+                      <div className="flex shrink-0 flex-col items-end gap-1.5">
+                        <div className="flex items-center gap-1.5">
+                          {h.kind === "training" && (
+                            <Badge className="border border-amber-800 bg-amber-950 text-amber-300">training</Badge>
+                          )}
+                          <Badge className="border border-slate-700 bg-slate-800 text-slate-300">{h.status}</Badge>
+                        </div>
+                        {h.kind !== "training" && (
+                          h.status === "completed" ? (
+                            <button onClick={() => setHuntStatus(h, false)} className="text-[11px] text-slate-400 hover:text-indigo-300">
+                              Reopen
+                            </button>
+                          ) : (
+                            <button onClick={() => setHuntStatus(h, true)} className="text-[11px] text-slate-400 hover:text-emerald-300">
+                              Complete →
+                            </button>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </>
         )}
       </div>
     </Card>
   );
-
-  function renderHuntSection(title: string, list: Hunt[]) {
-    if (list.length === 0) {
-      return (
-        <div>
-          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</p>
-          <p className="text-sm text-slate-600">None yet.</p>
-        </div>
-      );
-    }
-    return (
-      <div>
-        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</p>
-        <ul className="space-y-2">
-          {list.map((h) => (
-            <li key={h.id}>
-              <Link
-                to={`${clientBase}/${tid}/hunts/${h.id}`}
-                className="group block rounded border border-slate-800 bg-slate-950/40 px-3 py-2.5 transition-colors hover:border-indigo-700"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <p className="truncate text-sm font-medium text-slate-200 group-hover:text-indigo-300">
-                    {h.name}
-                  </p>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    {h.kind === "training" && (
-                      <Badge className="border border-amber-800 bg-amber-950 text-amber-300">training</Badge>
-                    )}
-                    <Badge className="border border-slate-700 bg-slate-800 text-slate-300">
-                      {h.status}
-                    </Badge>
-                  </div>
-                </div>
-                {h.objective && (
-                  <p className="mt-1 line-clamp-2 text-xs text-slate-500">{h.objective}</p>
-                )}
-                <p className="mt-1 text-xs text-slate-600">{fmtDate(h.created_at)}</p>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </div>
-    );
-  }
 }

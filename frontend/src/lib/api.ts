@@ -295,6 +295,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ feedback: feedback ?? null }),
     }),
+  completeHunt: (tid: string, hid: string) =>
+    request<Hunt>(`/api/tenants/${tid}/hunts/${hid}/complete`, { method: "POST" }),
+  reopenHunt: (tid: string, hid: string) =>
+    request<Hunt>(`/api/tenants/${tid}/hunts/${hid}/reopen`, { method: "POST" }),
   acceptPlan: (tid: string, hid: string) =>
     request<Hunt>(`/api/tenants/${tid}/hunts/${hid}/plan/accept`, { method: "POST" }),
   deletePlan: (tid: string, hid: string) =>

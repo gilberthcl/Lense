@@ -13,6 +13,8 @@ _EXPECTED = {
     # specifically so that can't happen silently again)
     ("POST", "/api/tenants/{tenant_id}/hunts/{hunt_id}/correlations/run"),
     ("POST", "/api/tenants/{tenant_id}/hunts/{hunt_id}/qa/run"),
+    ("POST", "/api/tenants/{tenant_id}/hunts/{hunt_id}/complete"),
+    ("POST", "/api/tenants/{tenant_id}/hunts/{hunt_id}/reopen"),
     ("POST", "/api/tenants/{tenant_id}/hunts/{hunt_id}/qa/rollback"),
     # learning loop
     ("POST", "/api/tenants/{tenant_id}/hunts/{hunt_id}/findings/{finding_id}/disposition"),

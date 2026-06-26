@@ -45,6 +45,11 @@ export default function BaseModelSelect({ tid }: { tid: string }) {
 
   return (
     <div>
+      {/* Saved state — selection auto-saves on change (no separate Save button). */}
+      <p className="mb-2 text-xs text-slate-400">
+        This client currently uses:{" "}
+        <b className="text-emerald-300">{data.current ?? `global default (${data.default_model ?? "—"})`}</b>
+      </p>
       {!data.reachable && (
         <p className="mb-2 text-[11px] text-amber-300">Ollama unreachable — no installed models to show.</p>
       )}
@@ -59,6 +64,7 @@ export default function BaseModelSelect({ tid }: { tid: string }) {
           <option key={m.name} value={m.name}>{m.name}</option>
         ))}
       </select>
+      <p className="mt-1 text-[11px] text-slate-500">{saving ? "Saving…" : "Saved automatically when you pick one."}</p>
       {blocked.length > 0 && (
         <details className="mt-2">
           <summary className="cursor-pointer text-[11px] uppercase tracking-wide text-slate-500">
@@ -73,10 +79,14 @@ export default function BaseModelSelect({ tid }: { tid: string }) {
           </ul>
         </details>
       )}
-      <p className="mt-1.5 text-[11px] text-slate-500">
-        Only Western-origin, local, verified models are selectable. A promoted fine-tuned model
-        overrides this base for this client's analysis.
-      </p>
+      <div className="mt-2 rounded border border-slate-800 bg-slate-950/40 p-2 text-[11px] leading-relaxed text-slate-400">
+        <b className="text-slate-300">This is the shared base model</b> — the generic, frozen model
+        this client's analysis runs on. It is <b>not</b> made exclusive: base models hold no client
+        data, so several clients can share one (that's safe and expected). This client's <b>dedicated,
+        learning</b> model is the <b>fine-tuned</b> one (trained only on this client's data, used only
+        by this client) — see <span className="text-indigo-300">Knowledge Base → Fine-tuned model</span>.
+        Once a fine-tuned model is promoted, it overrides this base for this client.
+      </div>
     </div>
   );
 }

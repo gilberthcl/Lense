@@ -74,6 +74,34 @@ def get_hunt(
     return _resolve_hunt(db, tenant, hunt_id)
 
 
+@router.post("/{hunt_id}/complete", response_model=HuntOut)
+def complete_hunt(
+    hunt_id: int,
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+):
+    """Mark a live hunt completed → it moves to the Historic list."""
+    hunt = _resolve_hunt(db, tenant, hunt_id)
+    hunt.status = "completed"
+    db.commit()
+    db.refresh(hunt)
+    return hunt
+
+
+@router.post("/{hunt_id}/reopen", response_model=HuntOut)
+def reopen_hunt(
+    hunt_id: int,
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+):
+    """Reopen a completed hunt → back to the Live list."""
+    hunt = _resolve_hunt(db, tenant, hunt_id)
+    hunt.status = "analyzed" if hunt.status == "completed" else hunt.status
+    db.commit()
+    db.refresh(hunt)
+    return hunt
+
+
 def _stage_feedback_async(
     tenant_id: int, hunt_id: int, stage: str, disposition: str | None,
     score: int | None, feedback: str | None, target_type: str | None, target_id: int | None,

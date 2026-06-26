@@ -20,6 +20,33 @@ def analyst_model() -> str:
     return global_config.current_ai()["analyst_model"]
 
 
+# A long methodology (this one is ~90k chars) blows past the model's context
+# window, which truncates the doc and yields malformed JSON. Cap the input so it
+# fits with room for the output. The DETERMINISTIC parse (topics/queries) is not
+# affected — it runs separately and uses the full document.
+_MAX_METHODOLOGY_CHARS = 24000
+
+_DEGRADED_BRIEF = {
+    "hunt_overview": "", "topics": [], "executed_queries": [], "what_to_expect": "",
+    "note": ("AI comprehension of the methodology could not be parsed (likely too "
+             "long for the model context). The deterministic methodology parse — "
+             "plan of action and executed queries — is still used for analysis."),
+    "degraded": True,
+}
+
+
+def _parse_brief(raw: str) -> dict[str, Any]:
+    """Parse the comprehension response, degrading gracefully on failure so a
+    long/odd methodology never hard-fails the hunt."""
+    try:
+        parsed = ollama.parse_json_response(raw)
+    except ollama.OllamaError:
+        return dict(_DEGRADED_BRIEF)
+    if not isinstance(parsed, dict):
+        return {**_DEGRADED_BRIEF, "raw": str(parsed)[:2000]}
+    return parsed
+
+
 def comprehend_stream(
     methodology_text: str,
     *,
@@ -35,17 +62,13 @@ def comprehend_stream(
     sys = prompts.METHODOLOGY_SYSTEM
     user = prompts.METHODOLOGY_PROMPT.format(
         edr=edr or "unspecified", siem=siem or "unspecified",
-        language=language or "English", methodology=methodology_text,
+        language=language or "English",
+        methodology=methodology_text[:_MAX_METHODOLOGY_CHARS],
     )
     raw = ollama.generate_stream(
         analyst_model(), sys, user, on_chunk=on_chunk, json_mode=True,
     )
-    parsed = ollama.parse_json_response(raw)
-    if not isinstance(parsed, dict):
-        return {"hunt_overview": "", "topics": [], "executed_queries": [],
-                "note": "Comprehension returned an unexpected shape.",
-                "raw": str(parsed)[:4000]}
-    return parsed
+    return _parse_brief(raw)
 
 
 def comprehend(
@@ -72,17 +95,10 @@ def comprehend(
         edr=edr or "unspecified",
         siem=siem or "unspecified",
         language=language or "English",
-        methodology=methodology_text,
+        methodology=methodology_text[:_MAX_METHODOLOGY_CHARS],
     )
-    raw = ollama.analyst(sys, user)  # primary analyst model handles comprehension
-    parsed = ollama.parse_json_response(raw)
-    if not isinstance(parsed, dict):
-        return {
-            "hunt_overview": "",
-            "topics": [],
-            "executed_queries": [],
-            "what_to_expect": "",
-            "note": "Comprehension returned an unexpected shape; using raw text.",
-            "raw": str(parsed)[:4000],
-        }
-    return parsed
+    try:
+        raw = ollama.analyst(sys, user)  # primary analyst model handles comprehension
+    except ollama.OllamaError:
+        return dict(_DEGRADED_BRIEF)
+    return _parse_brief(raw)
