@@ -731,3 +731,46 @@ Return STRICTLY this JSON:
   "lessons": "<concise, general guidance to catch this class of finding next time>"
 }}
 """
+
+
+# ── Training-hunt batch import (W3 slice 2) ─────────────────────────────────
+# The analyst pastes one or more ALREADY-REPORTED findings (e.g. from a historic
+# report) for a dataset. Structure EACH into the canonical shape, grounded in the
+# dataset evidence — this is gold supervised data, so preserve the analyst's
+# substance and do not invent.
+TRAINING_IMPORT_SYSTEM = """\
+You are importing a threat hunter's ALREADY-REPORTED findings into a structured
+form. The text contains one or more findings the analyst reported for this
+dataset. Faithfully extract EACH finding and render it in the canonical shape,
+grounded in the dataset evidence. Preserve the analyst's intent; do not invent
+hosts, users, IPs, commands, hashes, or statistics not present in the evidence.
+
+{guardrails}
+"""
+
+TRAINING_IMPORT_PROMPT = """\
+DATASET: {dataset_name}
+DATASET EVIDENCE (for grounding):
+{evidence_json}
+
+ANALYST'S REPORTED FINDING(S) (free text — may contain several):
+{text}
+
+Return STRICTLY a JSON object listing every finding you extracted:
+{{
+  "findings": [
+    {{
+      "title": "<short descriptive title>",
+      "category": "<finding category>",
+      "severity": "informational|low|medium|high|critical",
+      "confidence": "low|medium|high",
+      "summary": "<what was found and why it matters>",
+      "evidence": {{"verbatim_values": ["..."], "rows": ["..."]}},
+      "mitre": [{{"technique_id": "Txxxx", "name": "..."}}],
+      "affected_assets": ["..."],
+      "affected_users": ["..."],
+      "recommendations": "<concrete next steps>"
+    }}
+  ]
+}}
+"""

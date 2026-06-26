@@ -25,8 +25,10 @@ export default function MissedFindingWizard({
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [datasetId, setDatasetId] = useState("");
   const [description, setDescription] = useState("");
+  const [bulk, setBulk] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<MissedFindingResult | null>(null);
+  const [bulkResult, setBulkResult] = useState<{ count: number; refs: string[] } | null>(null);
   const [context, setContext] = useState("");
   const [savingContext, setSavingContext] = useState(false);
 
@@ -42,11 +44,18 @@ export default function MissedFindingWizard({
     }
     setSubmitting(true);
     setResult(null);
+    setBulkResult(null);
     try {
-      const r = await api.addMissedFinding(tid, hid, datasetId, description);
-      setResult(r);
-      setContext("");
-      toast.success(`Added ${r.finding.finding_ref} — the model explained why it was missed.`);
+      if (bulk) {
+        const r = await api.importFindings(tid, hid, datasetId, description);
+        setBulkResult({ count: r.count, refs: r.findings.map((f) => f.finding_ref) });
+        toast.success(`Imported ${r.count} finding(s).`);
+      } else {
+        const r = await api.addMissedFinding(tid, hid, datasetId, description);
+        setResult(r);
+        setContext("");
+        toast.success(`Added ${r.finding.finding_ref} — the model explained why it was missed.`);
+      }
       onAdded();
     } catch (e) {
       toast.error((e as ApiError).message);
@@ -73,6 +82,7 @@ export default function MissedFindingWizard({
     setDescription("");
     setDatasetId("");
     setResult(null);
+    setBulkResult(null);
     setContext("");
   };
 
@@ -111,16 +121,39 @@ export default function MissedFindingWizard({
             ))}
           </select>
         </label>
+        <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-400">
+          <input
+            type="checkbox"
+            checked={bulk}
+            onChange={(e) => setBulk(e.target.checked)}
+            className="h-3.5 w-3.5 accent-indigo-500"
+          />
+          Bulk paste — multiple findings (e.g. a whole report)
+        </label>
         <Textarea
-          rows={4}
+          rows={bulk ? 8 : 4}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="Describe the finding you found manually — what it is, the hosts/users/values involved, and why it matters. Paste details freely."
+          placeholder={
+            bulk
+              ? "Paste one or more reported findings — the model extracts and structures each, grounded in the dataset."
+              : "Describe the finding you found manually — what it is, the hosts/users/values involved, and why it matters."
+          }
         />
         <Button variant="primary" disabled={submitting} onClick={submit}>
-          {submitting ? <Spinner /> : "Analyse & add"}
+          {submitting ? <Spinner /> : bulk ? "Extract & import all" : "Analyse & add"}
         </Button>
       </div>
+
+      {bulkResult && (
+        <div className="mt-4 space-y-2 border-t border-slate-800 pt-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-300">
+            Imported {bulkResult.count} finding(s)
+          </p>
+          <p className="font-mono text-[11px] text-slate-400">{bulkResult.refs.join(" · ")}</p>
+          <Button variant="ghost" onClick={reset}>Import another batch</Button>
+        </div>
+      )}
 
       {result && (
         <div className="mt-4 space-y-3 border-t border-slate-800 pt-3">

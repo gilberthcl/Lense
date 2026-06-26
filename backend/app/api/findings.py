@@ -8,11 +8,12 @@ from app.core.db import SessionLocal, get_db
 from app.models import Dataset, Finding, Hunt, KnowledgeDocument, Tenant
 from app.schemas import (
     FindingBulkUpdate, FindingDisposition, FindingOut, FindingRegenerate,
-    FindingStatusUpdate, LearningNote, MissedFindingCreate, MissedFindingResult,
+    FindingStatusUpdate, ImportFindingsCreate, ImportFindingsResult, LearningNote,
+    MissedFindingCreate, MissedFindingResult,
 )
 from app.services import (
     categories, csv_loader, finding_details, finding_feedback, knowledge,
-    learning, missed_finding,
+    learning, missed_finding, training_import,
 )
 from app.services import ollama_client as ollama
 
@@ -66,6 +67,43 @@ def _record_missed_async(
         )
     finally:
         db.close()
+
+
+def _dataset_evidence(db: Session, tenant_id: int, hunt_id: int, dataset_id: int):
+    """Resolve a dataset (tenant+hunt scoped) and rebuild its evidence package.
+    409 if the file is gone — grounding needs it."""
+    dataset = db.get(Dataset, dataset_id)
+    if not dataset or dataset.tenant_id != tenant_id or dataset.hunt_id != hunt_id:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    try:
+        df = csv_loader.load_csv(dataset.file_path, settings.max_upload_bytes)
+        evidence = csv_loader.build_evidence_package(df, sample_rows=12)
+    except Exception as exc:  # noqa: BLE001 — file gone / unreadable
+        raise HTTPException(
+            status_code=409,
+            detail=f"Dataset file is no longer available to analyse ({exc}).",
+        ) from exc
+    return dataset, evidence
+
+
+def _build_finding(tenant_id, hunt_id, dataset, ref, f, evidence, why=None) -> Finding:
+    """Construct an analyst-confirmed (validated, disposition=added) finding from a
+    structured dict + its dataset evidence."""
+    detail = finding_details.build(f, evidence)
+    return Finding(
+        tenant_id=tenant_id, hunt_id=hunt_id, dataset_id=dataset.id,
+        finding_ref=f"F-{ref:03d}",
+        title=(f.get("title") or "Untitled finding")[:400],
+        category=categories.normalize(f.get("category")),
+        severity=f.get("severity"), confidence=f.get("confidence"),
+        summary=f.get("summary"), evidence=f.get("evidence"), mitre=f.get("mitre"),
+        affected_assets=f.get("affected_assets"), affected_users=f.get("affected_users"),
+        recommendations=f.get("recommendations"),
+        source_dataset=dataset.filename,
+        entities=detail["entities"], time_range=detail["time_range"],
+        behavioral_context=detail["behavioral_context"], evidence_rows=detail["evidence_rows"],
+        status="validated", disposition="added", reviewer_notes=why,
+    )
 
 
 def _record_note_async(tenant_id: int, hunt_id: int, finding_id: int, text: str) -> None:
@@ -255,19 +293,7 @@ def add_missed_finding(
     evidence), diagnoses why it was missed, and the lessons are mirrored to RAG."""
     if not payload.description.strip():
         raise HTTPException(status_code=422, detail="A description of the finding is required.")
-    dataset = db.get(Dataset, payload.dataset_id)
-    if not dataset or dataset.tenant_id != tenant.id or dataset.hunt_id != hunt_id:
-        raise HTTPException(status_code=404, detail="Dataset not found")
-
-    # The dataset must still be present to ground the reconstruction.
-    try:
-        df = csv_loader.load_csv(dataset.file_path, settings.max_upload_bytes)
-        evidence = csv_loader.build_evidence_package(df, sample_rows=12)
-    except Exception as exc:  # noqa: BLE001 — file gone / unreadable
-        raise HTTPException(
-            status_code=409,
-            detail=f"Dataset file is no longer available to analyse ({exc}).",
-        ) from exc
+    dataset, evidence = _dataset_evidence(db, tenant.id, hunt_id, payload.dataset_id)
 
     try:
         out = missed_finding.analyze(dataset.filename, evidence, payload.description)
@@ -282,22 +308,7 @@ def add_missed_finding(
 
     from app.services.analysis_runner import _next_finding_seq  # lazy: avoid cycle
     ref = _next_finding_seq(db, hunt_id)
-    detail = finding_details.build(f, evidence)
-    finding = Finding(
-        tenant_id=tenant.id, hunt_id=hunt_id, dataset_id=dataset.id,
-        finding_ref=f"F-{ref:03d}",
-        title=(f.get("title") or "Untitled finding")[:400],
-        category=categories.normalize(f.get("category")),
-        severity=f.get("severity"), confidence=f.get("confidence"),
-        summary=f.get("summary"), evidence=f.get("evidence"), mitre=f.get("mitre"),
-        affected_assets=f.get("affected_assets"), affected_users=f.get("affected_users"),
-        recommendations=f.get("recommendations"),
-        source_dataset=dataset.filename,
-        entities=detail["entities"], time_range=detail["time_range"],
-        behavioral_context=detail["behavioral_context"], evidence_rows=detail["evidence_rows"],
-        # Analyst-confirmed false negative: validated + provenance.
-        status="validated", disposition="added", reviewer_notes=why,
-    )
+    finding = _build_finding(tenant.id, hunt_id, dataset, ref, f, evidence, why=why)
     db.add(finding)
     db.commit()
     db.refresh(finding)
@@ -333,6 +344,54 @@ def add_missed_context(
     finding = _resolve_finding(db, tenant.id, hunt_id, finding_id)
     background.add_task(_record_note_async, tenant.id, hunt_id, finding.id, payload.text)
     return finding
+
+
+@router.post("/import", response_model=ImportFindingsResult)
+def import_findings(
+    hunt_id: int,
+    payload: ImportFindingsCreate,
+    background: BackgroundTasks,
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+):
+    """Batch import (W3): paste one or more already-reported findings + their
+    dataset; the model structures each (grounded), they're added validated, and
+    each records a learning signal (training_hunt on a Training Hunt)."""
+    if not payload.text.strip():
+        raise HTTPException(status_code=422, detail="Paste at least one finding.")
+    dataset, evidence = _dataset_evidence(db, tenant.id, hunt_id, payload.dataset_id)
+    try:
+        out = training_import.structure_findings(dataset.filename, evidence, payload.text)
+    except ollama.OllamaError as exc:
+        raise HTTPException(status_code=502, detail=f"Import failed: {exc}") from exc
+    items = out.get("findings", [])
+    if not items:
+        raise HTTPException(
+            status_code=422,
+            detail="The model could not extract any structured findings — check the pasted text.",
+        )
+
+    from app.services.analysis_runner import _next_finding_seq  # lazy: avoid cycle
+    start = _next_finding_seq(db, hunt_id)
+    hunt = db.get(Hunt, hunt_id)
+    source = "training_hunt" if hunt and hunt.kind == "training" else "missed_finding"
+
+    created: list[Finding] = []
+    for i, f in enumerate(items):
+        created.append(_build_finding(tenant.id, hunt_id, dataset, start + i, f, evidence))
+    db.add_all(created)
+    db.commit()
+    for finding in created:
+        db.refresh(finding)
+        doc_id = _promote_to_knowledge(db, finding)
+        db.commit()
+        if doc_id is not None:
+            background.add_task(_index_doc_async, doc_id)
+        background.add_task(
+            _record_missed_async, tenant.id, hunt_id, finding.id,
+            f"Imported: {finding.title}", "", source,
+        )
+    return {"count": len(created), "findings": created}
 
 
 @router.patch("", response_model=list[FindingOut])

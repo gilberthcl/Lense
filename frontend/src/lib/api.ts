@@ -38,6 +38,7 @@ import type {
   TenantModelsList,
   TenantModelInfo,
   MissedFindingResult,
+  ImportFindingsResult,
   AvailableModels,
 } from "./types";
 
@@ -371,6 +372,11 @@ export const api = {
     request<Finding>(`/api/tenants/${tid}/hunts/${hid}/findings/${fid}/missed-context`, {
       method: "POST",
       body: JSON.stringify({ text }),
+    }),
+  importFindings: (tid: string, hid: string, dataset_id: string, text: string) =>
+    request<ImportFindingsResult>(`/api/tenants/${tid}/hunts/${hid}/findings/import`, {
+      method: "POST",
+      body: JSON.stringify({ dataset_id: Number(dataset_id), text }),
     }),
   bulkPatchFindings: (
     tid: string,

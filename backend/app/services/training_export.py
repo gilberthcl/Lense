@@ -99,6 +99,10 @@ def finding_target(f: Finding) -> dict:
     }
 
 
+def _from_training_hunt(f: Finding) -> bool:
+    return getattr(getattr(f, "hunt", None), "kind", None) == "training"
+
+
 def _meta(f: Finding, label: str, **extra: Any) -> dict:
     return {
         "finding_ref": f.finding_ref,
@@ -109,6 +113,9 @@ def _meta(f: Finding, label: str, **extra: Any) -> dict:
         "category": f.category,
         "severity": f.severity,
         "label": label,
+        # Gold provenance: examples from historic Training Hunts are the
+        # highest-quality supervision (expert-validated end to end).
+        "from_training_hunt": _from_training_hunt(f),
         **extra,
     }
 

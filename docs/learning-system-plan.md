@@ -169,10 +169,16 @@ badge in the hunt list, and provenance: findings ingested into a Training Hunt
 (via the existing missed-finding/ingestion wizard) record `source=training_hunt`
 LearningEvents (vs `missed_finding` for live hunts). These validated findings
 already flow into the training corpus + eval holdout. Test: hunt-kind schema.
-**Slice 2 — TODO:** dedicated ingestion-oriented stage variants (paste-structure
-methodology; batch finding import; report-format/depth examples; correlation/QA
-truth), coverage-awareness (full vs report-only), and exporter/eval labelling of
-training-hunt examples.
+**Slice 2 — DONE (batch import + labelling):** `services/training_import.py`
+(structure many findings + pure `parse_findings`), `prompts.TRAINING_IMPORT_*`,
+`POST /findings/import` (paste a whole report → N grounded findings, added
+validated, each a `training_hunt`/`missed_finding` learning signal), exporter
+meta now carries `from_training_hunt` (gold provenance), and a "Bulk paste"
+toggle in the wizard. Shared `_dataset_evidence`/`_build_finding` helpers.
+Tests: 3. Suite 120 passed.
+**Slice 3 — TODO:** dedicated per-stage ingestion (paste-structure methodology;
+report-format/depth examples; correlation/QA truth) and coverage-awareness
+(full vs report-only) + eval labelling of training-hunt holdout.
 
 **Goal:** turn years of historic hunts into the cold-start corpus and the eval baseline.
 - **First-class entry point:** a dedicated **"Create Training (Historic) Hunt"**

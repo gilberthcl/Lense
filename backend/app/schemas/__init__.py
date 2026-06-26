@@ -270,6 +270,16 @@ class LearningNote(BaseModel):
     text: str                 # extra context the analyst adds to a lesson
 
 
+class ImportFindingsCreate(BaseModel):
+    dataset_id: int
+    text: str                 # one or more reported findings (free text) — W3
+
+
+class ImportFindingsResult(BaseModel):
+    count: int
+    findings: list[FindingOut]
+
+
 # ── Approved software ──────────────────────────────────────────────────────
 class ApprovedSoftwareCreate(BaseModel):
     name: str

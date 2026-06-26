@@ -400,6 +400,12 @@ export interface MissedFindingResult {
   lessons?: string | null;
 }
 
+// W3 batch finding import result.
+export interface ImportFindingsResult {
+  count: number;
+  findings: Finding[];
+}
+
 // --- Correlations (Phase 2) ---
 export type EntityType = "host" | "user" | "ip" | "hash" | "domain" | string;
 
