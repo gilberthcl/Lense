@@ -808,6 +808,38 @@ export interface FindingRevisionResult {
   no_op: boolean;
 }
 
+// Model manager (global).
+export interface CatalogModel {
+  key: string;
+  name: string;
+  ref: string;
+  params: string;
+  approx_gb: number;
+  origin: string;
+  focus: string;
+  kind: string;        // cyber | generalist | embed
+  recommended: boolean;
+  compliant: boolean;
+  note: string;
+}
+export interface InstalledModel {
+  name: string;
+  size: number;
+  allowed: boolean;
+  reason: string;
+  catalog: string | null;
+  kind: string | null;
+  protected: boolean;
+  assigned_to: string | null;
+  is_default: boolean;
+}
+export interface PullStatus {
+  status: string;
+  pct: number | null;
+  done: boolean;
+  error: string | null;
+}
+
 export type ReportLang = "en" | "es";
 
 // Request payload helpers

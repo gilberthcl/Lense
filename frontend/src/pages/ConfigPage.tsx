@@ -6,9 +6,11 @@ import { MODULES } from "../lib/modules";
 import GlobalConfig from "../components/config/GlobalConfig";
 import StructuredHuntConfig from "../components/config/StructuredHuntConfig";
 import JobsPanel from "../components/config/JobsPanel";
+import ModelManagerPanel from "../components/config/ModelManagerPanel";
 
 const TABS = [
   { id: "global", label: "Global" },
+  { id: "models", label: "Models" },
   { id: "jobs", label: "Jobs" },
   ...MODULES.map((m) => ({
     id: m.id,
@@ -51,9 +53,10 @@ export default function ConfigPage() {
       <Tabs tabs={TABS} active={tab} onChange={setTab} />
 
       {tab === "global" && <GlobalConfig />}
+      {tab === "models" && <ModelManagerPanel />}
       {tab === "jobs" && <JobsPanel />}
       {tab === "structured-hunts" && <StructuredHuntConfig />}
-      {tab !== "global" && tab !== "jobs" && tab !== "structured-hunts" && (
+      {tab !== "global" && tab !== "models" && tab !== "jobs" && tab !== "structured-hunts" && (
         <ModuleConfigPlaceholder moduleId={tab} />
       )}
     </div>

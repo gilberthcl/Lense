@@ -42,6 +42,9 @@ import type {
   MissedFindingResult,
   ImportFindingsResult,
   AvailableModels,
+  CatalogModel,
+  InstalledModel,
+  PullStatus,
   TrainStatus,
   LearningSummary,
   SanitizeResult,
@@ -466,6 +469,23 @@ export const api = {
     }),
   getLearningSummary: (tid: string, hid: string) =>
     request<LearningSummary>(`/api/tenants/${tid}/hunts/${hid}/learning-summary`),
+
+  // --- Model manager (global, operator-level) ---
+  modelCatalog: () =>
+    request<{ models: CatalogModel[] }>(`/api/models/catalog`),
+  installedModels: () =>
+    request<{ models: InstalledModel[] }>(`/api/models/installed`),
+  pullStatus: () =>
+    request<{ pulls: Record<string, PullStatus> }>(`/api/models/pull-status`),
+  pullModel: (ref: string) =>
+    request<{ status: string; ref: string }>(`/api/models/pull`, {
+      method: "POST",
+      body: JSON.stringify({ ref }),
+    }),
+  removeModel: (name: string) =>
+    request<{ ok: boolean; removed: string }>(`/api/models/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+    }),
 
   // --- Sable assistant (global; no client data) ---
   askSable: (question: string, history: { role: string; content: string }[]) =>
