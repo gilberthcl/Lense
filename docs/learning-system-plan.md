@@ -87,6 +87,23 @@ Alembic (CLAUDE.md already flags this as the Phase-2 trigger).
   RAG knowledge (immediate channel) in one call.
 - Testable here: ✅ fully. Needs Mac: ❌.
 
+### W0b — Per-client model selection (compliance-gated, lockable) *(quick early win)*
+**Goal:** each client explicitly chooses the model it runs on; the choice is locked
+to that client and enforced against the compliance allowlist.
+- Per-client **base-model override**: today `analyst_model` is global; add a
+  `Tenant.analyst_model` (nullable → global default). This is the *base*; a promoted
+  fine-tuned adapter (W6) layers on top and takes precedence.
+- **Compliance allowlist** (see §8): the selector lists ONLY Western-origin,
+  non-`cloud`, verified models. Non-Western / `-cloud` / unverified community
+  models are refused at the API, not just hidden — a hard server-side gate.
+- **Lock semantics:** consistent with per-client model binding — once a client has
+  produced findings under a model, changing it is an explicit, logged action
+  (warns that prior findings were produced under a different model).
+- Routing precedence: `active fine-tuned adapter` → else `Tenant.analyst_model` →
+  else global default. (Extends the existing `resolve_analyst_model`.)
+- Ships independently and early — useful with your 2 clients now, no trainer needed.
+- Testable here: ✅ fully. Needs Mac: ❌.
+
 ### W1 — Rich finding disposition loop *(point 2 core; highest-frequency signal)*
 **Goal:** replace the bare accept/reject with the full loop, on findings first.
 - **Reject** (feedback required) · **Accept** (feedback optional) · **Score 1–10** on every disposition.
@@ -113,10 +130,20 @@ Alembic (CLAUDE.md already flags this as the Phase-2 trigger).
 
 ### W3 — Training Hunts *(point 3; the foundational corpus + best eval set)*
 **Goal:** turn years of historic hunts into the cold-start corpus and the eval baseline.
-- **Training Hunt** = `Hunt.kind = training` — tenant-scoped, never live findings.
-- **Ingestion wizard:** upload methodology + datasets + the known findings/report.
-  Old findings live as prose → a **model-assisted importer proposes structured
-  findings**, the operator **confirms** (quality gate, avoids teaching misparses).
+- **First-class entry point:** a dedicated **"Create Training (Historic) Hunt"**
+  action, distinct from creating a live hunt. A Training Hunt = `Hunt.kind = training`
+  — tenant-scoped, and it **never emits live client findings**.
+- **Dedicated, ingestion-oriented stages.** A live hunt's stages *generate* output
+  for review; a Training Hunt's stages *ingest the known truth* so the model can
+  learn it. Each stage gets a training-mode variant:
+  - **Methodology** — paste the historic methodology → structure it (the gold input shape).
+  - **Plan** — the historic analysis plan (or skip if not retained).
+  - **Analysis** — upload datasets + the known findings → **model-assisted importer
+    proposes structured findings, operator confirms** + aligns each to its dataset.
+  - **Correlation** — the known incidents / attack-chains.
+  - **QA** — the quality bar the hunt actually met.
+  - **Writing / Report** — the final reported findings → the gold **format + structure
+    + depth** examples (what a professional finding must contain).
 - **Coverage-aware:**
   - Full hunt (methodology + datasets + findings) → trains the whole pipeline incl. analysis.
   - Report-only (datasets gone) → trains methodology structure, writing, and report format only.
@@ -166,7 +193,8 @@ preference pairs**, beyond plain imitation (SFT).
 ## 4. Dependencies
 
 ```
-W0 ──┬─► W1 ──► W2
+W0 ──┬─► W0b (per-client model selection; independent quick win)
+     ├─► W1 ──► W2
      │    └────► W4
      ├─► W3 ───► (feeds eval + corpus)
      ├─► W5 (independent)
@@ -182,6 +210,7 @@ only Mac-bound, decision-gated piece.
 | Session | Workstream | Value the day it ships | Mac needed? |
 |---|---|---|---|
 | 1 | W0 foundations | Spine + isolation guarantees locked | No |
+| 1–2 | W0b per-client model selection | Pick/lock a compliant model per client (useful now) | No |
 | 2 | W1 finding disposition loop | Better findings next hunt **via RAG**, no trainer needed | No |
 | 3 | W2 missed-finding wizard | False-negative capture | No |
 | 4–5 | W3 Training Hunts | Cold-start corpus + far better eval baseline | No (model-assist runs on box) |
@@ -208,3 +237,34 @@ Fine-tuning (W6) then compounds it.
 - **Accept-feedback required or optional?** (recommend optional; reject/partial required.)
 - **Anonymisation on by default?** (recommend off initially; per-client isolation already covers safety.)
 - **Format-drift handling** in Training Hunts (weight recent vs let operator exclude).
+
+---
+
+## 8. Model inventory & compliance allowlist
+
+The per-client selector (W0b) and the trainer base (W6) are gated by the project
+compliance rule: **Western-origin only, no `-cloud`, no unverified provenance**
+(CLAUDE.md). The gate is enforced server-side, not just in the UI.
+
+Operator's current `ollama list`, classified:
+
+| Model | Size | Origin | Allowed? | Role |
+|---|---|---|---|---|
+| `gemma3:27b` | 17 GB | Google 🇺🇸 | ✅ | Primary analyst (default) |
+| `mistral-small:24b` | 14 GB | Mistral 🇫🇷 | ✅ | Lighter Western analyst alternative |
+| `gpt-oss:20b` | 13 GB | OpenAI 🇺🇸 | ✅ | Reviewer / QA |
+| `nomic-embed-text` | 274 MB | Nomic 🇺🇸 | ✅ | Embeddings |
+| `nemotron` | 42 GB | NVIDIA 🇺🇸 | ⚠️ Western but too large for 32 GB | — |
+| `qwen2.5:7b` | 4.7 GB | Alibaba 🇨🇳 | ❌ non-Western | blocked |
+| `gemma4:31b-cloud` | — | cloud | ❌ `-cloud` (breaks local-only/isolation) | blocked |
+| `coney_/gpt-oss_claude-sonnet4.6` | 13 GB | community fine-tune | ❌ unverified provenance | blocked |
+
+**Allowlist rule (to implement in W0b):** a model name is selectable iff it is on a
+maintained allowlist of verified Western-origin models AND does not match
+`-cloud`/cloud routing AND is not an unverified community tag. Default analyst:
+`gemma3:27b`. The three blocked entries above are refused at the API.
+
+**Fine-tuning base (W6) gap:** none of the *installed* models is both Western-origin
+AND small enough to LoRA on 32 GB (`qwen2.5:7b` is small but non-Western;
+`mistral-small:24b` is too big). When W6 starts, pull a compliant small base —
+**`llama3.1:8b`** (Meta 🇺🇸) or **`mistral:7b`** (Mistral 🇫🇷) — as the LoRA base.
