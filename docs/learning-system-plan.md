@@ -237,8 +237,16 @@ per-stage summary still a future nicety.
   safety — so it can ship late or be skipped.
 - Testable here: ✅ fully (pure text transform).
 
-### W6 — MLX trainer CLI *(needs base-model decision + runs on the Mac)*
+### W6 — MLX trainer CLI — **DONE (written; run on the Mac)**
 **Goal:** the one piece that actually trains weights.
+- Shipped: `backend/tools/train_lora.py` (export → MLX data prep → `mlx_lm.lora`
+  → fuse+GGUF → `ollama create` → register status=validating; compliance-gated
+  base; `--dry-run`), a `lense train <tenant> --base-model <m>` subcommand, and
+  `docs/training-runbook.md`. Pure helpers (data prep, Modelfile) unit-tested (4).
+  Cannot be exercised in CI — the operator runs it on Apple Silicon, then
+  Evaluates + Promotes in the app (the gate). Suite 125.
+
+Original scope notes (for reference):
 - `lense train <client>`: assemble corpus (W1–W4 signals + W3 hunts) → **MLX-LM
   LoRA** → fuse → GGUF → `ollama create lens-tenant-<id>:<ver>` → `POST /models/register`.
 - Then: operator runs **Evaluate** (existing gate) → **Promote** if it beats baseline.

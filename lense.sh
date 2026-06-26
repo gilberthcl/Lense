@@ -527,9 +527,21 @@ cmd_ollama() {
   esac
 }
 
+cmd_train() {  # offline per-tenant LoRA trainer (W6) — runs on Apple Silicon
+  [ -f "$BACKEND/venv/bin/activate" ] || { err "no venv at backend/venv — see 'lense' setup"; return 1; }
+  shift  # drop 'train'
+  if [ $# -eq 0 ]; then
+    say "usage: lense train <tenant_id> --base-model <model> [--iters N] [--dry-run]"
+    say "       see docs/training-runbook.md"
+    return 0
+  fi
+  ( cd "$BACKEND" && source venv/bin/activate && exec python -m tools.train_lora "$@" )
+}
+
 case "${1:-start}" in
   setup|deploy) cmd_setup "${2:-}" ;;
   install)      cmd_install ;;
+  train)   cmd_train "$@" ;;
   start)   cmd_start ;;
   up)      cmd_up ;;
   fresh)   rm -rf "$FRONTEND/node_modules/.vite" && ok "cleared Vite cache"; cmd_start ;;
@@ -539,5 +551,5 @@ case "${1:-start}" in
   logs)    cmd_logs "${2:-both}" ;;
   pull)    pull_models ;;
   ollama)  cmd_ollama "${2:-status}" ;;
-  *) say "usage: lense [up | setup [--pull-models] | install | start | fresh | stop [--all] | restart | status | logs [backend|frontend] | pull | ollama [status|stop|restart]]" ;;
+  *) say "usage: lense [up | setup [--pull-models] | install | start | fresh | stop [--all] | restart | status | logs [backend|frontend] | pull | ollama [status|stop|restart] | train <tenant_id> --base-model <m>]" ;;
 esac
