@@ -3,13 +3,17 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_tenant
+from app.core.config import settings
 from app.core.db import SessionLocal, get_db
-from app.models import Finding, KnowledgeDocument, Tenant
+from app.models import Dataset, Finding, KnowledgeDocument, Tenant
 from app.schemas import (
     FindingBulkUpdate, FindingDisposition, FindingOut, FindingRegenerate,
-    FindingStatusUpdate,
+    FindingStatusUpdate, LearningNote, MissedFindingCreate, MissedFindingResult,
 )
-from app.services import finding_feedback, knowledge, learning
+from app.services import (
+    categories, csv_loader, finding_details, finding_feedback, knowledge,
+    learning, missed_finding,
+)
 from app.services import ollama_client as ollama
 
 router = APIRouter(prefix="/api/tenants/{tenant_id}/hunts/{hunt_id}/findings", tags=["findings"])
@@ -47,6 +51,32 @@ def _resolve_finding(db: Session, tenant_id: int, hunt_id: int, finding_id: int)
     if not finding or finding.tenant_id != tenant_id or finding.hunt_id != hunt_id:
         raise HTTPException(status_code=404, detail="Finding not found")
     return finding
+
+
+def _record_missed_async(
+    tenant_id: int, hunt_id: int, finding_id: int, description: str, summary: str,
+) -> None:
+    db = SessionLocal()
+    try:
+        learning.record_event(
+            db, tenant_id=tenant_id, hunt_id=hunt_id, stage="finding",
+            source="missed_finding", target_type="finding", target_id=finding_id,
+            disposition="added", feedback_text=description, summary=summary or None,
+        )
+    finally:
+        db.close()
+
+
+def _record_note_async(tenant_id: int, hunt_id: int, finding_id: int, text: str) -> None:
+    db = SessionLocal()
+    try:
+        learning.record_event(
+            db, tenant_id=tenant_id, hunt_id=hunt_id, stage="finding",
+            source="missed_finding", target_type="finding", target_id=finding_id,
+            summary=text,
+        )
+    finally:
+        db.close()
 
 
 def _promote_to_knowledge(db: Session, finding: Finding) -> int | None:
@@ -208,6 +238,95 @@ def regenerate_finding(
     background.add_task(
         _record_learning_async, tenant.id, hunt_id, finding.id, "partial", None, payload.feedback,
     )
+    return finding
+
+
+@router.post("/missed", response_model=MissedFindingResult)
+def add_missed_finding(
+    hunt_id: int,
+    payload: MissedFindingCreate,
+    background: BackgroundTasks,
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+):
+    """Missed-finding wizard (W2): the analyst pastes a finding the automated pass
+    missed + its dataset. The model reconstructs it (grounded in that dataset's
+    evidence), diagnoses why it was missed, and the lessons are mirrored to RAG."""
+    if not payload.description.strip():
+        raise HTTPException(status_code=422, detail="A description of the finding is required.")
+    dataset = db.get(Dataset, payload.dataset_id)
+    if not dataset or dataset.tenant_id != tenant.id or dataset.hunt_id != hunt_id:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    # The dataset must still be present to ground the reconstruction.
+    try:
+        df = csv_loader.load_csv(dataset.file_path, settings.max_upload_bytes)
+        evidence = csv_loader.build_evidence_package(df, sample_rows=12)
+    except Exception as exc:  # noqa: BLE001 — file gone / unreadable
+        raise HTTPException(
+            status_code=409,
+            detail=f"Dataset file is no longer available to analyse ({exc}).",
+        ) from exc
+
+    try:
+        out = missed_finding.analyze(dataset.filename, evidence, payload.description)
+    except ollama.OllamaError as exc:
+        raise HTTPException(status_code=502, detail=f"Analysis failed: {exc}") from exc
+    f, why, lessons = missed_finding.parse_result(out)
+    if not f.get("title"):
+        raise HTTPException(
+            status_code=422,
+            detail="The model could not reconstruct a structured finding — add more detail.",
+        )
+
+    from app.services.analysis_runner import _next_finding_seq  # lazy: avoid cycle
+    ref = _next_finding_seq(db, hunt_id)
+    detail = finding_details.build(f, evidence)
+    finding = Finding(
+        tenant_id=tenant.id, hunt_id=hunt_id, dataset_id=dataset.id,
+        finding_ref=f"F-{ref:03d}",
+        title=(f.get("title") or "Untitled finding")[:400],
+        category=categories.normalize(f.get("category")),
+        severity=f.get("severity"), confidence=f.get("confidence"),
+        summary=f.get("summary"), evidence=f.get("evidence"), mitre=f.get("mitre"),
+        affected_assets=f.get("affected_assets"), affected_users=f.get("affected_users"),
+        recommendations=f.get("recommendations"),
+        source_dataset=dataset.filename,
+        entities=detail["entities"], time_range=detail["time_range"],
+        behavioral_context=detail["behavioral_context"], evidence_rows=detail["evidence_rows"],
+        # Analyst-confirmed false negative: validated + provenance.
+        status="validated", disposition="added", reviewer_notes=why,
+    )
+    db.add(finding)
+    db.commit()
+    db.refresh(finding)
+
+    doc_id = _promote_to_knowledge(db, finding)
+    db.commit()
+    if doc_id is not None:
+        background.add_task(_index_doc_async, doc_id)
+    background.add_task(
+        _record_missed_async, tenant.id, hunt_id, finding.id,
+        payload.description, missed_finding.lessons_summary(why, lessons),
+    )
+    return {"finding": finding, "why_missed": why, "lessons": lessons}
+
+
+@router.post("/{finding_id}/missed-context", response_model=FindingOut)
+def add_missed_context(
+    hunt_id: int,
+    finding_id: int,
+    payload: LearningNote,
+    background: BackgroundTasks,
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+):
+    """Add extra analyst context to a finding's lesson (records a learning note
+    that is mirrored to RAG)."""
+    if not payload.text.strip():
+        raise HTTPException(status_code=422, detail="Context text is required.")
+    finding = _resolve_finding(db, tenant.id, hunt_id, finding_id)
+    background.add_task(_record_note_async, tenant.id, hunt_id, finding.id, payload.text)
     return finding
 
 

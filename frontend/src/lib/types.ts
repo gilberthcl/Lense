@@ -380,6 +380,7 @@ export interface Finding {
   reviewer_notes?: string | null;
   disposition?: string | null;   // accepted | partial | rejected | added (W1)
   score?: number | null;         // operator 1–10 rating (W1)
+  dataset_id?: number | null;
   entities?: Record<string, string[]> | null;
   time_range?: Record<string, unknown> | null;
   behavioral_context?: Record<string, unknown> | null;
@@ -389,6 +390,13 @@ export interface Finding {
   chain_id?: number | null;
   merged_into_id?: number | null;
   [key: string]: unknown;
+}
+
+// W2 missed-finding wizard result.
+export interface MissedFindingResult {
+  finding: Finding;
+  why_missed?: string | null;
+  lessons?: string | null;
 }
 
 // --- Correlations (Phase 2) ---

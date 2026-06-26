@@ -253,6 +253,21 @@ class FindingRegenerate(BaseModel):
     feedback: str             # required — what to fix
 
 
+class MissedFindingCreate(BaseModel):
+    dataset_id: int
+    description: str           # the finding the analyst found manually (free text)
+
+
+class MissedFindingResult(BaseModel):
+    finding: FindingOut
+    why_missed: str | None = None
+    lessons: str | None = None
+
+
+class LearningNote(BaseModel):
+    text: str                 # extra context the analyst adds to a lesson
+
+
 # ── Approved software ──────────────────────────────────────────────────────
 class ApprovedSoftwareCreate(BaseModel):
     name: str

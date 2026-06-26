@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from "react";
 import { api, ApiError } from "../lib/api";
 import type { Finding, FindingStatus } from "../lib/types";
 import { useToast } from "./Toast";
+import MissedFindingWizard from "./MissedFindingWizard";
 import {
   Button,
   Card,
@@ -566,13 +567,15 @@ export default function FindingsPanel({
       )}
 
       <div className="p-4">
+        <MissedFindingWizard tid={tid} hid={hid} onAdded={load} />
         {findings === null ? (
           <div className="flex items-center gap-2 text-sm text-slate-500">
             <Spinner /> Loading…
           </div>
         ) : findings.length === 0 ? (
           <EmptyState>
-            No findings yet. Upload and analyze a dataset to generate findings.
+            No findings yet. Upload and analyze a dataset to generate findings, or add one
+            the hunt missed above.
           </EmptyState>
         ) : (visible?.length ?? 0) === 0 ? (
           <EmptyState>

@@ -37,6 +37,7 @@ import type {
   EvalBaseline,
   TenantModelsList,
   TenantModelInfo,
+  MissedFindingResult,
 } from "./types";
 
 export const API_BASE: string =
@@ -358,6 +359,17 @@ export const api = {
     request<Finding>(`/api/tenants/${tid}/hunts/${hid}/findings/${fid}/regenerate`, {
       method: "POST",
       body: JSON.stringify({ feedback }),
+    }),
+  // W2 missed-finding wizard (false-negative capture).
+  addMissedFinding: (tid: string, hid: string, dataset_id: string, description: string) =>
+    request<MissedFindingResult>(`/api/tenants/${tid}/hunts/${hid}/findings/missed`, {
+      method: "POST",
+      body: JSON.stringify({ dataset_id: Number(dataset_id), description }),
+    }),
+  addMissedContext: (tid: string, hid: string, fid: string, text: string) =>
+    request<Finding>(`/api/tenants/${tid}/hunts/${hid}/findings/${fid}/missed-context`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
     }),
   bulkPatchFindings: (
     tid: string,

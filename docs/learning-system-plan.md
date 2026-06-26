@@ -134,8 +134,18 @@ Original scope notes (for reference):
 - UI: rework the Findings tab disposition controls + a feedback modal.
 - Testable here: ✅ (regeneration uses the model, but logic/flows are testable with fakes). Needs Mac: ❌.
 
-### W2 — Missed-finding wizard *(point 2.7; captures false negatives)*
+### W2 — Missed-finding wizard — **DONE** *(point 2.7; captures false negatives)*
 **Goal:** teach "you should have caught this" — the one thing accept/reject can't.
+- Shipped: `services/missed_finding.py` (`analyze` + pure `parse_result`/
+  `lessons_summary`), `prompts.MISSED_FINDING_*`, `POST /findings/missed`
+  (rebuilds the dataset's evidence, reconstructs a grounded finding with
+  `disposition=added`/validated, promotes to KB, records a `missed_finding`
+  LearningEvent whose why-missed+lessons mirror to RAG) and
+  `POST /findings/{id}/missed-context` (extra analyst context → learning note).
+  UI: `MissedFindingWizard` on the Findings tab (dataset select + description →
+  why-missed + lessons + add-context). Tests: 3 (pure parse). Suite 99 passed.
+
+Original scope notes (for reference):
 - Wizard: paste the finding text + pick the dataset it came from.
 - Model analyses the dataset + the pasted finding → determines **why it was missed**
   → creates the structured finding (`source = analyst_added`) → emits a

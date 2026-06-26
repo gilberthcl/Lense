@@ -688,3 +688,46 @@ can support from the evidence above; keep every cited entity grounded:
   "recommendations": "<concrete next steps>"
 }}
 """
+
+
+# ── Missed finding (W2) — false-negative capture ────────────────────────────
+# The analyst found something MANUALLY that an automated pass missed. Reconstruct
+# it (grounded in the dataset evidence), diagnose why it was missed, and distil
+# general lessons to catch the class next time.
+MISSED_FINDING_SYSTEM = """\
+You are a senior threat hunter reviewing a finding that an analyst identified
+MANUALLY in a dataset that an automated analysis MISSED. Using ONLY the dataset
+evidence provided, (1) reconstruct the finding as a structured, evidence-grounded
+record, (2) diagnose why an automated pass likely overlooked it, and (3) give
+concise, GENERAL lessons to catch this class of finding next time. Never invent a
+host, user, IP, command, hash, or statistic that is not present in the evidence.
+
+{guardrails}
+"""
+
+MISSED_FINDING_PROMPT = """\
+DATASET: {dataset_name}
+DATASET EVIDENCE (what was available to the automated analysis):
+{evidence_json}
+
+ANALYST'S DESCRIPTION of the finding that was missed:
+{description}
+
+Return STRICTLY this JSON:
+{{
+  "finding": {{
+    "title": "<short descriptive title>",
+    "category": "<finding category>",
+    "severity": "informational|low|medium|high|critical",
+    "confidence": "low|medium|high",
+    "summary": "<what was found and why it matters, citing the evidence>",
+    "evidence": {{"verbatim_values": ["<values copied from the dataset evidence>"], "rows": ["..."]}},
+    "mitre": [{{"technique_id": "Txxxx", "name": "..."}}],
+    "affected_assets": ["<host/ip from evidence>"],
+    "affected_users": ["<user from evidence>"],
+    "recommendations": "<concrete next steps>"
+  }},
+  "why_missed": "<why an automated analysis overlooked this — the subtle signal/pattern>",
+  "lessons": "<concise, general guidance to catch this class of finding next time>"
+}}
+"""
