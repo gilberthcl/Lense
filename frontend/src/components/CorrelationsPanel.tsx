@@ -4,6 +4,7 @@ import type {
   CorrelationEntity,
   CorrelationResult,
   CorrelationSummary,
+  CuratedFinding,
   Hunt,
   Incident,
   Job,
@@ -16,6 +17,7 @@ import {
   EmptyState,
   PanelHeader,
   Spinner,
+  Textarea,
 } from "./ui";
 import StageFeedback from "./StageFeedback";
 
@@ -193,6 +195,8 @@ export default function CorrelationsPanel({
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
   const [job, setJob] = useState<Job | null>(null);
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [feedback, setFeedback] = useState("");
 
   const load = () => {
     setLoading(true);
@@ -220,11 +224,11 @@ export default function CorrelationsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tid, hid, reloadKey]);
 
-  const runCorrelation = async () => {
+  const runCorrelation = async (feedback?: string) => {
     setRunning(true);
     setJob({ id: "", status: "queued", progress: 0, current_task: "Starting correlation…" });
     try {
-      const started = await api.runCorrelation(tid, hid);
+      const started = await api.runCorrelation(tid, hid, feedback);
       const done = await pollJob(tid, hid, String(started.id), setJob);
       if (done.status === "error") {
         toast.error(done.error ?? "Correlation failed");
@@ -275,13 +279,47 @@ export default function CorrelationsPanel({
                 />
                 Auto-run after analysis
               </label>
-              <Button onClick={runCorrelation} disabled={running}>
+              {summary && summary.totals.active_findings > 0 && (
+                <Button
+                  variant={showFeedback ? "primary" : "ghost"}
+                  onClick={() => setShowFeedback((s) => !s)}
+                  disabled={running}
+                >
+                  Re-correlate with feedback
+                </Button>
+              )}
+              <Button onClick={() => runCorrelation()} disabled={running}>
                 {running ? <Spinner /> : "Run correlation"}
               </Button>
             </div>
           }
         />
         <div className="p-4">
+          {showFeedback && !running && (
+            <div className="mb-3 rounded-lg border border-indigo-500/30 bg-indigo-500/[0.05] p-3">
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-indigo-300">
+                What did correlation get wrong?
+              </p>
+              <Textarea
+                rows={3}
+                value={feedback}
+                onChange={(e) => setFeedback(e.target.value)}
+                placeholder="e.g. F-003 and F-007 are NOT the same host — don't merge them. The lateral-movement chain is missing the initial access step on WORKSTATION."
+              />
+              <div className="mt-2 flex justify-end gap-2">
+                <Button variant="ghost" onClick={() => { setShowFeedback(false); setFeedback(""); }}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  disabled={!feedback.trim()}
+                  onClick={() => { runCorrelation(feedback.trim()); setShowFeedback(false); setFeedback(""); }}
+                >
+                  Re-correlate with this feedback
+                </Button>
+              </div>
+            </div>
+          )}
           {(running || job) && (
             <div className="mb-3 rounded-lg border border-slate-800 bg-slate-950/60 p-3">
               <div className="mb-1.5 flex items-center justify-between text-xs">
@@ -334,6 +372,49 @@ export default function CorrelationsPanel({
                   update existing findings (visible on the Findings tab).
                 </p>
               </div>
+
+              {/* Applied correlation — the final curated set after merges */}
+              {summary.curated && summary.curated.length > 0 && (
+                <div className="rounded border border-emerald-900/40 bg-emerald-950/10 p-3">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">
+                      Applied correlation — final curated findings ({summary.curated.length})
+                    </p>
+                    {summary.totals.merged > 0 && (
+                      <span className="text-[11px] text-slate-500">
+                        {summary.totals.merged} duplicate(s) merged away
+                      </span>
+                    )}
+                  </div>
+                  <p className="mb-2 text-[11px] text-slate-500">
+                    This is the de-duplicated set that goes forward to QA and the report —
+                    merged duplicates are removed; enriched and chained findings are flagged.
+                  </p>
+                  <ul className="space-y-1">
+                    {summary.curated.map((c: CuratedFinding) => (
+                      <li
+                        key={c.id}
+                        className="flex flex-wrap items-center gap-2 rounded border border-slate-800 bg-slate-950/40 px-3 py-1.5 text-sm"
+                      >
+                        <span className="font-mono text-xs text-indigo-300">{c.ref}</span>
+                        <span className="min-w-0 flex-1 truncate text-slate-200">{c.title}</span>
+                        {c.category && <CategoryBadge category={c.category} />}
+                        <SeverityBadge value={c.severity} />
+                        {c.enriched && (
+                          <span className="rounded bg-emerald-900/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-emerald-300">
+                            enriched
+                          </span>
+                        )}
+                        {c.in_chain && (
+                          <span className="rounded bg-indigo-900/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-indigo-300">
+                            in chain
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               {summary.merged.length > 0 && (
                 <div>

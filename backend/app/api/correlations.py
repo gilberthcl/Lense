@@ -1,12 +1,12 @@
 """Cross-dataset entity correlation + the correlation PHASE (tenant-scoped)."""
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_tenant
 from app.core.db import SessionLocal, get_db
 from app.models import AnalysisJob, Dataset, Finding, Hunt, Incident, Tenant
 from app.schemas import JobOut
-from app.services import correlation, correlation_runner, jobs
+from app.services import correlation, correlation_runner, jobs, learning
 
 router = APIRouter(
     prefix="/api/tenants/{tenant_id}/hunts/{hunt_id}/correlations", tags=["correlations"]
@@ -134,6 +134,23 @@ def correlation_summary(
         .all()
     )
     active = [f for f in findings if not f.merged_into_id]
+    # The FINAL curated set — what survives after correlation is applied. Merged
+    # duplicates are dropped; each survivor is flagged if it was enriched or is
+    # part of an attack-chain. This is the "Applied correlation" view.
+    sev_rank = {"critical": 0, "high": 1, "medium": 2, "low": 3, "informational": 4}
+    curated = [
+        {
+            "id": f.id,
+            "ref": f.finding_ref,
+            "title": f.title,
+            "category": f.category,
+            "severity": f.severity,
+            "enriched": bool(f.enrichment),
+            "in_chain": f.chain_id is not None,
+            "chain_id": f.chain_id,
+        }
+        for f in sorted(active, key=lambda f: (sev_rank.get((f.severity or "").lower(), 5), f.id))
+    ]
     return {
         "hunt_id": hunt_id,
         "totals": {
@@ -146,6 +163,7 @@ def correlation_summary(
         "incidents": [_incident_to_dict(i, ref_by_id) for i in incidents],
         "merged": merged,
         "enriched": enriched,
+        "curated": curated,
     }
 
 
@@ -167,14 +185,28 @@ def unmerge_finding(
     return {"ok": True, "finding_id": finding_id}
 
 
+def _record_correlation_feedback(tenant_id: int, hunt_id: int, feedback: str) -> None:
+    db = SessionLocal()
+    try:
+        learning.record_event(
+            db, tenant_id=tenant_id, hunt_id=hunt_id, stage="correlation",
+            source="live_feedback", target_type="correlation", feedback_text=feedback,
+        )
+    finally:
+        db.close()
+
+
 @router.post("/run", response_model=JobOut, status_code=202)
 def run_correlation_phase(
     hunt_id: int,
     background: BackgroundTasks,
     tenant: Tenant = Depends(get_tenant),
     db: Session = Depends(get_db),
+    feedback: str | None = Body(default=None, embed=True),
 ):
-    """Start (or re-attach to) the correlation phase for the hunt."""
+    """Start (or re-attach to) the correlation phase for the hunt. When `feedback`
+    is given, the model REDOES the correlation addressing it (re-correlate with
+    feedback), and the correction is recorded as a learning signal."""
     hunt = db.get(Hunt, hunt_id)
     if not hunt or hunt.tenant_id != tenant.id:
         raise HTTPException(status_code=404, detail="Hunt not found")
@@ -185,6 +217,7 @@ def run_correlation_phase(
     if existing:
         return existing
 
+    fb = (feedback or "").strip() or None
     job = AnalysisJob(
         tenant_id=tenant.id, hunt_id=hunt_id, phase="correlation", status="queued",
     )
@@ -192,10 +225,13 @@ def run_correlation_phase(
     db.commit()
     db.refresh(job)
 
-    def _task(job_id: int):
+    if fb:
+        background.add_task(_record_correlation_feedback, tenant.id, hunt_id, fb)
+
+    def _task(job_id: int, feedback_text: str | None = fb):
         task_db = SessionLocal()
         try:
-            correlation_runner.run_correlation(task_db, job_id)
+            correlation_runner.run_correlation(task_db, job_id, feedback=feedback_text)
         finally:
             task_db.close()
 

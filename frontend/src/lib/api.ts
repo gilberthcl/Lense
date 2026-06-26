@@ -415,8 +415,11 @@ export const api = {
     ),
   getAnalysisSummary: (tid: string, hid: string) =>
     request<AnalysisSummary>(`/api/tenants/${tid}/hunts/${hid}/analysis-summary`),
-  runCorrelation: (tid: string, hid: string) =>
-    request<Job>(`/api/tenants/${tid}/hunts/${hid}/correlations/run`, { method: "POST" }),
+  runCorrelation: (tid: string, hid: string, feedback?: string) =>
+    request<Job>(`/api/tenants/${tid}/hunts/${hid}/correlations/run`, {
+      method: "POST",
+      body: JSON.stringify(feedback ? { feedback } : {}),
+    }),
 
   // --- QA phase ---
   getQA: (tid: string, hid: string) =>

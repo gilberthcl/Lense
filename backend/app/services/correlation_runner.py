@@ -118,7 +118,7 @@ def _apply(
     return summary
 
 
-def run_correlation(db: Session, job_id: int) -> None:
+def run_correlation(db: Session, job_id: int, feedback: str | None = None) -> None:
     job = db.get(AnalysisJob, job_id)
     if job is None:
         return
@@ -170,8 +170,12 @@ def run_correlation(db: Session, job_id: int) -> None:
             35,
         )
 
-        stage("Correlating findings with the analyst model…", 55)
-        out = correlation_engine.run_llm_correlation(fdicts, package)
+        stage(
+            "Re-correlating with the analyst model (addressing your feedback)…"
+            if feedback else "Correlating findings with the analyst model…",
+            55,
+        )
+        out = correlation_engine.run_llm_correlation(fdicts, package, feedback=feedback)
         stage(
             f"Model proposed {len(out.get('incidents', []))} incident(s), "
             f"{len(out.get('merges', []))} merge(s), {len(out.get('enrichments', []))} enrichment(s)",

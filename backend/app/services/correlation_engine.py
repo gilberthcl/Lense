@@ -176,12 +176,14 @@ def _compact_finding(f: dict[str, Any]) -> dict[str, Any]:
 
 
 def run_llm_correlation(
-    findings: list[dict[str, Any]], package: dict[str, Any]
+    findings: list[dict[str, Any]], package: dict[str, Any],
+    feedback: str | None = None,
 ) -> dict[str, Any]:
     """
     Ask the analyst model to merge duplicates, enrich findings, and reconstruct
     attack-chains from the deterministic package. Returns
     {merges, enrichments, incidents} (empty lists on parse failure — never raises).
+    When `feedback` is given, the model redoes the correlation addressing it.
     """
     compact = [_compact_finding(f) for f in findings]
     sys = prompts.CORRELATION_SYSTEM.format(guardrails=prompts.GUARDRAILS)
@@ -189,6 +191,13 @@ def run_llm_correlation(
         findings_json=json.dumps(compact, ensure_ascii=False, default=str)[:9000],
         correlation_package_json=json.dumps(package, ensure_ascii=False, default=str)[:6000],
     )
+    fb = (feedback or "").strip()
+    if fb:
+        user += (
+            "\n\nREVIEWER FEEDBACK — the previous correlation was not right. Redo it "
+            "addressing this (e.g. these are/ aren't duplicates, this chain is wrong):\n"
+            f"{fb[:1500]}\n"
+        )
     try:
         out = ollama.parse_json_response(ollama.analyst(sys, user))
     except ollama.OllamaError:

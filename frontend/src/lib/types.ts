@@ -490,6 +490,16 @@ export interface EnrichedFinding {
   note?: string | null;
   corroborating_datasets?: { id: number; filename?: string | null }[] | null;
 }
+export interface CuratedFinding {
+  id: number;
+  ref: string;
+  title: string;
+  category: string | null;
+  severity: string | null;
+  enriched: boolean;
+  in_chain: boolean;
+  chain_id: number | null;
+}
 export interface CorrelationSummary {
   hunt_id?: number;
   totals: {
@@ -502,6 +512,7 @@ export interface CorrelationSummary {
   incidents: Incident[];
   merged: MergedFinding[];
   enriched: EnrichedFinding[];
+  curated?: CuratedFinding[];
 }
 
 // Analysis-phase summary report.
