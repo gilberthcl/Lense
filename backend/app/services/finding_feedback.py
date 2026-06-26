@@ -105,7 +105,7 @@ def revision_meta(revised: dict) -> dict:
     }
 
 
-def reflect(finding_payload: dict, action: str, feedback: str) -> dict:
+def reflect(finding_payload: dict, action: str, feedback: str, model: str | None = None) -> dict:
     """Turn an accept/reject + feedback into a generalisable lesson via the model.
     Returns {"lesson": str, "reasoning": str|None} or {} on failure / empty input.
     Fail-soft: the caller must never let this block the disposition."""
@@ -118,7 +118,7 @@ def reflect(finding_payload: dict, action: str, feedback: str) -> dict:
         feedback=(feedback or "").strip()[:1500],
     )
     try:
-        out = ollama.parse_json_response(ollama.analyst(sys, user))
+        out = ollama.parse_json_response(ollama.analyst(sys, user, model=model))
     except ollama.OllamaError:
         return {}
     if not isinstance(out, dict):
@@ -130,13 +130,14 @@ def reflect(finding_payload: dict, action: str, feedback: str) -> dict:
     return {"lesson": lesson, "reasoning": reasoning}
 
 
-def revise(finding_payload: dict, feedback: str) -> dict:
+def revise(finding_payload: dict, feedback: str, model: str | None = None) -> dict:
     """Ask the analyst model to rewrite a finding to satisfy feedback. Raises
-    OllamaError on transport failure; returns {} if the response isn't an object."""
+    OllamaError on transport failure; returns {} if the response isn't an object.
+    `model` pins it to the tenant's configured model (None → global default)."""
     sys = prompts.FINDING_REVISE_SYSTEM.format(guardrails=prompts.GUARDRAILS)
     user = prompts.FINDING_REVISE_PROMPT.format(
         finding_json=json.dumps(finding_payload, ensure_ascii=False, default=str)[:6000],
         feedback=(feedback or "").strip()[:1500],
     )
-    out = ollama.parse_json_response(ollama.analyst(sys, user))
+    out = ollama.parse_json_response(ollama.analyst(sys, user, model=model))
     return out if isinstance(out, dict) else {}

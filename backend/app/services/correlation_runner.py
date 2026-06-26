@@ -19,7 +19,7 @@ import time
 from sqlalchemy.orm import Session
 
 from app.models import AnalysisJob, Dataset, Finding, Hunt, Incident
-from app.services import correlation_engine, finding_details, jobs
+from app.services import correlation_engine, finding_details, jobs, tenant_models
 
 logger = logging.getLogger("lens.correlation")
 
@@ -170,12 +170,18 @@ def run_correlation(db: Session, job_id: int, feedback: str | None = None) -> No
             35,
         )
 
+        # CRITICAL: run THIS client's configured model, never the global default.
+        model = tenant_models.resolve_analyst_model(db, job.tenant_id)
+        if model:
+            job.model = model
         stage(
             "Re-correlating with the analyst model (addressing your feedback)…"
             if feedback else "Correlating findings with the analyst model…",
             55,
         )
-        out = correlation_engine.run_llm_correlation(fdicts, package, feedback=feedback)
+        out = correlation_engine.run_llm_correlation(
+            fdicts, package, feedback=feedback, model=model
+        )
         stage(
             f"Model proposed {len(out.get('incidents', []))} incident(s), "
             f"{len(out.get('merges', []))} merge(s), {len(out.get('enrichments', []))} enrichment(s)",

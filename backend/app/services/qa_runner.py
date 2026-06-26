@@ -19,7 +19,7 @@ import time
 from sqlalchemy.orm import Session
 
 from app.models import AnalysisJob, Dataset, Finding, Hunt, QAReport
-from app.services import jobs, prompts, qa_engine
+from app.services import jobs, prompts, qa_engine, tenant_models
 from app.services import ollama_client as ollama
 
 logger = logging.getLogger("lens.qa")
@@ -47,7 +47,7 @@ def _parse_error_datasets(db: Session, hunt_id: int, tenant_id: int) -> list[int
     return out
 
 
-def _gap_fill(finding: Finding) -> tuple[dict, dict] | None:
+def _gap_fill(finding: Finding, model: str | None = None) -> tuple[dict, dict] | None:
     """Ask the analyst model to fill QA-flagged gaps from the finding's own
     evidence. Returns (applied_fields, before_values) so the change can be rolled
     back, or None when nothing was filled."""
@@ -74,7 +74,7 @@ def _gap_fill(finding: Finding) -> tuple[dict, dict] | None:
         missing=", ".join(str(m) for m in missing)[:400],
     )
     try:
-        out = ollama.parse_json_response(ollama.analyst(sys, user))
+        out = ollama.parse_json_response(ollama.analyst(sys, user, model=model))
     except ollama.OllamaError:
         return None
     if not isinstance(out, dict):
@@ -123,7 +123,11 @@ def run_qa(db: Session, job_id: int, feedback: str | None = None) -> None:
     try:
         hunt = db.get(Hunt, job.hunt_id)
         tid = job.tenant_id
+        # CRITICAL: this client's configured model, never the global default.
+        model = tenant_models.resolve_analyst_model(db, tid)
         job.status = "running"
+        if model:
+            job.model = model
         job.log = []
         stage("Starting QA", 8)
 
@@ -153,7 +157,7 @@ def run_qa(db: Session, job_id: int, feedback: str | None = None) -> None:
         stage(f"Completeness checked on {len(findings)} finding(s)", 40)
 
         # 3. LLM judge
-        verdicts = qa_engine.judge_findings(findings, feedback=feedback)
+        verdicts = qa_engine.judge_findings(findings, feedback=feedback, model=model)
         for f in findings:
             v = verdicts.get(f.finding_ref)
             if v:
@@ -183,7 +187,7 @@ def run_qa(db: Session, job_id: int, feedback: str | None = None) -> None:
             stage(f"Gap-filling finding {f.finding_ref} ({i+1}/{len(to_fix)})",
                   70 + int(18 * (i + 1) / max(1, len(to_fix))))
             attempted += 1
-            result = _gap_fill(f)
+            result = _gap_fill(f, model=model)
             if result:
                 applied, before = result
                 filled += 1

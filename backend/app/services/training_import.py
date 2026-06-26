@@ -15,16 +15,18 @@ from app.services import ollama_client as ollama
 from app.services import prompts
 
 
-def structure_findings(dataset_name: str, evidence_package: dict, text: str) -> dict:
+def structure_findings(dataset_name: str, evidence_package: dict, text: str,
+                       model: str | None = None) -> dict:
     """Run the batch-structuring model call. Raises OllamaError on transport
-    failure; returns {} if the response isn't a JSON object/array."""
+    failure; returns {} if the response isn't a JSON object/array. `model` pins it
+    to the tenant's configured model (None → global default)."""
     sys = prompts.TRAINING_IMPORT_SYSTEM.format(guardrails=prompts.GUARDRAILS)
     user = prompts.TRAINING_IMPORT_PROMPT.format(
         dataset_name=dataset_name,
         evidence_json=json.dumps(evidence_package, ensure_ascii=False, default=str)[:7000],
         text=(text or "").strip()[:6000],
     )
-    out = ollama.parse_json_response(ollama.analyst(sys, user))
+    out = ollama.parse_json_response(ollama.analyst(sys, user, model=model))
     if isinstance(out, (dict, list)):
         return {"findings": parse_findings(out)}
     return {"findings": []}

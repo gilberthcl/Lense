@@ -76,17 +76,19 @@ def parse_review(out: Any) -> dict:
 
 
 def summarize_learning(
-    findings: list[dict], datasets: list[dict], feedback: str | None = None
+    findings: list[dict], datasets: list[dict], feedback: str | None = None,
+    model: str | None = None,
 ) -> dict:
     """Run the review pass over a training hunt's findings + datasets. Returns the
-    parsed review. Raises OllamaError on transport failure."""
+    parsed review. `model` pins it to the tenant's configured model (None →
+    global default). Raises OllamaError on transport failure."""
     compact = [_compact_finding(f) for f in findings]
     sys = prompts.TRAINING_REVIEW_SYSTEM
     user = prompts.TRAINING_REVIEW_PROMPT.format(
         findings_json=json.dumps(compact, ensure_ascii=False, default=str)[:9000],
         datasets_json=json.dumps(datasets, ensure_ascii=False, default=str)[:4000],
     ) + _feedback_block(feedback)
-    out = ollama.parse_json_response(ollama.analyst(sys, user))
+    out = ollama.parse_json_response(ollama.analyst(sys, user, model=model))
     return parse_review(out)
 
 

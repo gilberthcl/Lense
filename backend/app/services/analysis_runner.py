@@ -300,6 +300,7 @@ def ensure_methodology_brief(db: Session, hunt: Hunt) -> dict | None:
             edr=hunt.edr,
             siem=hunt.siem,
             language=hunt.report_language,
+            model=tenant_models.resolve_analyst_model(db, hunt.tenant_id),
         )
     except ollama.OllamaError:
         return None

@@ -18,16 +18,18 @@ from app.services import ollama_client as ollama
 from app.services import prompts
 
 
-def analyze(dataset_name: str, evidence_package: dict, description: str) -> dict:
+def analyze(dataset_name: str, evidence_package: dict, description: str,
+            model: str | None = None) -> dict:
     """Run the missed-finding reconstruction. Raises OllamaError on transport
-    failure; returns {} if the response isn't a JSON object."""
+    failure; returns {} if the response isn't a JSON object. `model` pins it to
+    the tenant's configured model (None → global default)."""
     sys = prompts.MISSED_FINDING_SYSTEM.format(guardrails=prompts.GUARDRAILS)
     user = prompts.MISSED_FINDING_PROMPT.format(
         dataset_name=dataset_name,
         evidence_json=json.dumps(evidence_package, ensure_ascii=False, default=str)[:7000],
         description=(description or "").strip()[:2000],
     )
-    out = ollama.parse_json_response(ollama.analyst(sys, user))
+    out = ollama.parse_json_response(ollama.analyst(sys, user, model=model))
     return out if isinstance(out, dict) else {}
 
 

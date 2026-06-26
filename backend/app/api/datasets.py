@@ -16,7 +16,7 @@ from app.core.config import settings
 from app.core.db import SessionLocal, get_db
 from app.models import AnalysisJob, Dataset, Finding, Hunt, Tenant
 from app.schemas import DatasetOut, HuntOut, JobOut
-from app.services import analysis_planner, analysis_runner, csv_loader, jobs
+from app.services import analysis_planner, analysis_runner, csv_loader, jobs, tenant_models
 from app.services.analysis_runner import run_dataset_analysis
 
 
@@ -174,7 +174,9 @@ def create_analysis_plan(
             h = task_db.get(Hunt, h_id)
             try:
                 j.status = "running"
-                j.model = analysis_planner.planner_model()
+                # CRITICAL: this client's configured model, never the global default.
+                tenant_model = tenant_models.resolve_analyst_model(task_db, t_id)
+                j.model = tenant_model or analysis_planner.planner_model()
                 # Comprehend the methodology FIRST so the planner understands each
                 # dataset's role and the hunt's intent (not just filenames).
                 emit(j, "Comprehending hunt methodology…", 8)
@@ -219,7 +221,7 @@ def create_analysis_plan(
                     on_reason_chunk=on_reason_chunk,
                     on_struct_chunk=on_struct_chunk,
                     on_phase=on_phase,
-                    feedback=feedback, previous=previous,
+                    feedback=feedback, previous=previous, model=tenant_model,
                 )
                 h.analysis_plan = plan
                 # Reset review state: a (re)generated plan starts as a draft.

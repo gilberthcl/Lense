@@ -14,7 +14,7 @@ from app.schemas import (
 )
 from app.services import (
     categories, csv_loader, finding_details, finding_feedback, knowledge,
-    learning, missed_finding, training_import,
+    learning, missed_finding, tenant_models, training_import,
 )
 from app.services import ollama_client as ollama
 
@@ -231,7 +231,8 @@ def disposition_finding(
     # Reflect BEFORE we mutate — the model sees the finding as the analyst judged
     # it. Fail-soft: a model hiccup never blocks the disposition.
     reflection = (
-        finding_feedback.reflect(finding_feedback.snapshot(finding), payload.action, payload.feedback)
+        finding_feedback.reflect(finding_feedback.snapshot(finding), payload.action, payload.feedback,
+                                 model=tenant_models.resolve_analyst_model(db, tenant.id))
         if payload.feedback else {}
     )
 
@@ -281,7 +282,10 @@ def regenerate_finding(
         content=before, feedback_text=payload.feedback,
     )
     try:
-        revised = finding_feedback.revise(before, payload.feedback)
+        revised = finding_feedback.revise(
+            before, payload.feedback,
+            model=tenant_models.resolve_analyst_model(db, tenant.id),
+        )
     except ollama.OllamaError as exc:
         raise HTTPException(status_code=502, detail=f"Regeneration failed: {exc}") from exc
 
@@ -325,7 +329,10 @@ def add_missed_finding(
     dataset, evidence = _dataset_evidence(db, tenant.id, hunt_id, payload.dataset_id)
 
     try:
-        out = missed_finding.analyze(dataset.filename, evidence, payload.description)
+        out = missed_finding.analyze(
+            dataset.filename, evidence, payload.description,
+            model=tenant_models.resolve_analyst_model(db, tenant.id),
+        )
     except ollama.OllamaError as exc:
         raise HTTPException(status_code=502, detail=f"Analysis failed: {exc}") from exc
     f, why, lessons = missed_finding.parse_result(out)
@@ -390,7 +397,10 @@ def import_findings(
         raise HTTPException(status_code=422, detail="Paste at least one finding.")
     dataset, evidence = _dataset_evidence(db, tenant.id, hunt_id, payload.dataset_id)
     try:
-        out = training_import.structure_findings(dataset.filename, evidence, payload.text)
+        out = training_import.structure_findings(
+            dataset.filename, evidence, payload.text,
+            model=tenant_models.resolve_analyst_model(db, tenant.id),
+        )
     except ollama.OllamaError as exc:
         raise HTTPException(status_code=502, detail=f"Import failed: {exc}") from exc
     items = out.get("findings", [])

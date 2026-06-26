@@ -141,14 +141,17 @@ def plan_stream(
     on_phase=None,
     feedback: str | None = None,
     previous: dict | None = None,
+    model: str | None = None,
 ) -> dict[str, Any]:
     """
     Two-pass plan generation:
       1. Reason out loud (plain text) about each dataset's role, complexity, and
          the workload batching — streamed to the caller for the live job log.
       2. Convert that reasoning into the strict plan JSON.
+
+    `model` pins both passes to the tenant's configured model (None → global).
     """
-    model = planner_model()
+    model = model or planner_model()
     methodology = _methodology_summary(hunt) or "No methodology summary available."
 
     # ── Pass 1: step-by-step reasoning (visible in the log) ───────────────

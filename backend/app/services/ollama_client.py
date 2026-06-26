@@ -285,9 +285,11 @@ def analyst(system: str, prompt: str, *, json_mode: bool = True, model: str | No
     return generate(model or global_config.current_ai()["analyst_model"], system, prompt, json_mode=json_mode)
 
 
-def reviewer(system: str, prompt: str, *, json_mode: bool = True) -> str:
-    return generate(_role_model("reviewer"), system, prompt, json_mode=json_mode)
+def reviewer(system: str, prompt: str, *, json_mode: bool = True, model: str | None = None) -> str:
+    # `model` lets a tenant pin every pipeline role to its own configured model.
+    # None → the role's global default, unchanged.
+    return generate(model or _role_model("reviewer"), system, prompt, json_mode=json_mode)
 
 
-def qa(system: str, prompt: str, *, json_mode: bool = True) -> str:
-    return generate(_role_model("qa"), system, prompt, json_mode=json_mode)
+def qa(system: str, prompt: str, *, json_mode: bool = True, model: str | None = None) -> str:
+    return generate(model or _role_model("qa"), system, prompt, json_mode=json_mode)

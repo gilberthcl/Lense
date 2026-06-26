@@ -177,7 +177,7 @@ def _compact_finding(f: dict[str, Any]) -> dict[str, Any]:
 
 def run_llm_correlation(
     findings: list[dict[str, Any]], package: dict[str, Any],
-    feedback: str | None = None,
+    feedback: str | None = None, model: str | None = None,
 ) -> dict[str, Any]:
     """
     Ask the analyst model to merge duplicates, enrich findings, and reconstruct
@@ -199,7 +199,7 @@ def run_llm_correlation(
             f"{fb[:1500]}\n"
         )
     try:
-        out = ollama.parse_json_response(ollama.analyst(sys, user))
+        out = ollama.parse_json_response(ollama.analyst(sys, user, model=model))
     except ollama.OllamaError:
         return {"merges": [], "enrichments": [], "incidents": [], "parse_error": True}
     if not isinstance(out, dict):

@@ -187,8 +187,11 @@ def _compact(finding: Any) -> dict:
     }
 
 
-def judge_findings(findings: list, *, feedback: str | None = None) -> dict[str, dict]:
-    """LLM quality verdicts keyed by finding_ref. Empty on parse failure."""
+def judge_findings(
+    findings: list, *, feedback: str | None = None, model: str | None = None
+) -> dict[str, dict]:
+    """LLM quality verdicts keyed by finding_ref. Empty on parse failure.
+    `model` pins the judge to the tenant's configured model (None → global)."""
     if not findings:
         return {}
     payload = [_compact(f) for f in findings]
@@ -198,7 +201,7 @@ def judge_findings(findings: list, *, feedback: str | None = None) -> dict[str, 
         feedback=(feedback or "None.")[:1000],
     )
     try:
-        out = ollama.parse_json_response(ollama.reviewer(sys, user))
+        out = ollama.parse_json_response(ollama.reviewer(sys, user, model=model))
     except ollama.OllamaError:
         return {}
     verdicts = out.get("verdicts", []) if isinstance(out, dict) else (out if isinstance(out, list) else [])

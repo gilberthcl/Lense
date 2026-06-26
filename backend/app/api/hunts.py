@@ -11,7 +11,8 @@ from app.schemas import HuntCreate, HuntOut, HuntUpdate, JobOut, StageFeedback
 import time
 
 from app.services import (
-    doc_loader, jobs, learning, methodology, methodology_parser, training_review,
+    doc_loader, jobs, learning, methodology, methodology_parser, tenant_models,
+    training_review,
 )
 from app.services import ollama_client as ollama
 from app.services.analysis_runner import ensure_methodology_brief
@@ -166,6 +167,7 @@ def training_review_run(
     try:
         report = training_review.summarize_learning(
             findings, _training_datasets(db, tenant.id, hunt_id), feedback=feedback,
+            model=tenant_models.resolve_analyst_model(db, tenant.id),
         )
     except ollama.OllamaError as exc:
         raise HTTPException(status_code=502, detail=f"Review failed: {exc}") from exc
@@ -439,6 +441,8 @@ def analyze_methodology(
         return existing
 
     fb = (feedback or "").strip() or None
+    # CRITICAL: run THIS client's configured model, never the global default.
+    model_name = tenant_models.resolve_analyst_model(db, tenant.id)
     job = AnalysisJob(
         tenant_id=tenant.id, hunt_id=hunt_id, dataset_id=None,
         phase="methodology", status="queued",
@@ -453,7 +457,8 @@ def analyze_methodology(
             None, None, fb, "methodology", None,
         )
 
-    def _task(job_id: int, h_id: int, feedback_text: str | None = fb):
+    def _task(job_id: int, h_id: int, feedback_text: str | None = fb,
+              model: str | None = model_name):
         task_db = SessionLocal()
         t0 = time.monotonic()
 
@@ -468,7 +473,7 @@ def analyze_methodology(
             h = task_db.get(Hunt, h_id)
             try:
                 j.status = "running"
-                j.model = methodology.analyst_model()
+                j.model = model or methodology.analyst_model()
                 j.current_task = "Parsing methodology structure"
                 emit(j, "Parsing methodology structure (deterministic)…", 8)
 
@@ -505,7 +510,8 @@ def analyze_methodology(
 
                 brief = methodology.comprehend_stream(
                     h.methodology_text or "", edr=h.edr, siem=h.siem,
-                    language=h.report_language, feedback=feedback_text, on_chunk=on_chunk,
+                    language=h.report_language, feedback=feedback_text,
+                    model=model, on_chunk=on_chunk,
                 )
                 h.methodology_brief = brief
                 topics = len((brief or {}).get("topics", []))

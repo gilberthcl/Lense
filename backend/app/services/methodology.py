@@ -66,9 +66,11 @@ def comprehend_stream(
     siem: str | None = None,
     language: str = "English",
     feedback: str | None = None,
+    model: str | None = None,
     on_chunk=None,
 ) -> dict[str, Any]:
     """Streaming comprehension pass (for live progress). Returns the brief dict.
+    `model` pins the call to the tenant's configured model (None → global default).
     When `feedback` is given, the model revises its prior understanding to address
     it (the regenerate-with-feedback loop)."""
     if not methodology_text or not methodology_text.strip():
@@ -81,7 +83,7 @@ def comprehend_stream(
         methodology=methodology_text[:_MAX_METHODOLOGY_CHARS],
     ) + _feedback_block(feedback)
     raw = ollama.generate_stream(
-        analyst_model(), sys, user, on_chunk=on_chunk, json_mode=True,
+        model or analyst_model(), sys, user, on_chunk=on_chunk, json_mode=True,
     )
     return _parse_brief(raw)
 
@@ -92,8 +94,10 @@ def comprehend(
     edr: str | None = None,
     siem: str | None = None,
     language: str = "English",
+    model: str | None = None,
 ) -> dict[str, Any]:
-    """Run the LLM comprehension pass over the methodology. Returns the brief dict."""
+    """Run the LLM comprehension pass over the methodology. Returns the brief dict.
+    `model` pins it to the tenant's configured model (None → global default)."""
     if not methodology_text or not methodology_text.strip():
         return {
             "hunt_overview": "",
@@ -113,7 +117,7 @@ def comprehend(
         methodology=methodology_text[:_MAX_METHODOLOGY_CHARS],
     )
     try:
-        raw = ollama.analyst(sys, user)  # primary analyst model handles comprehension
+        raw = ollama.analyst(sys, user, model=model)  # tenant's analyst model
     except ollama.OllamaError:
         return dict(_DEGRADED_BRIEF)
     return _parse_brief(raw)
