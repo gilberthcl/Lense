@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from app.models import TenantModel
+from app.models import Tenant, TenantModel
 from app.services import eval_metrics
 
 ACTIVE_STATUS = "active"
@@ -53,9 +53,13 @@ def active_model(db: Session, tenant_id: int) -> TenantModel | None:
 
 def resolve_analyst_model(db: Session, tenant_id: int) -> str | None:
     """The Ollama model name this tenant's analyst stage should use, or None to
-    fall back to the global default. This is the single routing decision."""
+    fall back to the global default. Precedence (W0b): an active fine-tuned
+    adapter wins; else the tenant's chosen base model; else the global default."""
     m = active_model(db, tenant_id)
-    return m.ollama_model_name if m else None
+    if m:
+        return m.ollama_model_name
+    tenant = db.get(Tenant, tenant_id)
+    return getattr(tenant, "analyst_model", None) or None
 
 
 def _next_version(db: Session, tenant_id: int) -> int:

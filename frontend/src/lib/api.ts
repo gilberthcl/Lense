@@ -38,6 +38,7 @@ import type {
   TenantModelsList,
   TenantModelInfo,
   MissedFindingResult,
+  AvailableModels,
 } from "./types";
 
 export const API_BASE: string =
@@ -438,6 +439,13 @@ export const api = {
   // --- Per-tenant fine-tuned model registry (LoRA fine-tuning, Phase 3) ---
   getTenantModels: (tid: string) =>
     request<TenantModelsList>(`/api/tenants/${tid}/models`),
+  getAvailableModels: (tid: string) =>
+    request<AvailableModels>(`/api/tenants/${tid}/models/available`),
+  setBaseModel: (tid: string, model: string | null) =>
+    request<{ current: string | null; default_model: string | null; warning: string | null }>(
+      `/api/tenants/${tid}/models/base`,
+      { method: "POST", body: JSON.stringify({ model }) },
+    ),
   evaluateModel: (tid: string, id: number, includeHoldout: boolean) =>
     request<{ status: string }>(
       `/api/tenants/${tid}/models/${id}/evaluate?include_holdout=${includeHoldout}`,

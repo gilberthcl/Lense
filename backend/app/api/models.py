@@ -6,13 +6,14 @@ baseline, and promote/reject. Promotion runs the eval gate (tenant_models.promot
 raises if the candidate regressed). Routing to an active model is handled in the
 analysis pipeline; this API only manages the registry.
 """
+import httpx
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_tenant
 from app.core.db import SessionLocal, get_db
-from app.models import Tenant, TenantModel
-from app.services import eval_runner, tenant_models
+from app.models import Finding, Tenant, TenantModel
+from app.services import eval_runner, global_config, model_compliance, tenant_models
 
 router = APIRouter(prefix="/api/tenants/{tenant_id}/models", tags=["models"])
 
@@ -52,6 +53,65 @@ def list_tenant_models(
     return {
         "active_model": tenant_models.resolve_analyst_model(db, tenant.id),
         "models": [_serialize(m) for m in tenant_models.list_models(db, tenant.id)],
+    }
+
+
+@router.get("/available")
+def available_models(
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+):
+    """Installed Ollama models classified against the compliance allowlist (W0b),
+    plus this client's chosen base model and the global default."""
+    ai = global_config.current_ai()
+    names: list[str] = []
+    reachable = False
+    try:
+        with httpx.Client(timeout=5) as client:
+            resp = client.get(f"{ai['base_url']}/api/tags")
+            resp.raise_for_status()
+            names = sorted(m.get("name", "") for m in resp.json().get("models", []) if m.get("name"))
+            reachable = True
+    except Exception:  # noqa: BLE001 — Ollama unreachable: return what we know
+        pass
+    models = []
+    for n in names:
+        allowed, reason = model_compliance.classify(n)
+        models.append({"name": n, "allowed": allowed, "reason": reason})
+    return {
+        "reachable": reachable,
+        "default_model": ai.get("analyst_model"),
+        "current": tenant.analyst_model,
+        "models": models,
+    }
+
+
+@router.post("/base")
+def set_base_model(
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+    model: str | None = Body(default=None, embed=True),
+):
+    """Set (or clear) this client's base analyst model. Compliance-gated: a
+    non-Western / cloud / unverified model is refused server-side."""
+    chosen = (model or "").strip() or None
+    if chosen is not None:
+        allowed, reason = model_compliance.classify(chosen)
+        if not allowed:
+            raise HTTPException(status_code=422, detail=f"Model not allowed — {reason}.")
+    had_findings = (
+        db.query(Finding).filter_by(tenant_id=tenant.id).first() is not None
+    )
+    tenant.analyst_model = chosen
+    db.commit()
+    return {
+        "current": tenant.analyst_model,
+        "default_model": global_config.current_ai().get("analyst_model"),
+        # Lock note: prior findings were produced under a different model.
+        "warning": (
+            "This client already has findings produced under a different model."
+            if had_findings else None
+        ),
     }
 
 

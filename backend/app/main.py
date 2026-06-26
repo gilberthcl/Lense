@@ -39,6 +39,8 @@ _COLUMN_ADDITIONS = (
     "ALTER TABLE hunts ADD COLUMN IF NOT EXISTS kind VARCHAR(20) DEFAULT 'live'",
     "ALTER TABLE findings ADD COLUMN IF NOT EXISTS disposition VARCHAR(20)",
     "ALTER TABLE findings ADD COLUMN IF NOT EXISTS score INTEGER",
+    # Per-client base model (W0b).
+    "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS analyst_model VARCHAR(160)",
 )
 
 

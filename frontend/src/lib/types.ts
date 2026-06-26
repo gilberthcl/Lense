@@ -671,6 +671,17 @@ export interface TenantModelsList {
   active_model: string | null;
   models: TenantModelInfo[];
 }
+export interface AvailableModel {
+  name: string;
+  allowed: boolean;
+  reason: string;
+}
+export interface AvailableModels {
+  reachable: boolean;
+  default_model: string | null;
+  current: string | null;       // tenant's chosen base, or null = global default
+  models: AvailableModel[];
+}
 
 export type ReportLang = "en" | "es";
 

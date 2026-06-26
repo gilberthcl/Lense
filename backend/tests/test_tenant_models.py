@@ -3,7 +3,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.models import TenantModel
+from app.models import Tenant, TenantModel
 from app.services import tenant_models as tm
 
 _GOOD = {"precision": 0.9, "recall": 0.8, "f1": 0.85, "hallucination_rate": 0.03, "parse_error_rate": 0.0}
@@ -12,12 +12,31 @@ _GOOD = {"precision": 0.9, "recall": 0.8, "f1": 0.85, "hallucination_rate": 0.03
 @pytest.fixture
 def db():
     engine = create_engine("sqlite://")
+    # Tenant table is needed because resolve_analyst_model falls back to the
+    # tenant's chosen base model (W0b).
+    Tenant.__table__.create(engine)
     TenantModel.__table__.create(engine)
     session = sessionmaker(bind=engine)()
     try:
         yield session
     finally:
         session.close()
+
+
+def test_resolve_precedence_adapter_over_base_over_default(db):
+    db.add(Tenant(id=1, name="Acme", slug="acme", analyst_model="mistral-small:24b"))
+    db.commit()
+    # base model wins when no adapter is active
+    assert tm.resolve_analyst_model(db, 1) == "mistral-small:24b"
+    # an active adapter overrides the base
+    v1 = tm.register(db, 1, base_model="llama3.1:8b", ollama_model_name="lens-t1-v1")
+    tm.record_eval(db, v1, candidate_metrics=_GOOD, baseline_metrics=_GOOD)
+    tm.promote(db, v1)
+    assert tm.resolve_analyst_model(db, 1) == "lens-t1-v1"
+    # a tenant with no base and no adapter → global default (None)
+    db.add(Tenant(id=2, name="B", slug="b"))
+    db.commit()
+    assert tm.resolve_analyst_model(db, 2) is None
 
 
 def test_register_increments_version_per_tenant(db):

@@ -94,9 +94,17 @@ Alembic (CLAUDE.md already flags this as the Phase-2 trigger).
 - Tests: 6 (recording, scoping, stage filter, revision versioning, RAG mirror,
   mirror-skip). Full suite 90 passed.
 
-### W0b — Per-client model selection (compliance-gated, lockable) *(quick early win)*
-**Goal:** each client explicitly chooses the model it runs on; the choice is locked
-to that client and enforced against the compliance allowlist.
+### W0b — Per-client model selection (compliance-gated) — **DONE**
+**Goal:** each client explicitly chooses the model it runs on; enforced against the
+compliance allowlist.
+- Shipped: `services/model_compliance.py` (Western/cloud/community classifier),
+  `Tenant.analyst_model` (+ migration), `resolve_analyst_model` precedence
+  (adapter → tenant base → global default), `GET /models/available` (installed
+  models classified) + `POST /models/base` (server-side compliance gate + lock
+  warning), and a `BaseModelSelect` in `ModelsPanel` (allowed models selectable,
+  blocked ones listed with reason). Tests: 10 compliance + precedence. Suite 115.
+
+Original scope notes (for reference):
 - Per-client **base-model override**: today `analyst_model` is global; add a
   `Tenant.analyst_model` (nullable → global default). This is the *base*; a promoted
   fine-tuned adapter (W6) layers on top and takes precedence.

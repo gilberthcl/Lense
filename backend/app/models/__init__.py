@@ -51,6 +51,10 @@ class Tenant(Base):
     is_global: Mapped[bool] = mapped_column(Boolean, default=False)
     internal_domain: Mapped[str | None] = mapped_column(String(300))
 
+    # Per-client base analyst model (W0b). None → global default. Must pass the
+    # compliance allowlist (model_compliance) — enforced at the API.
+    analyst_model: Mapped[str | None] = mapped_column(String(160))
+
     # ── Technology stack ──
     edr_platform: Mapped[str | None] = mapped_column(String(120))
     siem_platform: Mapped[str | None] = mapped_column(String(120))
