@@ -230,7 +230,27 @@ export interface Hunt {
   auto_correlate?: boolean;
   auto_qa?: boolean;
   kind?: string;   // live | training (W3)
+  training_review?: TrainingReviewState | null;
   created_at: string;
+}
+
+// Training-hunt "what I learned" review (W3).
+export interface TrainingPattern {
+  name: string;
+  signal: string;
+  category: string;
+  rationale: string;
+}
+export interface TrainingReviewReport {
+  overview: string;
+  patterns: TrainingPattern[];
+  false_positive_lessons: string[];
+  takeaways: string[];
+}
+export interface TrainingReviewState {
+  report: TrainingReviewReport;
+  disposition: "accepted" | "rejected" | null;
+  feedback: string | null;
 }
 
 // Global module configuration (Structured Threat Hunt)

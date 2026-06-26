@@ -11,6 +11,7 @@ import FindingsPanel from "../components/FindingsPanel";
 import CorrelationsPanel from "../components/CorrelationsPanel";
 import QAPanel from "../components/QAPanel";
 import MethodologyPanel from "../components/MethodologyPanel";
+import TrainingReviewPanel from "../components/TrainingReviewPanel";
 
 export default function HuntView() {
   const { tid, hid } = useParams<{ tid: string; hid: string }>();
@@ -143,6 +144,8 @@ export default function HuntView() {
           { id: "findings", label: "Findings" },
           { id: "correlations", label: "Correlations" },
           { id: "qa", label: "QA" },
+          // Training hunts get a learning tab — the model's "what I learned" review.
+          ...(hunt?.kind === "training" ? [{ id: "learning", label: "Learning" }] : []),
         ]}
         active={tab}
         onChange={setTab}
@@ -166,6 +169,9 @@ export default function HuntView() {
       )}
       {tab === "qa" && (
         <QAPanel tid={tid} hid={hid} reloadKey={findingsKey} hunt={hunt} onRefresh={loadHunt} />
+      )}
+      {tab === "learning" && hunt?.kind === "training" && (
+        <TrainingReviewPanel tid={tid} hid={hid} hunt={hunt} onRefresh={loadHunt} />
       )}
     </div>
   );

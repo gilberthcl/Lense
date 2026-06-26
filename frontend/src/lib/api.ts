@@ -304,6 +304,19 @@ export const api = {
     request<Hunt>(`/api/tenants/${tid}/hunts/${hid}/complete`, { method: "POST" }),
   reopenHunt: (tid: string, hid: string) =>
     request<Hunt>(`/api/tenants/${tid}/hunts/${hid}/reopen`, { method: "POST" }),
+  // Training-hunt "what I learned" review (W3).
+  runTrainingReview: (tid: string, hid: string, feedback?: string) =>
+    request<Hunt>(`/api/tenants/${tid}/hunts/${hid}/training/review`, {
+      method: "POST",
+      body: JSON.stringify(feedback ? { feedback } : {}),
+    }),
+  disposeTrainingReview: (
+    tid: string, hid: string, action: "accept" | "reject", feedback?: string,
+  ) =>
+    request<Hunt>(`/api/tenants/${tid}/hunts/${hid}/training/review/disposition`, {
+      method: "POST",
+      body: JSON.stringify({ action, feedback: feedback ?? null }),
+    }),
   acceptPlan: (tid: string, hid: string) =>
     request<Hunt>(`/api/tenants/${tid}/hunts/${hid}/plan/accept`, { method: "POST" }),
   deletePlan: (tid: string, hid: string) =>

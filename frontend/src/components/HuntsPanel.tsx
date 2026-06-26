@@ -100,13 +100,21 @@ export default function HuntsPanel({
   };
 
   const liveHunts = (hunts ?? []).filter((h) => h.kind !== "training" && h.status !== "completed");
-  const historicHunts = (hunts ?? []).filter((h) => h.kind !== "training" && h.status === "completed");
-  const trainingHunts = (hunts ?? []).filter((h) => h.kind === "training");
+  // Completed hunts — live or training — move to Historic ("previous hunts").
+  const historicHunts = (hunts ?? []).filter((h) => h.status === "completed");
+  const trainingHunts = (hunts ?? []).filter((h) => h.kind === "training" && h.status !== "completed");
 
   const setHuntStatus = async (h: Hunt, complete: boolean) => {
+    const training = h.kind === "training";
     try {
       await (complete ? api.completeHunt(tid, h.id) : api.reopenHunt(tid, h.id));
-      toast.success(complete ? "Hunt completed — moved to Historic." : "Hunt reopened.");
+      toast.success(
+        complete
+          ? training
+            ? "Training complete — moved to previous hunts."
+            : "Hunt completed — moved to Historic."
+          : "Hunt reopened.",
+      );
       await load();
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Failed.");
@@ -289,16 +297,14 @@ export default function HuntsPanel({
                           )}
                           <Badge className="border border-slate-700 bg-slate-800 text-slate-300">{h.status}</Badge>
                         </div>
-                        {h.kind !== "training" && (
-                          h.status === "completed" ? (
-                            <button onClick={() => setHuntStatus(h, false)} className="text-[11px] text-slate-400 hover:text-indigo-300">
-                              Reopen
-                            </button>
-                          ) : (
-                            <button onClick={() => setHuntStatus(h, true)} className="text-[11px] text-slate-400 hover:text-emerald-300">
-                              Complete →
-                            </button>
-                          )
+                        {h.status === "completed" ? (
+                          <button onClick={() => setHuntStatus(h, false)} className="text-[11px] text-slate-400 hover:text-indigo-300">
+                            Reopen
+                          </button>
+                        ) : (
+                          <button onClick={() => setHuntStatus(h, true)} className="text-[11px] text-slate-400 hover:text-emerald-300">
+                            {h.kind === "training" ? "Complete training →" : "Complete →"}
+                          </button>
                         )}
                       </div>
                     </div>
