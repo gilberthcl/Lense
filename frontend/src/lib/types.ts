@@ -696,6 +696,8 @@ export interface AvailableModel {
   name: string;
   allowed: boolean;
   reason: string;
+  assigned_to?: string | null;  // another client using this as its base
+  locked?: boolean;             // unavailable here (assigned to another client)
 }
 export interface AvailableModels {
   reachable: boolean;

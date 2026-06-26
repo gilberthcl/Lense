@@ -77,10 +77,23 @@ def available_models(
             reachable = True
     except Exception:  # noqa: BLE001 — Ollama unreachable: return what we know
         pass
+    # Exclusivity: a base model assigned to ANOTHER client is locked here, so the
+    # same base can't be picked by two clients (one base → one client).
+    assigned: dict[str, str] = {
+        t.analyst_model: t.name
+        for t in db.query(Tenant)
+        .filter(Tenant.id != tenant.id, Tenant.analyst_model.isnot(None))
+        .all()
+    }
     models = []
     for n in names:
         allowed, reason = model_compliance.classify(n)
-        models.append({"name": n, "allowed": allowed, "reason": reason})
+        owner = assigned.get(n)
+        models.append({
+            "name": n, "allowed": allowed, "reason": reason,
+            "assigned_to": owner,                  # another client's name, or null
+            "locked": owner is not None,           # unavailable for this client
+        })
     return {
         "reachable": reachable,
         "default_model": ai.get("analyst_model"),
@@ -102,6 +115,17 @@ def set_base_model(
         allowed, reason = model_compliance.classify(chosen)
         if not allowed:
             raise HTTPException(status_code=422, detail=f"Model not allowed — {reason}.")
+        # Exclusivity: refuse a base already assigned to another client.
+        owner = (
+            db.query(Tenant)
+            .filter(Tenant.id != tenant.id, Tenant.analyst_model == chosen)
+            .first()
+        )
+        if owner is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Base model '{chosen}' is already assigned to client '{owner.name}'.",
+            )
     had_findings = (
         db.query(Finding).filter_by(tenant_id=tenant.id).first() is not None
     )

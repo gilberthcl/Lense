@@ -42,6 +42,7 @@ export default function BaseModelSelect({ tid }: { tid: string }) {
   }
   const allowed = data.models.filter((m) => m.allowed);
   const blocked = data.models.filter((m) => !m.allowed);
+  const locked = allowed.filter((m) => m.locked);
 
   return (
     <div>
@@ -61,10 +62,18 @@ export default function BaseModelSelect({ tid }: { tid: string }) {
       >
         <option value="__default__">Global default ({data.default_model ?? "—"})</option>
         {allowed.map((m) => (
-          <option key={m.name} value={m.name}>{m.name}</option>
+          <option key={m.name} value={m.name} disabled={m.locked && m.name !== data.current}>
+            {m.name}
+            {m.locked && m.name !== data.current ? ` — in use by ${m.assigned_to}` : ""}
+          </option>
         ))}
       </select>
       <p className="mt-1 text-[11px] text-slate-500">{saving ? "Saving…" : "Saved automatically when you pick one."}</p>
+      {locked.length > 0 && (
+        <p className="mt-1 text-[11px] text-amber-300/80">
+          {locked.length} base model(s) are assigned to other clients and locked here — one base, one client.
+        </p>
+      )}
       {blocked.length > 0 && (
         <details className="mt-2">
           <summary className="cursor-pointer text-[11px] uppercase tracking-wide text-slate-500">
@@ -80,12 +89,12 @@ export default function BaseModelSelect({ tid }: { tid: string }) {
         </details>
       )}
       <div className="mt-2 rounded border border-slate-800 bg-slate-950/40 p-2 text-[11px] leading-relaxed text-slate-400">
-        <b className="text-slate-300">This is the shared base model</b> — the generic, frozen model
-        this client's analysis runs on. It is <b>not</b> made exclusive: base models hold no client
-        data, so several clients can share one (that's safe and expected). This client's <b>dedicated,
-        learning</b> model is the <b>fine-tuned</b> one (trained only on this client's data, used only
-        by this client) — see <span className="text-indigo-300">Knowledge Base → Fine-tuned model</span>.
-        Once a fine-tuned model is promoted, it overrides this base for this client.
+        <b className="text-slate-300">This is the base model</b> — the generic, frozen model this
+        client's analysis runs on. Each base is <b>dedicated to one client</b>: once you pick it here,
+        it is locked out of every other client's dropdown (shown as “in use by …”). This client's
+        <b> learning</b> model is the <b>fine-tuned</b> one (trained only on this client's data, used
+        only by this client) — see <span className="text-indigo-300">Knowledge Base → Fine-tuned
+        model</span>. Once a fine-tuned model is promoted, it overrides this base for this client.
       </div>
     </div>
   );
