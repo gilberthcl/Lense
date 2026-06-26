@@ -128,6 +128,37 @@ def list_events(
     return q.order_by(LearningEvent.id.desc()).limit(limit).all()
 
 
+def summarize_events(events: list[LearningEvent]) -> dict:
+    """Aggregate learning events into a per-stage summary (the W4 learning
+    summary). Pure. Expects events newest-first so `recent` shows the latest."""
+    by_stage: dict[str, dict] = {}
+    for ev in events:
+        s = by_stage.setdefault(
+            ev.stage, {"count": 0, "score_sum": 0, "score_n": 0,
+                       "dispositions": {}, "recent": []},
+        )
+        s["count"] += 1
+        if ev.score is not None:
+            s["score_sum"] += ev.score
+            s["score_n"] += 1
+        if ev.disposition:
+            s["dispositions"][ev.disposition] = s["dispositions"].get(ev.disposition, 0) + 1
+        if (ev.feedback_text or ev.summary) and len(s["recent"]) < 5:
+            s["recent"].append({
+                "disposition": ev.disposition, "score": ev.score,
+                "feedback": ev.feedback_text, "summary": ev.summary,
+            })
+    out: dict[str, dict] = {}
+    for stage, d in by_stage.items():
+        out[stage] = {
+            "count": d["count"],
+            "avg_score": round(d["score_sum"] / d["score_n"], 1) if d["score_n"] else None,
+            "dispositions": d["dispositions"],
+            "recent": d["recent"],
+        }
+    return {"by_stage": out, "total": sum(d["count"] for d in by_stage.values())}
+
+
 def list_revisions(db: Session, tenant_id: int, finding_id: int) -> list[FindingRevision]:
     return (
         db.query(FindingRevision)

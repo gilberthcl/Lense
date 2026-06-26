@@ -73,6 +73,27 @@ def test_mirror_creates_learning_note(db, monkeypatch):
     assert "normal admin behaviour" in docs[0].content
 
 
+def test_summarize_events_aggregates_per_stage():
+    from types import SimpleNamespace
+
+    def ev(stage, score=None, disp=None, fb=None):
+        return SimpleNamespace(stage=stage, score=score, disposition=disp,
+                               feedback_text=fb, summary=None)
+    events = [  # newest-first, like list_events
+        ev("qa", score=8, disp="accepted", fb="good"),
+        ev("qa", score=6, disp="needs_work", fb="tighten"),
+        ev("finding", disp="rejected"),
+    ]
+    out = learning.summarize_events(events)
+    assert out["total"] == 3
+    qa = out["by_stage"]["qa"]
+    assert qa["count"] == 2 and qa["avg_score"] == 7.0
+    assert qa["dispositions"] == {"accepted": 1, "needs_work": 1}
+    assert len(qa["recent"]) == 2
+    # a stage with no scores → avg None
+    assert out["by_stage"]["finding"]["avg_score"] is None
+
+
 def test_mirror_skipped_without_human_content(db, monkeypatch):
     monkeypatch.setattr(learning.knowledge, "index_document_by_id", lambda *_a, **_k: 0)
     # A bare disposition with no feedback/summary teaches nothing → no RAG note.

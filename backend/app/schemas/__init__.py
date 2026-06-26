@@ -280,6 +280,15 @@ class ImportFindingsResult(BaseModel):
     findings: list[FindingOut]
 
 
+class StageFeedback(BaseModel):
+    """Disposition/score/feedback on any pipeline stage's output (W4)."""
+    disposition: str | None = None  # accepted | needs_work | rejected
+    score: int | None = None        # 1–10
+    feedback: str | None = None
+    target_type: str | None = None
+    target_id: int | None = None
+
+
 # ── Approved software ──────────────────────────────────────────────────────
 class ApprovedSoftwareCreate(BaseModel):
     name: str

@@ -7,10 +7,10 @@ from app.api.deps import get_tenant
 from app.core.config import settings
 from app.core.db import SessionLocal, get_db
 from app.models import AnalysisJob, Dataset, Finding, Hunt, KnowledgeDocument, Tenant
-from app.schemas import HuntCreate, HuntOut, HuntUpdate, JobOut
+from app.schemas import HuntCreate, HuntOut, HuntUpdate, JobOut, StageFeedback
 import time
 
-from app.services import doc_loader, jobs, methodology, methodology_parser
+from app.services import doc_loader, jobs, learning, methodology, methodology_parser
 from app.services.analysis_runner import ensure_methodology_brief
 
 router = APIRouter(prefix="/api/tenants/{tenant_id}/hunts", tags=["hunts"])
@@ -72,6 +72,58 @@ def get_hunt(
     db: Session = Depends(get_db),
 ):
     return _resolve_hunt(db, tenant, hunt_id)
+
+
+def _stage_feedback_async(
+    tenant_id: int, hunt_id: int, stage: str, disposition: str | None,
+    score: int | None, feedback: str | None, target_type: str | None, target_id: int | None,
+) -> None:
+    db = SessionLocal()
+    try:
+        learning.record_event(
+            db, tenant_id=tenant_id, hunt_id=hunt_id, stage=stage,
+            source="live_feedback", disposition=disposition, score=score,
+            feedback_text=feedback, target_type=target_type or stage, target_id=target_id,
+        )
+    finally:
+        db.close()
+
+
+@router.post("/{hunt_id}/stages/{stage}/feedback")
+def stage_feedback(
+    hunt_id: int,
+    stage: str,
+    payload: StageFeedback,
+    background: BackgroundTasks,
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+):
+    """Record disposition/score/feedback on any pipeline stage's output (W4).
+    The lesson is mirrored to RAG like every other learning signal."""
+    if stage not in learning.VALID_STAGES:
+        raise HTTPException(status_code=422, detail=f"Unknown stage '{stage}'.")
+    if payload.score is not None and not (1 <= int(payload.score) <= 10):
+        raise HTTPException(status_code=422, detail="Score must be between 1 and 10.")
+    if not (payload.feedback or "").strip() and payload.score is None and not payload.disposition:
+        raise HTTPException(status_code=422, detail="Provide feedback, a score, or a disposition.")
+    _resolve_hunt(db, tenant, hunt_id)
+    background.add_task(
+        _stage_feedback_async, tenant.id, hunt_id, stage, payload.disposition,
+        payload.score, payload.feedback, payload.target_type, payload.target_id,
+    )
+    return {"ok": True}
+
+
+@router.get("/{hunt_id}/learning-summary")
+def learning_summary(
+    hunt_id: int,
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+):
+    """Per-stage summary of the learning signals recorded for this hunt (W4)."""
+    _resolve_hunt(db, tenant, hunt_id)
+    events = learning.list_events(db, tenant.id, hunt_id=hunt_id)
+    return learning.summarize_events(events)
 
 
 @router.get("/{hunt_id}/analysis-summary")

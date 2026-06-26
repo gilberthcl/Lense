@@ -406,6 +406,18 @@ export interface ImportFindingsResult {
   findings: Finding[];
 }
 
+// W4 all-stages learning summary.
+export interface LearningSummaryStage {
+  count: number;
+  avg_score: number | null;
+  dispositions: Record<string, number>;
+  recent: { disposition?: string | null; score?: number | null; feedback?: string | null; summary?: string | null }[];
+}
+export interface LearningSummary {
+  by_stage: Record<string, LearningSummaryStage>;
+  total: number;
+}
+
 // --- Correlations (Phase 2) ---
 export type EntityType = "host" | "user" | "ip" | "hash" | "domain" | string;
 

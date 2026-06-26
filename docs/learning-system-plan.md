@@ -204,7 +204,17 @@ report-format/depth examples; correlation/QA truth) and coverage-awareness
 - Testable here: ✅ ingestion/alignment logic; model-assisted extract runs on box.
 - This is large — likely its own 1–2 sessions.
 
-### W4 — All-stages learning + learning summaries *(point 2.5, 2.6)*
+### W4 — All-stages learning + learning summaries — **IN PROGRESS** *(point 2.5, 2.6)*
+**Slice 1 — DONE:** the reusable primitive. `POST /hunts/{id}/stages/{stage}/feedback`
+(disposition/score/feedback on any stage → LearningEvent → RAG mirror),
+`GET /hunts/{id}/learning-summary` (`learning.summarize_events`, per-stage counts/
+avg-score/dispositions/recent). Reusable `StageFeedback` + `LearningSummaryPanel`
+UI, wired into the QA tab (rate the QA stage + the hunt's learning summary at the
+bottom). Tests: summarize_events. Suite 121.
+**Slice 2 — TODO:** drop `StageFeedback` into the remaining stage panels
+(methodology, plan, correlation, writing) and surface a model-distilled
+(grounded) summary per stage.
+
 **Goal:** the same disposition+feedback+score primitive at every AI stage.
 - Stages: **methodology comprehension, analysis plan, correlation, QA, finding
   writing** (surface writing as its own reviewable step — flagged as not-yet-built).

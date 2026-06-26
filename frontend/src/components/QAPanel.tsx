@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { api, ApiError, pollJob } from "../lib/api";
 import type { Hunt, Job, QACriticalIssue, QAResult } from "../lib/types";
 import AnalysisSummaryPanel from "./AnalysisSummaryPanel";
+import LearningSummaryPanel from "./LearningSummaryPanel";
+import StageFeedback from "./StageFeedback";
 import { useToast } from "./Toast";
 import { Button, Card, EmptyState, PanelHeader, Spinner } from "./ui";
 
@@ -177,6 +179,7 @@ export default function QAPanel({
           subtitle="Verifies analysis & correlation ran correctly and every finding is complete and grounded"
           right={
             <div className="flex items-center gap-3">
+              <StageFeedback tid={tid} hid={hid} stage="qa" label="QA" />
               <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-400">
                 <input
                   type="checkbox"
@@ -409,6 +412,9 @@ export default function QAPanel({
 
       {/* Analysis summary (moved into the QA tab) */}
       <AnalysisSummaryPanel tid={tid} hid={hid} reloadKey={reloadKey} />
+
+      {/* Learning summary (W4) — what the operator taught the model on this hunt */}
+      <LearningSummaryPanel tid={tid} hid={hid} reloadKey={reloadKey} />
     </div>
   );
 }

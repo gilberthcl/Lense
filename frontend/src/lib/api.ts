@@ -40,6 +40,7 @@ import type {
   MissedFindingResult,
   ImportFindingsResult,
   AvailableModels,
+  LearningSummary,
 } from "./types";
 
 export const API_BASE: string =
@@ -426,6 +427,20 @@ export const api = {
       `/api/tenants/${tid}/hunts/${hid}/qa/rollback`,
       { method: "POST" },
     ),
+
+  // --- All-stages learning (W4) ---
+  stageFeedback: (
+    tid: string,
+    hid: string,
+    stage: string,
+    body: { disposition?: string; score?: number; feedback?: string },
+  ) =>
+    request<{ ok: boolean }>(`/api/tenants/${tid}/hunts/${hid}/stages/${stage}/feedback`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  getLearningSummary: (tid: string, hid: string) =>
+    request<LearningSummary>(`/api/tenants/${tid}/hunts/${hid}/learning-summary`),
 
   // --- Per-tenant training data (LoRA fine-tuning, Phase 1) ---
   getTrainingStats: (tid: string) =>
