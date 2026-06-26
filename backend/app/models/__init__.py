@@ -432,6 +432,26 @@ class ClientApprovedSoftware(Base):
     tenant: Mapped["Tenant"] = relationship(back_populates="approved_software")
 
 
+# ── Sable assistant (GLOBAL, NOT tenant-scoped) ────────────────────────────
+# A general cybersecurity Q&A assistant. It is deliberately walled off from the
+# hunt pipeline: it NEVER receives client/tenant findings, datasets, knowledge,
+# or reports — which is exactly why it may run on a non-Western model. Rated
+# answers (1–10) build a GLOBAL learning corpus retrieved to sharpen future
+# replies (RAG; no retraining). No tenant_id by design — there is no client data.
+class AssistantExchange(Base):
+    __tablename__ = "assistant_exchanges"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    model: Mapped[str | None] = mapped_column(String(120))
+    score: Mapped[int | None] = mapped_column(Integer)        # analyst rating 1–10
+    feedback: Mapped[str | None] = mapped_column(Text)
+    # Embedding of "Q\nA" for retrieval, set when an exchange is rated highly.
+    embedding: Mapped[list | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 # ── Analysis jobs (async per-dataset work) ─────────────────────────────────
 # phase: analysis | correlation | report   status: queued|running|done|error
 class AnalysisJob(Base):
