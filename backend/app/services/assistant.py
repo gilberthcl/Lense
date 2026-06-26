@@ -43,7 +43,11 @@ Rules:
   reports — that lives in the isolated hunt pipeline, not with you. If asked
   about a specific client's data, say you can't see it and suggest the relevant
   part of LENS instead.
-- Be concrete and practical. Use examples and, where useful, sample queries.
+- Be concrete and practical, with examples in plain prose.
+- Only write a detection query (KQL / SPL / EQL / etc.) when the analyst
+  EXPLICITLY asks for one (e.g. "write a KQL query", "give me the SPL"). For
+  every other question, answer in prose and do NOT append a query. Don't force a
+  query where it doesn't help.
 - If you are unsure, say so rather than inventing specifics.
 """
 
