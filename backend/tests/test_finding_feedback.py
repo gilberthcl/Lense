@@ -87,3 +87,9 @@ def test_revision_meta_extracts_reasoning_and_checklist():
 def test_revision_meta_defensive_on_garbage():
     assert ff.revision_meta(None) == {"reasoning": None, "addressed": []}
     assert ff.revision_meta({"addressed": "nope"}) == {"reasoning": None, "addressed": []}
+
+
+def test_reflect_skips_model_when_no_feedback():
+    # No feedback → no lesson to distil → no model call (returns empty).
+    assert ff.reflect({"title": "x"}, "accept", "") == {}
+    assert ff.reflect({"title": "x"}, "reject", "   ") == {}

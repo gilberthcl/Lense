@@ -748,6 +748,16 @@ export interface SanitizeResult {
 }
 export type DecodeMode = "" | "auto" | "base64" | "hex" | "url";
 
+// Accept/reject disposition — the model's reflection (lesson) when feedback given.
+export interface DispositionReflection {
+  lesson: string;
+  reasoning: string | null;
+}
+export interface FindingDispositionResult {
+  finding: Finding;
+  reflection: DispositionReflection | null;
+}
+
 // Partial-accept regeneration — the visible outcome the analyst sees.
 export interface RevisionChange {
   field: string;

@@ -251,6 +251,19 @@ class FindingDisposition(BaseModel):
     score: int | None = None  # 1–10
 
 
+class DispositionReflection(BaseModel):
+    lesson: str
+    reasoning: str | None = None
+
+
+class FindingDispositionResult(BaseModel):
+    """Disposition outcome: the updated finding plus, when feedback was given, the
+    model's reflection — the generalisable lesson it took from the decision. This
+    is how accept/reject feedback visibly reaches the model."""
+    finding: FindingOut
+    reflection: DispositionReflection | None = None
+
+
 class FindingRegenerate(BaseModel):
     feedback: str             # required — what to fix
 

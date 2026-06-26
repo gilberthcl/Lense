@@ -1,6 +1,11 @@
 import { Fragment, useEffect, useState } from "react";
 import { api, ApiError } from "../lib/api";
-import type { Finding, FindingRevisionResult, FindingStatus } from "../lib/types";
+import type {
+  DispositionReflection,
+  Finding,
+  FindingRevisionResult,
+  FindingStatus,
+} from "../lib/types";
 import { useToast } from "./Toast";
 import MissedFindingWizard from "./MissedFindingWizard";
 import {
@@ -107,7 +112,11 @@ function FindingDetail({
 }: {
   finding: Finding;
   onPatch: (body: PatchBody) => void;
-  onDispose: (action: "accept" | "reject" | "partial", feedback?: string, score?: number) => void;
+  onDispose: (
+    action: "accept" | "reject" | "partial",
+    feedback?: string,
+    score?: number,
+  ) => Promise<DispositionReflection | null>;
   onRegenerate: (feedback: string) => Promise<FindingRevisionResult | null>;
   onDelete: () => void;
   patching: boolean;
@@ -118,6 +127,7 @@ function FindingDetail({
   const [feedback, setFeedback] = useState("");
   const [score, setScore] = useState<number | null>(null);
   const [revision, setRevision] = useState<FindingRevisionResult | null>(null);
+  const [reflection, setReflection] = useState<DispositionReflection | null>(null);
   return (
     <div className="space-y-4 border-t border-slate-800 bg-slate-950/60 p-4">
       {finding.summary && (
@@ -318,7 +328,11 @@ function FindingDetail({
                 <Button
                   variant="success"
                   disabled={patching}
-                  onClick={() => { onDispose("accept", feedback || undefined, score ?? undefined); setMode(null); }}
+                  onClick={async () => {
+                    const r = await onDispose("accept", feedback || undefined, score ?? undefined);
+                    setReflection(r);
+                    setMode(null);
+                  }}
                 >
                   {patching ? <Spinner /> : "Confirm accept"}
                 </Button>
@@ -340,7 +354,11 @@ function FindingDetail({
                   <Button
                     variant="danger"
                     disabled={patching || !feedback.trim()}
-                    onClick={() => { onDispose("reject", feedback, score ?? undefined); setMode(null); }}
+                    onClick={async () => {
+                      const r = await onDispose("reject", feedback, score ?? undefined);
+                      setReflection(r);
+                      setMode(null);
+                    }}
                   >
                     {patching ? <Spinner /> : "Confirm reject"}
                   </Button>
@@ -364,6 +382,26 @@ function FindingDetail({
                 Regenerate as many times as needed — each round is recorded. When it’s right, switch to Accept.
               </p>
             )}
+          </div>
+        )}
+
+        {reflection && (
+          <div className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/[0.05] p-3">
+            <div className="mb-1 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">
+                What the model learned from your feedback
+              </p>
+              <button onClick={() => setReflection(null)} className="text-xs text-slate-500 hover:text-slate-300">
+                Dismiss
+              </button>
+            </div>
+            <p className="text-sm leading-relaxed text-slate-200">{reflection.lesson}</p>
+            {reflection.reasoning && (
+              <p className="mt-1 text-xs text-slate-400">{reflection.reasoning}</p>
+            )}
+            <p className="mt-2 text-[11px] text-slate-500">
+              Saved to this client's knowledge base — it informs the next hunt's analysis (no retraining).
+            </p>
           </div>
         )}
 
@@ -511,16 +549,18 @@ export default function FindingsPanel({
     action: "accept" | "reject" | "partial",
     feedback?: string,
     score?: number,
-  ) => {
+  ): Promise<DispositionReflection | null> => {
     setPatchingId(finding.id);
     try {
-      const updated = await api.dispositionFinding(tid, hid, finding.id, { action, feedback, score });
+      const result = await api.dispositionFinding(tid, hid, finding.id, { action, feedback, score });
       setFindings((prev) =>
-        prev ? prev.map((f) => (f.id === finding.id ? { ...f, ...updated } : f)) : prev,
+        prev ? prev.map((f) => (f.id === finding.id ? { ...f, ...result.finding } : f)) : prev,
       );
       toast.success(`Finding ${action}ed${score ? ` · ${score}/10` : ""}.`);
+      return result.reflection;
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Disposition failed.");
+      return null;
     } finally {
       setPatchingId(null);
     }

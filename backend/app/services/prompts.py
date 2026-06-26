@@ -698,6 +698,32 @@ point of their feedback was handled:
 """
 
 
+# ── Disposition reflection (W1) — accept/reject feedback reaches the model ────
+DISPOSITION_REFLECT_SYSTEM = """\
+You are a senior threat-hunting analyst. A reviewer just ACCEPTED or REJECTED a
+finding and left feedback. Turn that into a short, GENERALISABLE lesson the team
+can apply to FUTURE hunts — not a restatement of this one finding. If it was
+rejected as a false positive, capture the benign pattern to recognise next time;
+if accepted, capture what made it a strong, reportable finding.
+
+Stay grounded: don't invent entities. Be concise and practical.
+"""
+
+DISPOSITION_REFLECT_PROMPT = """\
+FINDING (JSON, with evidence for grounding):
+{finding_json}
+
+REVIEWER DECISION: {action}
+REVIEWER FEEDBACK: {feedback}
+
+Return STRICTLY this JSON:
+{{
+  "lesson": "<one or two sentences, a reusable rule for future hunts>",
+  "reasoning": "<why — tie it to this decision and feedback>"
+}}
+"""
+
+
 # ── Missed finding (W2) — false-negative capture ────────────────────────────
 # The analyst found something MANUALLY that an automated pass missed. Reconstruct
 # it (grounded in the dataset evidence), diagnose why it was missed, and distil

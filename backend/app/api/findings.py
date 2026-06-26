@@ -7,9 +7,10 @@ from app.core.config import settings
 from app.core.db import SessionLocal, get_db
 from app.models import Dataset, Finding, Hunt, KnowledgeDocument, Tenant
 from app.schemas import (
-    FindingBulkUpdate, FindingDisposition, FindingOut, FindingRegenerate,
-    FindingRevisionResult, FindingStatusUpdate, ImportFindingsCreate,
-    ImportFindingsResult, LearningNote, MissedFindingCreate, MissedFindingResult,
+    FindingBulkUpdate, FindingDisposition, FindingDispositionResult, FindingOut,
+    FindingRegenerate, FindingRevisionResult, FindingStatusUpdate,
+    ImportFindingsCreate, ImportFindingsResult, LearningNote, MissedFindingCreate,
+    MissedFindingResult,
 )
 from app.services import (
     categories, csv_loader, finding_details, finding_feedback, knowledge,
@@ -34,14 +35,18 @@ def _index_doc_async(document_id: int) -> None:
 def _record_learning_async(
     tenant_id: int, hunt_id: int, finding_id: int,
     disposition: str | None, score: int | None, feedback: str | None,
+    lesson: str | None = None,
 ) -> None:
-    """Capture a learning signal (event + RAG mirror) off the request path."""
+    """Capture a learning signal (event + RAG mirror) off the request path. When a
+    model reflection produced a generalisable `lesson`, store it as the event
+    summary so the RAG note carries the distilled rule, not just raw feedback."""
     db = SessionLocal()
     try:
         learning.record_event(
             db, tenant_id=tenant_id, hunt_id=hunt_id, stage="finding",
             source="live_feedback", target_type="finding", target_id=finding_id,
             disposition=disposition, score=score, feedback_text=feedback,
+            summary=lesson,
         )
     finally:
         db.close()
@@ -201,7 +206,7 @@ def update_finding(
     return finding
 
 
-@router.post("/{finding_id}/disposition", response_model=FindingOut)
+@router.post("/{finding_id}/disposition", response_model=FindingDispositionResult)
 def disposition_finding(
     hunt_id: int,
     finding_id: int,
@@ -211,8 +216,10 @@ def disposition_finding(
     db: Session = Depends(get_db),
 ):
     """Rich disposition (W1): accept / reject / partial, each with optional score
-    and feedback. Sets disposition + status, promotes accepts to the KB, and
-    captures a learning signal (which mirrors the lesson into RAG)."""
+    and feedback. Sets disposition + status, promotes accepts to the KB, and — when
+    feedback is given — runs the analyst model to distil a generalisable lesson
+    (the reflection), so accept/reject feedback visibly reaches the model and the
+    RAG note carries the distilled rule."""
     err = finding_feedback.validate(payload.action, payload.feedback, payload.score)
     if err:
         raise HTTPException(status_code=422, detail=err)
@@ -220,6 +227,14 @@ def disposition_finding(
 
     disposition, status = finding_feedback.map_action(payload.action)
     becoming_validated = status == "validated" and finding.status != "validated"
+
+    # Reflect BEFORE we mutate — the model sees the finding as the analyst judged
+    # it. Fail-soft: a model hiccup never blocks the disposition.
+    reflection = (
+        finding_feedback.reflect(finding_feedback.snapshot(finding), payload.action, payload.feedback)
+        if payload.feedback else {}
+    )
+
     finding.disposition = disposition
     finding.status = status
     if payload.score is not None:
@@ -234,9 +249,12 @@ def disposition_finding(
         background.add_task(_index_doc_async, doc_id)
     background.add_task(
         _record_learning_async, tenant.id, hunt_id, finding.id,
-        disposition, payload.score, payload.feedback,
+        disposition, payload.score, payload.feedback, reflection.get("lesson"),
     )
-    return finding
+    return FindingDispositionResult(
+        finding=finding,
+        reflection=reflection or None,
+    )
 
 
 @router.post("/{finding_id}/regenerate", response_model=FindingRevisionResult)

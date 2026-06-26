@@ -26,6 +26,7 @@ import type {
   CreateTenantInput,
   Dataset,
   Finding,
+  FindingDispositionResult,
   FindingRevisionResult,
   FindingStatus,
   Hunt,
@@ -361,7 +362,7 @@ export const api = {
     fid: string,
     body: { action: "accept" | "reject" | "partial"; feedback?: string; score?: number },
   ) =>
-    request<Finding>(`/api/tenants/${tid}/hunts/${hid}/findings/${fid}/disposition`, {
+    request<FindingDispositionResult>(`/api/tenants/${tid}/hunts/${hid}/findings/${fid}/disposition`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
