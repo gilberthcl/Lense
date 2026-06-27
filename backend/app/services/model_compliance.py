@@ -48,6 +48,14 @@ def classify(name: str) -> tuple[bool, str]:
         return False, "empty name"
     if "cloud" in n:
         return False, "cloud model — breaks local-only and tenant isolation"
+    # A model on the curated catalog has been provenance-checked by us — it's
+    # vetted even though it's namespaced (e.g. hf.co/<org>/<repo>-GGUF). This is
+    # what lets the verified HF cyber models (Foundation-Sec, ZySec) be used while
+    # arbitrary namespaced community models stay blocked below.
+    from app.services import model_catalog  # local import avoids any import cycle
+    cat = model_catalog.by_ref(name)
+    if cat and cat.get("compliant"):
+        return True, "vetted catalog model"
     if "/" in n:
         return False, "unverified community model (namespaced provenance)"
     root = _root(n)
