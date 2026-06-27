@@ -82,13 +82,29 @@ if [[ ! -f "$LLAMA_CPP/convert_hf_to_gguf.py" ]]; then
     || die "Failed to clone llama.cpp."
 fi
 
-# convert_hf_to_gguf.py needs a few Python deps.
-step "Ensuring Python conversion deps"
-python3 -m pip install --quiet --upgrade \
-  "huggingface_hub[cli]" "torch" "numpy" "sentencepiece" "safetensors" "gguf" \
-  -r "$LLAMA_CPP/requirements.txt" 2>/dev/null || \
-  python3 -m pip install --quiet "huggingface_hub[cli]" "numpy" "safetensors" "gguf" \
-  || die "Failed to install Python deps for conversion."
+# convert_hf_to_gguf.py needs a few Python deps. Install them from PUBLIC PyPI,
+# ignoring any local pip config (--isolated) — corporate setups often pin pip to
+# a private, authenticated index (e.g. Artifactory) that 401s on these public
+# packages. Override the index with PIP_INDEX_URL if you have a working mirror.
+step "Ensuring Python conversion deps (public PyPI)"
+PIP_INDEX="${PIP_INDEX_URL:-https://pypi.org/simple}"
+pip_install() { python3 -m pip install --isolated --index-url "$PIP_INDEX" "$@"; }
+
+# Prefer llama.cpp's exact converter requirements; fall back to a minimal set.
+REQ=""
+for r in "$LLAMA_CPP/requirements/requirements-convert_hf_to_gguf.txt" \
+         "$LLAMA_CPP/requirements.txt"; do
+  [[ -f "$r" ]] && { REQ="$r"; break; }
+done
+if [[ -n "$REQ" ]] && pip_install -r "$REQ"; then
+  :  # converter requirements installed
+elif pip_install "huggingface_hub[cli]" numpy safetensors sentencepiece gguf torch; then
+  :  # minimal set installed
+else
+  die "Failed to install Python deps from '$PIP_INDEX'.
+   Your pip may be pinned to a private index. Retry with a reachable one, e.g.:
+     PIP_INDEX_URL=https://pypi.org/simple $0 $REPO $QUANT $NAME"
+fi
 
 # Locate a quantizer. Prefer a PREBUILT binary (brew / PATH) so most users never
 # need cmake or a compiler. `brew install llama.cpp` puts `llama-quantize` on PATH.
