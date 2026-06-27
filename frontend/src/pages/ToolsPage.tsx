@@ -3,10 +3,12 @@ import { api, ApiError } from "../lib/api";
 import type { DecodeMode, SanitizeResult } from "../lib/types";
 import { useToast } from "../components/Toast";
 import { Badge, Button, Card, PanelHeader, Spinner, Textarea } from "../components/ui";
+import SmartDecoder from "../components/SmartDecoder";
 
 /**
- * Tools — an analyst toolbox. Tool 1: Data Sanitizer & Anonymizer.
- * (More tools, e.g. a smart AI decoder, can be added as sibling cards.)
+ * Tools — an analyst toolbox.
+ *   Tool 1: Data Sanitizer & Anonymizer (AI).
+ *   Tool 2: Smart Decoder (CyberChef-style recipe, client-side).
  */
 export default function ToolsPage() {
   return (
@@ -16,6 +18,7 @@ export default function ToolsPage() {
         <p className="text-sm text-slate-500">Handy analyst utilities.</p>
       </div>
       <DataSanitizer />
+      <SmartDecoder />
     </div>
   );
 }
