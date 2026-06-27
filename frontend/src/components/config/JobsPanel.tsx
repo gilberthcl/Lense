@@ -95,6 +95,9 @@ const PHASE_LABEL: Record<string, string> = {
   methodology: "Methodology",
   plan: "Analysis plan",
   analysis: "Dataset analysis",
+  correlation: "Correlation",
+  qa: "QA",
+  learning: "Findings learning",
 };
 
 const ACTIVE = new Set(["running", "queued"]);

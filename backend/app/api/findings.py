@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_tenant
 from app.core.config import settings
 from app.core.db import SessionLocal, get_db
-from app.models import Dataset, Finding, Hunt, KnowledgeDocument, Tenant
+from app.models import AnalysisJob, Dataset, Finding, Hunt, KnowledgeDocument, Tenant
 from app.schemas import (
     FindingBulkUpdate, FindingDisposition, FindingDispositionResult, FindingOut,
     FindingRegenerate, FindingRevisionResult, FindingStatusUpdate,
@@ -21,6 +21,32 @@ from app.services import ollama_client as ollama
 router = APIRouter(prefix="/api/tenants/{tenant_id}/hunts/{hunt_id}/findings", tags=["findings"])
 
 VALID_STATUSES = {"draft", "validated", "rejected"}
+
+
+def _new_learning_job(db: Session, tenant_id: int, hunt_id: int,
+                      model: str | None, task: str) -> AnalysisJob:
+    """A visible AnalysisJob (phase='learning') for a findings-upload model pass,
+    so it shows up in Config → AI Jobs (the user can see it run)."""
+    job = AnalysisJob(
+        tenant_id=tenant_id, hunt_id=hunt_id, phase="learning", status="running",
+        model=model, current_task=task, progress=20,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def _finish_job(db: Session, job: AnalysisJob, *, result: dict | None = None,
+                error: str | None = None) -> None:
+    job.status = "error" if error else "done"
+    job.progress = 100
+    job.current_task = "Failed" if error else "Complete"
+    if error:
+        job.error = error
+    if result is not None:
+        job.result = result
+    db.commit()
 
 
 def _index_doc_async(document_id: int) -> None:
@@ -328,15 +354,16 @@ def add_missed_finding(
         raise HTTPException(status_code=422, detail="A description of the finding is required.")
     dataset, evidence = _dataset_evidence(db, tenant.id, hunt_id, payload.dataset_id)
 
+    model = tenant_models.resolve_analyst_model(db, tenant.id)
+    job = _new_learning_job(db, tenant.id, hunt_id, model, "Reconstructing the missed finding…")
     try:
-        out = missed_finding.analyze(
-            dataset.filename, evidence, payload.description,
-            model=tenant_models.resolve_analyst_model(db, tenant.id),
-        )
+        out = missed_finding.analyze(dataset.filename, evidence, payload.description, model=model)
     except ollama.OllamaError as exc:
+        _finish_job(db, job, error=str(exc))
         raise HTTPException(status_code=502, detail=f"Analysis failed: {exc}") from exc
     f, why, lessons = missed_finding.parse_result(out)
     if not f.get("title"):
+        _finish_job(db, job, error="No structured finding could be reconstructed.")
         raise HTTPException(
             status_code=422,
             detail="The model could not reconstruct a structured finding — add more detail.",
@@ -361,6 +388,7 @@ def add_missed_finding(
         _record_missed_async, tenant.id, hunt_id, finding.id,
         payload.description, missed_finding.lessons_summary(why, lessons), source,
     )
+    _finish_job(db, job, result={"finding_ref": finding.finding_ref, "kind": source})
     return {"finding": finding, "why_missed": why, "lessons": lessons}
 
 
@@ -396,15 +424,16 @@ def import_findings(
     if not payload.text.strip():
         raise HTTPException(status_code=422, detail="Paste at least one finding.")
     dataset, evidence = _dataset_evidence(db, tenant.id, hunt_id, payload.dataset_id)
+    model = tenant_models.resolve_analyst_model(db, tenant.id)
+    job = _new_learning_job(db, tenant.id, hunt_id, model, "Structuring imported findings…")
     try:
-        out = training_import.structure_findings(
-            dataset.filename, evidence, payload.text,
-            model=tenant_models.resolve_analyst_model(db, tenant.id),
-        )
+        out = training_import.structure_findings(dataset.filename, evidence, payload.text, model=model)
     except ollama.OllamaError as exc:
+        _finish_job(db, job, error=str(exc))
         raise HTTPException(status_code=502, detail=f"Import failed: {exc}") from exc
     items = out.get("findings", [])
     if not items:
+        _finish_job(db, job, error="No structured findings could be extracted.")
         raise HTTPException(
             status_code=422,
             detail="The model could not extract any structured findings — check the pasted text.",
@@ -430,6 +459,7 @@ def import_findings(
             _record_missed_async, tenant.id, hunt_id, finding.id,
             f"Imported: {finding.title}", "", source,
         )
+    _finish_job(db, job, result={"imported": len(created), "kind": source})
     return {"count": len(created), "findings": created}
 
 
