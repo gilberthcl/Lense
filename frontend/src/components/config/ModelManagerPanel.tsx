@@ -166,6 +166,12 @@ export default function ModelManagerPanel() {
   }, []);
 
   const installedNames = new Set((installed ?? []).map((m) => m.name));
+  // The backend matches each installed model to its catalog entry tag-insensitively
+  // (e.g. a locally-built `cyberpal2.0-20b:latest` → "CyberPal-2.0-20B"). Use that
+  // so build-from-source models show as installed despite the :latest tag.
+  const installedCatalogNames = new Set(
+    (installed ?? []).map((m) => m.catalog).filter(Boolean) as string[],
+  );
 
   const pull = async (ref: string) => {
     try {
@@ -216,7 +222,8 @@ export default function ModelManagerPanel() {
             const isInstalled =
               installedNames.has(m.ref) ||
               installedNames.has(m.name) ||
-              (m.ollama_name ? installedNames.has(m.ollama_name) : false);
+              (m.ollama_name ? installedNames.has(m.ollama_name) : false) ||
+              installedCatalogNames.has(m.name);
             const busy = pulls[m.ref] && !pulls[m.ref].done;
             return (
               <div key={m.key} className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">

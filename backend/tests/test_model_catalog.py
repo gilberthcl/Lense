@@ -42,3 +42,14 @@ def test_locally_built_model_passes_compliance():
     from app.services import model_compliance
     allowed, _ = model_compliance.classify("cyberpal2.0-20b")
     assert allowed is True  # via the vetted-catalog exception (ollama_name match)
+
+
+def test_ollama_create_latest_tag_still_resolves_and_is_allowed():
+    # `ollama create` registers the model as `<name>:latest`. That tagged name
+    # must still resolve to the catalog entry (so the Model Manager shows it
+    # installed) and pass compliance (so it's selectable for a client / Sable).
+    from app.services import model_compliance
+    assert mc.by_ref("cyberpal2.0-20b:latest")["key"] == "cyberpal-20b"
+    allowed, reason = model_compliance.classify("cyberpal2.0-20b:latest")
+    assert allowed is True
+    assert "vetted" in reason

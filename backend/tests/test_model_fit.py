@@ -19,6 +19,8 @@ def test_weakness_classification():
     assert model_fit.is_weak_for_extraction("mistral:7b")
     # Big generalist → fine.
     assert not model_fit.is_weak_for_extraction("gemma3:27b")
+    # Locally-built CyberPal (20B, even with :latest tag) → NOT weak, no false nag.
+    assert not model_fit.is_weak_for_extraction("cyberpal2.0-20b:latest")
 
 
 def test_extraction_warning_only_on_symptom_and_weak_model():
