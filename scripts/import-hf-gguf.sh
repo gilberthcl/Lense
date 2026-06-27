@@ -155,6 +155,29 @@ from huggingface_hub import snapshot_download
 snapshot_download(repo_id=sys.argv[1], local_dir=sys.argv[2])
 PY
 
+# ── Normalise the tokenizer config ───────────────────────────────────────────
+# Some repos (e.g. gpt-oss-derived models like CyberPal) declare a
+# `tokenizer_class` this transformers can't import ("TokenizersBackend"), which
+# aborts conversion at the vocab step. When a fast tokenizer.json is present we
+# can safely point the class at the generic fast wrapper so AutoTokenizer loads
+# the fast tokenizer (same vocab, just a loadable class).
+step "Normalising tokenizer config (if needed)"
+"$PYBIN" - "$SNAP" <<'PY' || true
+import json, os, sys
+d = sys.argv[1]
+cfg = os.path.join(d, "tokenizer_config.json")
+has_fast = os.path.exists(os.path.join(d, "tokenizer.json"))
+if os.path.exists(cfg) and has_fast:
+    data = json.load(open(cfg))
+    tc = data.get("tokenizer_class")
+    # Classes transformers can't import → fall back to the fast wrapper.
+    UNIMPORTABLE = {"TokenizersBackend"}
+    if tc in UNIMPORTABLE:
+        data["tokenizer_class"] = "PreTrainedTokenizerFast"
+        json.dump(data, open(cfg, "w"), ensure_ascii=False, indent=2)
+        print(f"    patched tokenizer_class {tc} -> PreTrainedTokenizerFast")
+PY
+
 # ── Convert HF → GGUF (f16) ──────────────────────────────────────────────────
 F16="$WORKDIR/${NAME}.f16.gguf"
 step "Converting to GGUF (f16) — this is the slow part"
