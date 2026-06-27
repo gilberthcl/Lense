@@ -172,20 +172,44 @@ export default function DatasetsPanel({
   };
 
   const onAnalyzeAll = async () => {
-    const pending = (datasets ?? []).filter((d) => d.status === "uploaded" || d.status === "error");
-    if (pending.length === 0) {
-      toast.info("No datasets pending analysis.");
-      return;
-    }
     setRunningAll(true);
-    let any = false;
-    for (const ds of pending) {
-      const ok = await runAnalysis(ds);
-      any = any || ok;
-      await load();
+    try {
+      // Re-fetch fresh so we act on the TRUE current state, not a stale snapshot
+      // — and treat ANY non-analyzed dataset as work, including ones left stuck
+      // in 'analyzing' by a prior interruption (otherwise they're skipped
+      // silently and the run looks "done" with datasets still unprocessed).
+      let list = await api.listDatasets(tid, hid).catch(() => datasets ?? []);
+      setDatasets(list);
+      const total = list.length;
+      const worklist = list.filter((d) => d.status !== "analyzed");
+      if (worklist.length === 0) {
+        toast.info("All datasets are already analyzed.");
+        return;
+      }
+      let done = 0;
+      let failed = 0;
+      for (const ds of worklist) {
+        const ok = await runAnalysis(ds);
+        if (ok) done++; else failed++;
+        // A transient reload failure must NOT break the loop.
+        try { setDatasets(await api.listDatasets(tid, hid)); } catch { /* keep going */ }
+      }
+      onAnalysisComplete();
+      const fresh = await api.listDatasets(tid, hid).catch(() => list);
+      const analyzed = fresh.filter((d) => d.status === "analyzed").length;
+      // HONEST tally — never silently report "done" with datasets remaining.
+      if (analyzed >= total) {
+        toast.success(`All ${total} datasets analyzed.`);
+      } else {
+        toast.error(
+          `Analyzed ${analyzed}/${total} datasets` +
+          (failed ? ` · ${failed} failed this run` : "") +
+          `. ${total - analyzed} still not analyzed — click “Analyze all” again to finish.`,
+        );
+      }
+    } finally {
+      setRunningAll(false);
     }
-    setRunningAll(false);
-    if (any) onAnalysisComplete();
   };
 
   // Training hunts: run the model's analysis across ALL datasets (even already-
@@ -342,7 +366,9 @@ export default function DatasetsPanel({
   };
 
   const busy = uploading || runningAll || active !== null;
-  const pendingCount = (datasets ?? []).filter((d) => d.status === "uploaded" || d.status === "error").length;
+  // Anything not yet 'analyzed' is outstanding — including datasets stuck in
+  // 'analyzing' from an interrupted run, so they're never silently skipped.
+  const pendingCount = (datasets ?? []).filter((d) => d.status !== "analyzed").length;
   const hasDatasets = (datasets?.length ?? 0) > 0;
 
   return (
@@ -443,7 +469,20 @@ export default function DatasetsPanel({
       {/* Datasets */}
       <Card>
         <PanelHeader
-          title="Datasets"
+          title={
+            <span className="flex items-center gap-2">
+              Datasets
+              {hasDatasets && (
+                <span className={`rounded px-2 py-0.5 text-xs font-medium ${
+                  pendingCount === 0
+                    ? "border border-emerald-800 bg-emerald-950 text-emerald-300"
+                    : "border border-amber-800 bg-amber-950 text-amber-300"
+                }`}>
+                  {(datasets ?? []).filter((d) => d.status === "analyzed").length}/{(datasets ?? []).length} analyzed
+                </span>
+              )}
+            </span>
+          }
           subtitle="CSV evidence (max 20MB each) — analyzed against the methodology & client context"
           right={
             <div className="flex items-center gap-2">

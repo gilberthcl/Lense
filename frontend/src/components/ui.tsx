@@ -25,7 +25,7 @@ export function PanelHeader({
   subtitle,
   right,
 }: {
-  title: string;
+  title: ReactNode;
   subtitle?: string;
   right?: ReactNode;
 }) {
