@@ -60,9 +60,10 @@ step() { echo; echo "==> $*"; }
 die()  { echo "✗ $*" >&2; exit 1; }
 
 # ── Preflight ────────────────────────────────────────────────────────────────
+# NOTE: cmake is NOT required up front. We only build llama.cpp as a last resort;
+# the easy path is a prebuilt `llama-quantize` from `brew install llama.cpp`.
 command -v ollama  >/dev/null 2>&1 || die "Ollama not found. Install from https://ollama.com and retry."
 command -v python3 >/dev/null 2>&1 || die "python3 not found."
-command -v cmake   >/dev/null 2>&1 || die "cmake not found. macOS: 'brew install cmake' (and 'xcode-select --install')."
 
 # Already registered? Don't redo the heavy work.
 if ollama list 2>/dev/null | awk '{print $1}' | grep -qx "$NAME"; then
@@ -89,20 +90,34 @@ python3 -m pip install --quiet --upgrade \
   python3 -m pip install --quiet "huggingface_hub[cli]" "numpy" "safetensors" "gguf" \
   || die "Failed to install Python deps for conversion."
 
-# Build the quantizer if we don't have one.
+# Locate a quantizer. Prefer a PREBUILT binary (brew / PATH) so most users never
+# need cmake or a compiler. `brew install llama.cpp` puts `llama-quantize` on PATH.
+BREW_PREFIX="$(brew --prefix 2>/dev/null || true)"
 QUANT_BIN=""
-for cand in "$LLAMA_CPP/build/bin/llama-quantize" "$LLAMA_CPP/llama-quantize" "$(command -v llama-quantize 2>/dev/null)"; do
+for cand in \
+  "$(command -v llama-quantize 2>/dev/null)" \
+  "${BREW_PREFIX:+$BREW_PREFIX/bin/llama-quantize}" \
+  "$LLAMA_CPP/build/bin/llama-quantize" \
+  "$LLAMA_CPP/llama-quantize"; do
   [[ -n "$cand" && -x "$cand" ]] && { QUANT_BIN="$cand"; break; }
 done
+
 if [[ -z "$QUANT_BIN" ]]; then
-  step "Building llama-quantize (one-time; uses cmake)"
+  # No prebuilt quantizer. The easy fix is brew; only fall back to a source build.
+  if ! command -v cmake >/dev/null 2>&1; then
+    die "No 'llama-quantize' found and cmake isn't installed.
+   Easiest fix (no compiler needed):  brew install llama.cpp
+   Then re-run this script. (Alternatively: brew install cmake  to build from source.)"
+  fi
+  step "Building llama-quantize from source (one-time; uses cmake)"
   cmake -S "$LLAMA_CPP" -B "$LLAMA_CPP/build" -DLLAMA_CURL=OFF >/dev/null \
     || die "cmake configure failed."
   cmake --build "$LLAMA_CPP/build" --target llama-quantize -j >/dev/null \
     || die "Building llama-quantize failed."
   QUANT_BIN="$LLAMA_CPP/build/bin/llama-quantize"
 fi
-[[ -x "$QUANT_BIN" ]] || die "Could not locate a built llama-quantize."
+[[ -x "$QUANT_BIN" ]] || die "Could not locate or build llama-quantize."
+echo "    using quantizer: $QUANT_BIN"
 
 # ── Download the official weights ────────────────────────────────────────────
 SNAP="$WORKDIR/${REPO//\//_}"
