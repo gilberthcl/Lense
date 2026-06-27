@@ -64,6 +64,7 @@ export default function MethodologyPanel({
   const [sub, setSub] = useState<SubTab>("description");
   const [showFeedback, setShowFeedback] = useState(false);
   const [feedback, setFeedback] = useState("");
+  const [startError, setStartError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const sections = hunt?.methodology_sections ?? null;
@@ -105,12 +106,18 @@ export default function MethodologyPanel({
   };
 
   const analyze = async (feedback?: string) => {
+    setStartError(null);
     setJob({ id: "", status: "queued", progress: 0 });
     try {
       const started = await api.analyzeMethodology(tid, hid, feedback);
       await watch(started.id);
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "Analysis failed.");
+      // Surface the REAL reason (the request couldn't even start a job).
+      const msg = e instanceof ApiError ? e.message
+        : e instanceof Error ? e.message : "Analysis failed (unknown error).";
+      setStartError(msg);
+      toast.error(msg);
+      setJob(null);
       setRunning(false);
     }
   };
@@ -226,6 +233,21 @@ export default function MethodologyPanel({
             >
               {brief ? "AI analyzed ✓" : "Not AI-analyzed"}
             </Badge>
+          </div>
+        )}
+
+        {/* The analysis couldn't even start — show the real backend reason. */}
+        {startError && (
+          <div className="rounded-lg border border-rose-900/60 bg-rose-950/40 p-3">
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-rose-300">
+              Analysis couldn’t start
+            </p>
+            <p className="font-mono text-[12px] leading-relaxed text-rose-200">{startError}</p>
+            <p className="mt-2 text-[11px] text-slate-400">
+              If this mentions a missing model, set this client’s Analyst model (its Settings) or the
+              global default (Config → Global) to an installed model. If it mentions the backend, pull
+              the latest and restart it.
+            </p>
           </div>
         )}
 

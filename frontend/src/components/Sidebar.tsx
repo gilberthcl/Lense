@@ -96,7 +96,7 @@ export default function Sidebar() {
           </NavLink>
           <NavLink to="/tools" className={({ isActive }) => navClass(isActive)}>
             <IconTools className="shrink-0 text-current opacity-80" />
-            <span>Tools</span>
+            <span>Toolbox</span>
           </NavLink>
         </div>
 

@@ -35,12 +35,18 @@ export default function AssistantWidget() {
   const [busy, setBusy] = useState(false);
   const [name, setName] = useState("Sable");
   const [hasIcon, setHasIcon] = useState(false);
+  const [iconV, setIconV] = useState(0);
   const NAME = name;
   const bodyRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    api.sableIdentity().then((r) => { setName(r.name); setHasIcon(r.has_icon); }).catch(() => undefined);
-  }, []);
+  const loadIdentity = () =>
+    api.sableIdentity()
+      .then((r) => { setName(r.name); setHasIcon(r.has_icon); setIconV(Date.now()); })
+      .catch(() => undefined);
+
+  useEffect(() => { loadIdentity(); }, []);
+  // Re-fetch on open so a freshly-uploaded name/icon shows without a page reload.
+  useEffect(() => { if (open) loadIdentity(); }, [open]);
 
   useEffect(() => {
     bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight, behavior: "smooth" });
@@ -48,7 +54,8 @@ export default function AssistantWidget() {
 
   const Avatar = ({ size = 18 }: { size?: number }) =>
     hasIcon ? (
-      <img src={api.sableIconUrl()} alt={NAME} width={size} height={size}
+      <img src={api.sableIconUrl(iconV)} alt={NAME}
+        onError={() => setHasIcon(false)}
         className="rounded-full object-cover" style={{ width: size, height: size }} />
     ) : (
       <IconChat width={size} height={size} />

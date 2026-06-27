@@ -2,23 +2,32 @@ import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../lib/api";
 import type { DecodeMode, SanitizeResult } from "../lib/types";
 import { useToast } from "../components/Toast";
-import { Badge, Button, Card, PanelHeader, Spinner, Textarea } from "../components/ui";
+import { Badge, Button, Card, PanelHeader, Spinner, Tabs, Textarea } from "../components/ui";
 import SmartDecoder from "../components/SmartDecoder";
 
 /**
- * Tools — an analyst toolbox.
- *   Tool 1: Data Sanitizer & Anonymizer (AI).
- *   Tool 2: Smart Decoder (CyberChef-style recipe, client-side).
+ * Toolbox — an analyst utility belt, one tool per tab.
+ *   • Data Sanitizer & Anonymizer (AI).
+ *   • Smart Decoder (CyberChef-style recipe, client-side).
  */
 export default function ToolsPage() {
+  const [tab, setTab] = useState("sanitizer");
   return (
     <div className="mx-auto max-w-4xl space-y-4">
       <div>
-        <h1 className="text-xl font-semibold text-slate-100">Tools</h1>
+        <h1 className="text-xl font-semibold text-slate-100">Toolbox</h1>
         <p className="text-sm text-slate-500">Handy analyst utilities.</p>
       </div>
-      <DataSanitizer />
-      <SmartDecoder />
+      <Tabs
+        tabs={[
+          { id: "sanitizer", label: "Data Sanitizer" },
+          { id: "decoder", label: "Smart Decoder" },
+        ]}
+        active={tab}
+        onChange={setTab}
+      />
+      {tab === "sanitizer" && <DataSanitizer />}
+      {tab === "decoder" && <SmartDecoder />}
     </div>
   );
 }
