@@ -500,7 +500,7 @@ function AiAnalysisTab({
           methodology and explains what the hunt is about, what was covered, and which
           queries returned results.
         </EmptyState>
-        <Button variant="primary" onClick={onAnalyze} disabled={running}>
+        <Button variant="primary" onClick={() => onAnalyze()} disabled={running}>
           {running ? <Spinner /> : "Run AI analysis"}
         </Button>
       </div>

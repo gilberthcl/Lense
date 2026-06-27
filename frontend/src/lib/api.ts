@@ -137,6 +137,15 @@ export interface Health {
   service: string;
 }
 
+/**
+ * Coerce a feedback argument to a clean string or null. A handler wired as
+ * `onClick={fn}` (instead of `onClick={() => fn()}`) passes the React event as
+ * the first arg; that event is circular and crashes JSON.stringify with "cyclic
+ * object value". This guard makes every feedback endpoint immune to that.
+ */
+const fbStr = (f: unknown): string | null =>
+  typeof f === "string" && f.trim() ? f : null;
+
 export const api = {
   // --- Health ---
   health: () => request<Health>("/api/health"),
@@ -262,7 +271,9 @@ export const api = {
   analyzeMethodology: (tid: string, hid: string, feedback?: string) =>
     request<Job>(`/api/tenants/${tid}/hunts/${hid}/methodology/analyze`, {
       method: "POST",
-      body: JSON.stringify(feedback ? { feedback } : {}),
+      // Guard: only a real string is feedback — never a leaked click event
+      // (which is circular and would crash JSON.stringify with "cyclic object").
+      body: JSON.stringify(typeof feedback === "string" && feedback ? { feedback } : {}),
     }),
 
   // --- Global module configuration (Structured Threat Hunt) ---
@@ -311,7 +322,7 @@ export const api = {
   analysisPlan: (tid: string, hid: string, feedback?: string) =>
     request<Job>(`/api/tenants/${tid}/hunts/${hid}/analysis-plan`, {
       method: "POST",
-      body: JSON.stringify({ feedback: feedback ?? null }),
+      body: JSON.stringify({ feedback: fbStr(feedback) }),
     }),
   completeHunt: (tid: string, hid: string) =>
     request<Hunt>(`/api/tenants/${tid}/hunts/${hid}/complete`, { method: "POST" }),
@@ -321,14 +332,14 @@ export const api = {
   runTrainingReview: (tid: string, hid: string, feedback?: string) =>
     request<Hunt>(`/api/tenants/${tid}/hunts/${hid}/training/review`, {
       method: "POST",
-      body: JSON.stringify(feedback ? { feedback } : {}),
+      body: JSON.stringify(fbStr(feedback) ? { feedback: fbStr(feedback) } : {}),
     }),
   disposeTrainingReview: (
     tid: string, hid: string, action: "accept" | "reject", feedback?: string,
   ) =>
     request<Hunt>(`/api/tenants/${tid}/hunts/${hid}/training/review/disposition`, {
       method: "POST",
-      body: JSON.stringify({ action, feedback: feedback ?? null }),
+      body: JSON.stringify({ action, feedback: fbStr(feedback) }),
     }),
   acceptPlan: (tid: string, hid: string) =>
     request<Hunt>(`/api/tenants/${tid}/hunts/${hid}/plan/accept`, { method: "POST" }),
@@ -444,7 +455,7 @@ export const api = {
   runCorrelation: (tid: string, hid: string, feedback?: string) =>
     request<Job>(`/api/tenants/${tid}/hunts/${hid}/correlations/run`, {
       method: "POST",
-      body: JSON.stringify(feedback ? { feedback } : {}),
+      body: JSON.stringify(fbStr(feedback) ? { feedback: fbStr(feedback) } : {}),
     }),
 
   // --- QA phase ---
@@ -453,7 +464,7 @@ export const api = {
   runQA: (tid: string, hid: string, feedback?: string) =>
     request<Job>(`/api/tenants/${tid}/hunts/${hid}/qa/run`, {
       method: "POST",
-      body: JSON.stringify({ feedback: feedback ?? null }),
+      body: JSON.stringify({ feedback: fbStr(feedback) }),
     }),
   setAutoQa: (tid: string, hid: string, value: boolean) =>
     request<Hunt>(`/api/tenants/${tid}/hunts/${hid}`, {
