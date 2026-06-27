@@ -347,6 +347,14 @@ function DescriptionTab({
 }) {
   return (
     <div className="space-y-5">
+      {brief?.revision_note && (
+        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/[0.06] p-3">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-emerald-300">
+            Revised per your feedback
+          </p>
+          <p className="text-sm text-slate-200">{brief.revision_note}</p>
+        </div>
+      )}
       {brief?.hunt_overview && (
         <div className="rounded-lg border border-indigo-500/20 bg-indigo-500/[0.04] p-3">
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-indigo-300/80">

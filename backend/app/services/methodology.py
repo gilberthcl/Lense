@@ -56,6 +56,8 @@ def _feedback_block(feedback: str | None) -> str:
         "\n\nREVIEWER FEEDBACK — the previous comprehension was not quite right. "
         "Incorporate this correction in your revised understanding:\n"
         f"{fb[:1500]}\n"
+        'Also add a top-level "revision_note" field (1-2 sentences) stating exactly '
+        "what you changed in response to this feedback.\n"
     )
 
 

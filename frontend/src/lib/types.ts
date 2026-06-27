@@ -139,6 +139,7 @@ export interface MethodologyBrief {
   known_false_positives?: string[];
   what_to_expect?: string;
   note?: string;
+  revision_note?: string;   // what changed after a regenerate-with-feedback
   [key: string]: unknown;
 }
 
