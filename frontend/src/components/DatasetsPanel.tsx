@@ -188,6 +188,31 @@ export default function DatasetsPanel({
     if (any) onAnalysisComplete();
   };
 
+  // Training hunts: run the model's analysis across ALL datasets (even already-
+  // analyzed ones) to surface findings the original hunt may have missed. Safe —
+  // imported ground-truth findings are preserved; the model's findings add
+  // alongside, so you can compare.
+  const findComplementary = async () => {
+    const all = datasets ?? [];
+    if (all.length === 0) {
+      toast.info("Upload the hunt's datasets first.");
+      return;
+    }
+    if (!window.confirm(
+      "Run the model's analysis across all datasets to find findings the original hunt may have missed?\n\n" +
+      "Your imported/added findings are kept; the model's findings are added alongside for comparison.",
+    )) return;
+    setRunningAll(true);
+    let any = false;
+    for (const ds of all) {
+      const ok = await runAnalysis(ds);
+      any = any || ok;
+      await load();
+    }
+    setRunningAll(false);
+    if (any) onAnalysisComplete();
+  };
+
   const runPlan = async (feedback?: string) => {
     setPlanning(true);
     setPlanJob({ id: "", status: "queued", progress: 0 });
@@ -426,6 +451,11 @@ export default function DatasetsPanel({
               {hasDatasets && (
                 <Button variant="ghost" disabled={busy} onClick={resetAnalysis}>
                   Reset analysis
+                </Button>
+              )}
+              {hunt?.kind === "training" && hasDatasets && (
+                <Button variant="ghost" disabled={busy} onClick={findComplementary} title="Run the model across all datasets to find findings the original may have missed">
+                  {runningAll ? <Spinner /> : "Find complementary findings"}
                 </Button>
               )}
               <Button variant="success" disabled={busy || pendingCount === 0} onClick={onAnalyzeAll}>

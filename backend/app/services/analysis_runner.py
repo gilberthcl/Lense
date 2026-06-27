@@ -429,12 +429,16 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
 
         job.current_task = "Persisting findings"
         job.progress = 85
-        # Re-analysis must be idempotent: drop this dataset's prior findings
-        # before re-adding, otherwise re-running a dataset duplicates its
-        # findings (they were previously only ever appended).
+        # Re-analysis must be idempotent for the MODEL's own output: drop this
+        # dataset's prior auto-generated drafts before re-adding (else re-running
+        # duplicates them). But NEVER delete findings a human touched — anything
+        # imported/added or dispositioned (accept/reject/partial) is preserved.
+        # This makes re-analysis non-destructive and lets a training hunt run the
+        # analysis to find COMPLEMENTARY findings alongside the imported ground
+        # truth (which has disposition='added').
         db.query(Finding).filter_by(
             hunt_id=hunt.id, tenant_id=job.tenant_id, dataset_id=dataset.id
-        ).delete(synchronize_session=False)
+        ).filter(Finding.disposition.is_(None)).delete(synchronize_session=False)
         db.flush()
         # Continue numbering from the current max ref so refs stay unique even
         # when only some datasets are re-analyzed (count() could collide).
