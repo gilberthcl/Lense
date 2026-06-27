@@ -508,10 +508,17 @@ def analyze_methodology(
                              state["pct"])
                         jobs.raise_if_cancelled(task_db, job_id)
 
+                # Ground the comprehension in the topics the deterministic parser
+                # found, so a small model can't condense 13 plan items into 3.
+                _poa = (sections.get("plan_of_action") or {}).get("topics") or []
+                _qs = sections.get("queries") or []
+                plan_topics = [t.get("name") for t in (_poa if len(_poa) >= len(_qs) else _qs)
+                               if isinstance(t, dict) and t.get("name")]
+
                 brief = methodology.comprehend_stream(
                     h.methodology_text or "", edr=h.edr, siem=h.siem,
                     language=h.report_language, feedback=feedback_text,
-                    model=model, on_chunk=on_chunk,
+                    model=model, plan_topics=plan_topics, on_chunk=on_chunk,
                 )
                 h.methodology_brief = brief
                 topics = len((brief or {}).get("topics", []))

@@ -61,6 +61,24 @@ def _feedback_block(feedback: str | None) -> str:
     )
 
 
+def _topics_hint(plan_topics: list[str] | None) -> str:
+    """Ground the LLM in the deterministically-parsed topics so a small model
+    can't condense 13 plan-of-action items into 3. Empty when none parsed."""
+    topics = [t for t in (plan_topics or []) if t and t.strip()]
+    if len(topics) < 2:
+        return ""
+    listing = "\n".join(f"{i + 1}. {t.strip()[:160]}" for i, t in enumerate(topics))
+    return (
+        f"\n\nCRITICAL — the plan of action contains EXACTLY {len(topics)} topics. "
+        f"Produce one topics[] entry for EACH of the {len(topics)} below, in this "
+        "order. Do NOT merge, condense, summarise, or skip any of them:\n"
+        + listing
+        + "\nKeep every field to ONE concise sentence so all topics fit. For "
+        "executed_queries give at most one summary line PER TOPIC (not per "
+        "individual query).\n"
+    )
+
+
 def comprehend_stream(
     methodology_text: str,
     *,
@@ -69,12 +87,14 @@ def comprehend_stream(
     language: str = "English",
     feedback: str | None = None,
     model: str | None = None,
+    plan_topics: list[str] | None = None,
     on_chunk=None,
 ) -> dict[str, Any]:
     """Streaming comprehension pass (for live progress). Returns the brief dict.
     `model` pins the call to the tenant's configured model (None → global default).
-    When `feedback` is given, the model revises its prior understanding to address
-    it (the regenerate-with-feedback loop)."""
+    `plan_topics` (the deterministically-parsed topic names) grounds the model so
+    it covers every topic instead of condensing. When `feedback` is given, the
+    model revises its prior understanding to address it."""
     if not methodology_text or not methodology_text.strip():
         return {"hunt_overview": "", "topics": [], "executed_queries": [],
                 "note": "No methodology document was provided for this hunt."}
@@ -83,7 +103,7 @@ def comprehend_stream(
         edr=edr or "unspecified", siem=siem or "unspecified",
         language=language or "English",
         methodology=methodology_text[:_MAX_METHODOLOGY_CHARS],
-    ) + _feedback_block(feedback)
+    ) + _topics_hint(plan_topics) + _feedback_block(feedback)
     raw = ollama.generate_stream(
         model or analyst_model(), sys, user, on_chunk=on_chunk, json_mode=True,
     )
