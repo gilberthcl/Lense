@@ -18,8 +18,8 @@ CATALOG: list[dict] = [
     {
         "key": "foundation-sec-8b",
         "name": "Foundation-Sec-8B",
-        "ref": "hf.co/QuantFactory/Foundation-Sec-8B-GGUF",
-        "params": "8B", "approx_gb": 5, "origin": "Cisco · Llama-3.1 base (US)",
+        "ref": "hf.co/QuantFactory/Foundation-Sec-8B-GGUF:Q5_K_M",
+        "params": "8B", "approx_gb": 6, "origin": "Cisco · Llama-3.1 base (US)",
         "focus": "Defensive: MITRE ATT&CK, CVE/CWE, alert triage, IR",
         "kind": "cyber", "recommended": True, "compliant": True,
         "note": "Top pick — strong cyber knowledge, 8B fits with room to spare.",
@@ -36,11 +36,11 @@ CATALOG: list[dict] = [
     {
         "key": "zysec-7b",
         "name": "ZySec-7B (SecurityLLM)",
-        "ref": "hf.co/QuantFactory/SecurityLLM-GGUF",
-        "params": "7B", "approx_gb": 4, "origin": "ZySec-AI · Mistral base (FR)",
-        "focus": "General security assistant",
-        "kind": "cyber", "recommended": False, "compliant": True,
-        "note": "Lightweight assistant-style security model.",
+        "ref": "hf.co/QuantFactory/SecurityLLM-GGUF:Q5_K_M",
+        "params": "7B", "approx_gb": 5, "origin": "ZySec-AI · Mistral base (FR)",
+        "focus": "Security assistant — Sable's default brain",
+        "kind": "cyber", "recommended": True, "compliant": True,
+        "note": "Assistant-style security model; powers Sable's chat.",
     },
     # ── General-purpose keeper + embeddings ────────────────────────────────
     {
@@ -67,8 +67,22 @@ CATALOG: list[dict] = [
 PROTECTED_KINDS = {"embed"}
 
 
+def _base(ref: str) -> str:
+    """Drop a trailing :tag for matching (`...GGUF:Q5_K_M` → `...GGUF`,
+    `nomic-embed-text:latest` → `nomic-embed-text`)."""
+    # hf.co refs and plain names only carry a colon for the tag.
+    return ref.rsplit(":", 1)[0] if ":" in ref else ref
+
+
 def by_ref(ref: str) -> dict | None:
-    return next((m for m in CATALOG if m["ref"] == ref or m["name"] == ref), None)
+    """Match an installed model name to a catalog entry, tag-insensitively, so
+    `:latest` / `:Q5_K_M` suffixes still resolve."""
+    b = _base(ref)
+    return next(
+        (m for m in CATALOG
+         if ref in (m["ref"], m["name"]) or b in (_base(m["ref"]), _base(m["name"]))),
+        None,
+    )
 
 
 def is_protected(name: str) -> bool:

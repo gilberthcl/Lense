@@ -25,7 +25,7 @@ from app.models import AssistantExchange
 from app.services import global_config
 from app.services import ollama_client as ollama
 
-DEFAULT_MODEL = "qwen2.5:7b"
+DEFAULT_MODEL = "hf.co/QuantFactory/SecurityLLM-GGUF:Q5_K_M"
 # Only answers the analyst liked become retrievable teaching examples.
 MIN_TEACHING_SCORE = 7
 _MAX_HISTORY = 6

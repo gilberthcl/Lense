@@ -18,10 +18,11 @@
 set -uo pipefail
 
 # ── Models to install (ref → what it is) ─────────────────────────────────────
-# VERIFIED GGUF (pull directly):
+# VERIFIED GGUF (pull directly). The :Q5_K_M tag is the quality sweet spot —
+# WITHOUT a tag, Ollama grabs the tiny Q2_K quant, which noticeably hurts quality.
 MODELS=(
-  "hf.co/QuantFactory/Foundation-Sec-8B-GGUF"   # Cisco · Llama-3.1 8B · DEFENSIVE: MITRE/CVE/IR · ~5GB
-  "hf.co/QuantFactory/SecurityLLM-GGUF"          # ZySec-7B · Mistral 7B · security assistant · ~4GB
+  "hf.co/QuantFactory/Foundation-Sec-8B-GGUF:Q5_K_M"   # Cisco · Llama-3.1 8B · DEFENSIVE: MITRE/CVE/IR · ~5.7GB
+  "hf.co/QuantFactory/SecurityLLM-GGUF:Q5_K_M"          # ZySec-7B · security assistant (Sable's brain) · ~5.1GB
 )
 # OPTIONAL (uncomment to try — GGUF repo name not yet confirmed; may 404):
 #   "hf.co/cyber-pal-security/CyberPal2.0-20B"   # CyberPal-2.0-20B · deep CTI · ~12GB (likely needs conversion)
