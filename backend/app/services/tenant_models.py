@@ -51,15 +51,31 @@ def active_model(db: Session, tenant_id: int) -> TenantModel | None:
     )
 
 
+def _is_installed(name: str) -> bool:
+    """True if the model is installed in Ollama. If Ollama is unreachable (empty
+    list) we can't verify, so we DON'T override — return True and let the call
+    surface a real connection error."""
+    from app.services import ollama_client as ollama
+    names = {m["name"] for m in ollama.list_models()}
+    return (not names) or (name in names)
+
+
 def resolve_analyst_model(db: Session, tenant_id: int) -> str | None:
     """The Ollama model name this tenant's analyst stage should use, or None to
     fall back to the global default. Precedence (W0b): an active fine-tuned
-    adapter wins; else the tenant's chosen base model; else the global default."""
+    adapter wins; else the tenant's chosen base model; else the global default.
+
+    Resilience: if the configured model is NOT installed (e.g. it was removed
+    from Ollama after being assigned), fall back to the global default rather
+    than dead-end analysis on a missing model with a cryptic 404."""
     m = active_model(db, tenant_id)
     if m:
-        return m.ollama_model_name
+        return m.ollama_model_name if _is_installed(m.ollama_model_name) else None
     tenant = db.get(Tenant, tenant_id)
-    return getattr(tenant, "analyst_model", None) or None
+    chosen = getattr(tenant, "analyst_model", None) or None
+    if chosen and not _is_installed(chosen):
+        return None  # configured model gone → global default
+    return chosen
 
 
 def _next_version(db: Session, tenant_id: int) -> int:

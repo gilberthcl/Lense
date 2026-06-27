@@ -42,14 +42,25 @@ export default function BaseModelSelect({ tid }: { tid: string }) {
   }
   const allowed = data.models.filter((m) => m.allowed);
   const blocked = data.models.filter((m) => !m.allowed);
+  // The client's saved model is no longer installed (e.g. it was removed from
+  // Ollama). Analysis falls back to the global default; surface it so they re-pick.
+  const currentMissing = !!data.current && !data.models.some((m) => m.name === data.current);
 
   return (
     <div>
       {/* Saved state — selection auto-saves on change (no separate Save button). */}
       <p className="mb-2 text-xs text-slate-400">
         This client currently uses:{" "}
-        <b className="text-emerald-300">{data.current ?? `global default (${data.default_model ?? "—"})`}</b>
+        <b className={currentMissing ? "text-amber-300" : "text-emerald-300"}>
+          {data.current ?? `global default (${data.default_model ?? "—"})`}
+        </b>
       </p>
+      {currentMissing && (
+        <p className="mb-2 rounded border border-amber-900/50 bg-amber-950/30 px-2 py-1.5 text-[11px] text-amber-300">
+          ⚠ “{data.current}” is no longer installed — analysis is falling back to the global default
+          ({data.default_model ?? "—"}). Pick an installed model below to fix this client.
+        </p>
+      )}
       {!data.reachable && (
         <p className="mb-2 text-[11px] text-amber-300">Ollama unreachable — no installed models to show.</p>
       )}

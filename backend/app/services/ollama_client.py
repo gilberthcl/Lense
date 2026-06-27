@@ -81,6 +81,15 @@ def _post(path: str, payload: dict) -> dict:
         )
         err.retryable = False
         raise err from exc
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404 and payload.get("model"):
+            err = OllamaError(
+                f"Model '{payload['model']}' is not installed in Ollama. Install it "
+                "(Config → Models) or pick another model for this client (Settings)."
+            )
+            err.retryable = False
+            raise err from exc
+        raise OllamaError(f"Ollama call failed ({path}): {exc}") from exc
     except httpx.HTTPError as exc:  # connection refused/reset, non-2xx
         raise OllamaError(f"Ollama call failed ({path}): {exc}") from exc
 
@@ -173,6 +182,16 @@ def generate_stream(
             err = OllamaError(f"Ollama stream timed out after {cfg['timeout']}s.")
             err.retryable = False
             raise err from exc
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                err = OllamaError(
+                    f"Model '{model}' is not installed in Ollama. Install it "
+                    "(Config → Models) or pick another model for this client "
+                    "(its Settings → Analyst model)."
+                )
+                err.retryable = False
+                raise err from exc
+            raise OllamaError(f"Ollama stream failed (/api/generate): {exc}") from exc
         except httpx.HTTPError as exc:
             raise OllamaError(f"Ollama stream failed (/api/generate): {exc}") from exc
         return "".join(parts)
