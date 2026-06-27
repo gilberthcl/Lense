@@ -71,6 +71,10 @@ def platform_defaults() -> dict:
         "platform_name": "LENS",
         "default_report_language": "English",
         "logo_path": None,
+        # Sable assistant identity (configurable). Model lives in the AI config
+        # as `assistant_model`; name + icon are branding and live here.
+        "assistant_name": "Sable",
+        "assistant_icon_path": None,
     }
 
 
@@ -159,7 +163,7 @@ def update_ai(db: Session, patch: dict) -> dict:
 
 def update_platform(db: Session, patch: dict) -> dict:
     data = get_platform(db)
-    for k in ("platform_name", "default_report_language"):
+    for k in ("platform_name", "default_report_language", "assistant_name"):
         if k in patch and patch[k] is not None:
             data[k] = patch[k]
     _write(db, PLATFORM_KEY, "Platform", data)
@@ -169,6 +173,13 @@ def update_platform(db: Session, patch: dict) -> dict:
 def set_platform_logo(db: Session, path: str) -> dict:
     data = get_platform(db)
     data["logo_path"] = path
+    _write(db, PLATFORM_KEY, "Platform", data)
+    return data
+
+
+def set_assistant_icon(db: Session, path: str) -> dict:
+    data = get_platform(db)
+    data["assistant_icon_path"] = path
     _write(db, PLATFORM_KEY, "Platform", data)
     return data
 

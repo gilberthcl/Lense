@@ -3,8 +3,6 @@ import { api, ApiError } from "../lib/api";
 import { useToast } from "./Toast";
 import { Button, Spinner } from "./ui";
 
-const NAME = "Sable";
-
 interface Msg {
   role: "user" | "assistant";
   content: string;
@@ -35,11 +33,26 @@ export default function AssistantWidget() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [name, setName] = useState("Sable");
+  const [hasIcon, setHasIcon] = useState(false);
+  const NAME = name;
   const bodyRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    api.sableIdentity().then((r) => { setName(r.name); setHasIcon(r.has_icon); }).catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight, behavior: "smooth" });
   }, [msgs, busy]);
+
+  const Avatar = ({ size = 18 }: { size?: number }) =>
+    hasIcon ? (
+      <img src={api.sableIconUrl()} alt={NAME} width={size} height={size}
+        className="rounded-full object-cover" style={{ width: size, height: size }} />
+    ) : (
+      <IconChat width={size} height={size} />
+    );
 
   const send = async () => {
     const q = input.trim();
@@ -98,7 +111,7 @@ export default function AssistantWidget() {
         className="fixed bottom-5 right-5 z-30 flex items-center gap-2 rounded-full bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-indigo-900/40 transition-colors hover:bg-indigo-500"
         title={`Ask ${NAME}`}
       >
-        <IconChat /> Ask {NAME}
+        <Avatar /> Ask {NAME}
       </button>
     );
   }
@@ -113,7 +126,7 @@ export default function AssistantWidget() {
       <div className="flex items-center justify-between gap-2 border-b border-slate-800 px-3 py-2">
         <div className="flex items-center gap-2">
           <span className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-500/15 text-indigo-300">
-            <IconChat />
+            <Avatar />
           </span>
           <div className="leading-tight">
             <p className="text-sm font-semibold text-slate-100">{NAME}</p>

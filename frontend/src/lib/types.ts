@@ -285,12 +285,15 @@ export interface AiEngineConfig {
   enable_reviewer?: boolean;
   enable_qa?: boolean;
   anonymize_training?: boolean;
+  assistant_model?: string;   // Sable's model
 }
 
 export interface PlatformConfig {
   platform_name: string;
   default_report_language: string;
   logo_path?: string | null;
+  assistant_name?: string;          // Sable's display name
+  assistant_icon_path?: string | null;
 }
 
 export interface GlobalConfig {

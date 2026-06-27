@@ -10,10 +10,22 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.models import AssistantExchange
-from app.services import assistant
+from app.services import assistant, global_config
 from app.services import ollama_client as ollama
 
 router = APIRouter(prefix="/api/assistant", tags=["assistant"])
+
+
+@router.get("/identity")
+def identity(db: Session = Depends(get_db)):
+    """The assistant's display name + whether a custom icon is set (for the
+    floating widget)."""
+    plat = global_config.get_platform(db)
+    return {
+        "name": plat.get("assistant_name") or "Sable",
+        "has_icon": bool(plat.get("assistant_icon_path")),
+        "model": assistant.assistant_model(),
+    }
 
 
 @router.post("/chat")

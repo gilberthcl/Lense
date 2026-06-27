@@ -32,7 +32,7 @@ _MAX_HISTORY = 6
 _MAX_Q = 4000
 
 SYSTEM = """\
-You are Sable, an expert cybersecurity assistant embedded in LENS, a threat-hunt
+You are {name}, an expert cybersecurity assistant embedded in LENS, a threat-hunt
 findings platform. You help analysts with: MITRE ATT&CK, detection engineering,
 EDR/SIEM query languages (KQL, SPL, CrowdStrike), threat-hunting methodology,
 malware/TTP explanations, and incident-response guidance.
@@ -60,6 +60,14 @@ def assistant_model() -> str:
     except Exception:  # noqa: BLE001 — config unavailable: fall back to default
         return DEFAULT_MODEL
     return cfg.get("assistant_model") or DEFAULT_MODEL
+
+
+def assistant_name(db) -> str:
+    """The assistant's display name (configurable). Defaults to 'Sable'."""
+    try:
+        return global_config.get_platform(db).get("assistant_name") or "Sable"
+    except Exception:  # noqa: BLE001
+        return "Sable"
 
 
 def cosine(a: list[float], b: list[float]) -> float:
@@ -141,7 +149,8 @@ def answer(db: Session, question: str, history: list[dict] | None = None) -> Ass
     examples = _retrieve(db, question)
     prompt = build_prompt(question, history, examples)
     model = assistant_model()
-    reply = ollama.generate(model, SYSTEM, prompt, json_mode=False).strip()
+    sys = SYSTEM.format(name=assistant_name(db))
+    reply = ollama.generate(model, sys, prompt, json_mode=False).strip()
     ex = AssistantExchange(question=question.strip()[:_MAX_Q], answer=reply, model=model)
     db.add(ex)
     db.commit()

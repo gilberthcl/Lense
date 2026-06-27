@@ -4,6 +4,93 @@ import type { CatalogModel, InstalledModel, PullStatus } from "../../lib/types";
 import { useToast } from "../Toast";
 import { Badge, Button, Card, EmptyState, fmtBytes, PanelHeader, Spinner } from "../ui";
 
+/** Sable assistant identity: name, model, and icon. */
+function SableConfig({ installed }: { installed: InstalledModel[] | null }) {
+  const toast = useToast();
+  const [name, setName] = useState("");
+  const [model, setModel] = useState("");
+  const [savedName, setSavedName] = useState("");
+  const [iconV, setIconV] = useState(0);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    api.sableIdentity().then((r) => { setName(r.name); setSavedName(r.name); setModel(r.model); });
+  }, []);
+
+  const saveName = async () => {
+    try {
+      await api.updatePlatform({ assistant_name: name.trim() || "Sable" });
+      setSavedName(name.trim() || "Sable");
+      toast.success("Assistant name saved.");
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Save failed.");
+    }
+  };
+  const saveModel = async (m: string) => {
+    setModel(m);
+    try {
+      await api.updateAiEngine({ assistant_model: m });
+      toast.success("Sable's model updated.");
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Save failed.");
+    }
+  };
+  const uploadIcon = async (f?: File) => {
+    if (!f) return;
+    try {
+      await api.uploadSableIcon(f);
+      setIconV((v) => v + 1);
+      toast.success("Icon updated.");
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Upload failed.");
+    }
+  };
+
+  const options = (installed ?? []).filter((m) => m.allowed || m.name === model);
+
+  return (
+    <Card className="mb-4">
+      <PanelHeader
+        title="Sable assistant"
+        subtitle="Name, icon, and model for the in-app cybersecurity assistant (isolated from client data)"
+      />
+      <div className="flex flex-wrap items-end gap-4 p-4">
+        <div className="flex items-center gap-3">
+          <img
+            src={api.sableIconUrl(iconV)}
+            alt="icon"
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden"; }}
+            className="h-12 w-12 rounded-full border border-slate-700 bg-slate-800 object-cover"
+          />
+          <input ref={fileRef} type="file" accept="image/*" className="hidden"
+            onChange={(e) => uploadIcon(e.target.files?.[0])} />
+          <Button variant="ghost" className="text-xs" onClick={() => fileRef.current?.click()}>
+            Upload icon
+          </Button>
+        </div>
+        <div>
+          <label className="block text-[11px] uppercase tracking-wide text-slate-500">Name</label>
+          <div className="mt-1 flex gap-2">
+            <input value={name} onChange={(e) => setName(e.target.value)}
+              className="w-40 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100" />
+            <Button variant="ghost" disabled={name.trim() === savedName} onClick={saveName}>Save</Button>
+          </div>
+          <p className="mt-1 text-[11px] text-slate-600">Launcher reads “Ask {savedName || "Sable"}”.</p>
+        </div>
+        <div>
+          <label className="block text-[11px] uppercase tracking-wide text-slate-500">Model</label>
+          <select value={model} onChange={(e) => saveModel(e.target.value)}
+            className="mt-1 w-72 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100">
+            {!options.some((o) => o.name === model) && model && <option value={model}>{model}</option>}
+            {options.map((m) => <option key={m.name} value={m.name}>{m.name}</option>)}
+          </select>
+          <p className="mt-1 text-[11px] text-slate-600">Any installed model — Sable sees no client data.</p>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 const KIND_BADGE: Record<string, string> = {
   cyber: "border border-indigo-800 bg-indigo-950 text-indigo-300",
   generalist: "border border-slate-700 bg-slate-800 text-slate-300",
@@ -82,6 +169,8 @@ export default function ModelManagerPanel() {
 
   return (
     <>
+      <SableConfig installed={installed} />
+
       {/* Catalog — vetted, one-click install */}
       <Card className="mb-4">
         <PanelHeader

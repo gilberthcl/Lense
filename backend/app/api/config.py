@@ -182,3 +182,25 @@ def get_platform_logo(db: Session = Depends(get_db)):
     if not path or not Path(path).exists():
         raise HTTPException(status_code=404, detail="No platform logo")
     return FileResponse(path)
+
+
+# ── Sable assistant icon ────────────────────────────────────────────────────
+@router.post("/platform/sable-icon")
+async def upload_sable_icon(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    data = await file.read()
+    if len(data) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Icon exceeds 5 MB")
+    dest_dir = UPLOAD_ROOT / "platform"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", file.filename or "icon")
+    dest = dest_dir / f"sable_{safe}"
+    dest.write_bytes(data)
+    return global_config.set_assistant_icon(db, str(dest))
+
+
+@router.get("/platform/sable-icon")
+def get_sable_icon(db: Session = Depends(get_db)):
+    path = global_config.get_platform(db).get("assistant_icon_path")
+    if not path or not Path(path).exists():
+        raise HTTPException(status_code=404, detail="No assistant icon")
+    return FileResponse(path)
