@@ -77,23 +77,14 @@ def available_models(
             reachable = True
     except Exception:  # noqa: BLE001 — Ollama unreachable: return what we know
         pass
-    # Exclusivity: a base model assigned to ANOTHER client is locked here, so the
-    # same base can't be picked by two clients (one base → one client).
-    assigned: dict[str, str] = {
-        t.analyst_model: t.name
-        for t in db.query(Tenant)
-        .filter(Tenant.id != tenant.id, Tenant.analyst_model.isnot(None))
-        .all()
-    }
-    models = []
-    for n in names:
-        allowed, reason = model_compliance.classify(n)
-        owner = assigned.get(n)
-        models.append({
-            "name": n, "allowed": allowed, "reason": reason,
-            "assigned_to": owner,                  # another client's name, or null
-            "locked": owner is not None,           # unavailable for this client
-        })
+    # Bases are SHAREABLE across clients: a base model holds no client data, so
+    # several clients can run the same vetted base safely. Per-client isolation
+    # lives in the fine-tuned model (tenant-scoped) and the learning/RAG layer —
+    # not in locking the base. (No exclusivity here by design.)
+    models = [
+        {"name": n, **dict(zip(("allowed", "reason"), model_compliance.classify(n)))}
+        for n in names
+    ]
     return {
         "reachable": reachable,
         "default_model": ai.get("analyst_model"),
@@ -109,23 +100,14 @@ def set_base_model(
     model: str | None = Body(default=None, embed=True),
 ):
     """Set (or clear) this client's base analyst model. Compliance-gated: a
-    non-Western / cloud / unverified model is refused server-side."""
+    non-Western / cloud / unverified model is refused server-side. Bases are
+    shareable — the same vetted base may be used by multiple clients (it carries
+    no client data); per-client isolation lives in the fine-tuned model."""
     chosen = (model or "").strip() or None
     if chosen is not None:
         allowed, reason = model_compliance.classify(chosen)
         if not allowed:
             raise HTTPException(status_code=422, detail=f"Model not allowed — {reason}.")
-        # Exclusivity: refuse a base already assigned to another client.
-        owner = (
-            db.query(Tenant)
-            .filter(Tenant.id != tenant.id, Tenant.analyst_model == chosen)
-            .first()
-        )
-        if owner is not None:
-            raise HTTPException(
-                status_code=409,
-                detail=f"Base model '{chosen}' is already assigned to client '{owner.name}'.",
-            )
     had_findings = (
         db.query(Finding).filter_by(tenant_id=tenant.id).first() is not None
     )
