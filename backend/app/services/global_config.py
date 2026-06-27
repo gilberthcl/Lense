@@ -75,6 +75,10 @@ def platform_defaults() -> dict:
         # as `assistant_model`; name + icon are branding and live here.
         "assistant_name": "Sable",
         "assistant_icon_path": None,
+        # Sable web search — OFF by default. The ONLY outbound-internet feature;
+        # when on, the analyst's question is sent to a search engine (no client
+        # data). Opt-in only.
+        "assistant_web": False,
     }
 
 
@@ -166,6 +170,8 @@ def update_platform(db: Session, patch: dict) -> dict:
     for k in ("platform_name", "default_report_language", "assistant_name"):
         if k in patch and patch[k] is not None:
             data[k] = patch[k]
+    if "assistant_web" in patch:
+        data["assistant_web"] = bool(patch["assistant_web"])
     _write(db, PLATFORM_KEY, "Platform", data)
     return data
 

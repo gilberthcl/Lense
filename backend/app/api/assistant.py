@@ -25,6 +25,7 @@ def identity(db: Session = Depends(get_db)):
         "name": plat.get("assistant_name") or "Sable",
         "has_icon": bool(plat.get("assistant_icon_path")),
         "model": assistant.assistant_model(),
+        "web": bool(plat.get("assistant_web")),
     }
 
 

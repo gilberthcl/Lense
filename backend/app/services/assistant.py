@@ -22,7 +22,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.models import AssistantExchange
-from app.services import global_config
+from app.services import global_config, web_search
 from app.services import ollama_client as ollama
 
 DEFAULT_MODEL = "hf.co/QuantFactory/SecurityLLM-GGUF:Q5_K_M"
@@ -68,6 +68,31 @@ def assistant_name(db) -> str:
         return global_config.get_platform(db).get("assistant_name") or "Sable"
     except Exception:  # noqa: BLE001
         return "Sable"
+
+
+def web_enabled(db) -> bool:
+    """Whether Sable web search is turned on (opt-in; default off)."""
+    try:
+        return bool(global_config.get_platform(db).get("assistant_web"))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _web_block(question: str) -> tuple[str, list[dict]]:
+    """Fetch web results for the question. Returns (context_block, results).
+    Fail-soft: any error yields an empty block (Sable still answers)."""
+    try:
+        results = web_search.search(question, max_results=5)
+    except web_search.WebSearchError:
+        return "", []
+    if not results:
+        return "", []
+    lines = [f"[{i+1}] {r['title']} — {r['snippet']} ({r['url']})" for i, r in enumerate(results)]
+    block = (
+        "Live web results (cite the ones you use as [n], with the URL):\n"
+        + "\n".join(lines) + "\n\n"
+    )
+    return block, results
 
 
 def cosine(a: list[float], b: list[float]) -> float:
@@ -147,7 +172,8 @@ def answer(db: Session, question: str, history: list[dict] | None = None) -> Ass
     """Answer a question (with RAG context from highly-rated past answers) and
     persist the exchange. Raises OllamaError on transport failure."""
     examples = _retrieve(db, question)
-    prompt = build_prompt(question, history, examples)
+    web_block, _web = _web_block(question) if web_enabled(db) else ("", [])
+    prompt = web_block + build_prompt(question, history, examples)
     model = assistant_model()
     sys = SYSTEM.format(name=assistant_name(db))
     reply = ollama.generate(model, sys, prompt, json_mode=False).strip()

@@ -11,11 +11,30 @@ function SableConfig({ installed }: { installed: InstalledModel[] | null }) {
   const [model, setModel] = useState("");
   const [savedName, setSavedName] = useState("");
   const [iconV, setIconV] = useState(0);
+  const [web, setWeb] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    api.sableIdentity().then((r) => { setName(r.name); setSavedName(r.name); setModel(r.model); });
+    api.sableIdentity().then((r) => {
+      setName(r.name); setSavedName(r.name); setModel(r.model); setWeb(r.web);
+    });
   }, []);
+
+  const toggleWeb = async (on: boolean) => {
+    if (on && !window.confirm(
+      "Turn on web search?\n\nThis is the only outbound-internet feature in LENS. " +
+      "When on, your typed questions to the assistant are sent to a search engine. " +
+      "No client/tenant data is ever sent.",
+    )) return;
+    setWeb(on);
+    try {
+      await api.updatePlatform({ assistant_web: on });
+      toast.success(on ? "Web search on." : "Web search off.");
+    } catch (e) {
+      setWeb(!on);
+      toast.error(e instanceof ApiError ? e.message : "Save failed.");
+    }
+  };
 
   const saveName = async () => {
     try {
@@ -86,6 +105,21 @@ function SableConfig({ installed }: { installed: InstalledModel[] | null }) {
           </select>
           <p className="mt-1 text-[11px] text-slate-600">Any installed model — Sable sees no client data.</p>
         </div>
+      </div>
+      <div className="border-t border-slate-800 px-4 py-3">
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-300">
+          <input type="checkbox" checked={web} onChange={(e) => toggleWeb(e.target.checked)}
+            className="h-4 w-4 accent-indigo-500" />
+          Web search
+          <span className={`rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${
+            web ? "bg-amber-950 text-amber-300" : "bg-slate-800 text-slate-500"}`}>
+            {web ? "on — sends queries out" : "off — fully local"}
+          </span>
+        </label>
+        <p className="mt-1 text-[11px] text-slate-600">
+          The only outbound-internet feature in LENS. When on, the analyst's question is sent to a
+          keyless search engine (DuckDuckGo). Never any client data.
+        </p>
       </div>
     </Card>
   );

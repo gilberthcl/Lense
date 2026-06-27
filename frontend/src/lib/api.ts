@@ -168,7 +168,7 @@ export const api = {
   },
   // Sable assistant identity (name + icon).
   sableIdentity: () =>
-    request<{ name: string; has_icon: boolean; model: string }>(`/api/assistant/identity`),
+    request<{ name: string; has_icon: boolean; model: string; web: boolean }>(`/api/assistant/identity`),
   sableIconUrl: (v?: number | string) =>
     `${API_BASE}/api/config/platform/sable-icon${v != null ? `?v=${v}` : ""}`,
   uploadSableIcon: (file: File) => {

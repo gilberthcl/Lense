@@ -295,6 +295,7 @@ export interface PlatformConfig {
   logo_path?: string | null;
   assistant_name?: string;          // Sable's display name
   assistant_icon_path?: string | null;
+  assistant_web?: boolean;          // Sable web search (opt-in)
 }
 
 export interface GlobalConfig {
