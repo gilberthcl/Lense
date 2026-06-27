@@ -24,8 +24,10 @@ MODELS=(
   "hf.co/QuantFactory/Foundation-Sec-8B-GGUF:Q5_K_M"   # Cisco · Llama-3.1 8B · DEFENSIVE: MITRE/CVE/IR · ~5.7GB
   "hf.co/QuantFactory/SecurityLLM-GGUF:Q5_K_M"          # ZySec-7B · security assistant (Sable's brain) · ~5.1GB
 )
-# OPTIONAL (uncomment to try — GGUF repo name not yet confirmed; may 404):
-#   "hf.co/cyber-pal-security/CyberPal2.0-20B"   # CyberPal-2.0-20B · deep CTI · ~12GB (likely needs conversion)
+# CyberPal-2.0-20B has NO public GGUF (publisher ships safetensors; no community
+# quant). It can't be pulled here — build it from the official weights instead
+# (cleaner provenance), which converts + registers it in Ollama:
+#   ./scripts/import-hf-gguf.sh cyber-pal-security/CyberPal2.0-20B Q5_K_M cyberpal2.0-20b
 #
 # NOTE: Foundation-Sec-8B above is the BASE (completion) model — ideal for the
 # LENS analysis pipeline (which wraps it in structured prompts). For Sable's

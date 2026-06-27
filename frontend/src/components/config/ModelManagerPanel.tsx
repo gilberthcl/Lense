@@ -213,7 +213,10 @@ export default function ModelManagerPanel() {
         />
         <div className="grid grid-cols-1 gap-2 p-4 sm:grid-cols-2">
           {catalog.map((m) => {
-            const isInstalled = installedNames.has(m.ref) || installedNames.has(m.name);
+            const isInstalled =
+              installedNames.has(m.ref) ||
+              installedNames.has(m.name) ||
+              (m.ollama_name ? installedNames.has(m.ollama_name) : false);
             const busy = pulls[m.ref] && !pulls[m.ref].done;
             return (
               <div key={m.key} className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
@@ -233,12 +236,26 @@ export default function ModelManagerPanel() {
                   </div>
                   {isInstalled ? (
                     <Badge className="shrink-0 border border-emerald-800 bg-emerald-950 text-emerald-300">installed</Badge>
+                  ) : m.build_only ? (
+                    <Badge className="shrink-0 border border-violet-800 bg-violet-950 text-violet-300" >build locally</Badge>
                   ) : (
                     <Button variant="ghost" className="shrink-0 px-2 py-1 text-xs" disabled={!!busy} onClick={() => pull(m.ref)}>
                       {busy ? <Spinner /> : "Install"}
                     </Button>
                   )}
                 </div>
+                {/* Build-from-source: no public GGUF, so show the one-time command
+                    that converts the official weights instead of a failing pull. */}
+                {!isInstalled && m.build_only && m.build_cmd && (
+                  <div className="mt-2 rounded border border-slate-800 bg-slate-950 p-2">
+                    <p className="mb-1 text-[10px] uppercase tracking-wide text-slate-500">
+                      Run once on the host (not in Docker), then Refresh below:
+                    </p>
+                    <code className="block select-all break-all font-mono text-[11px] text-violet-300">
+                      {m.build_cmd}
+                    </code>
+                  </div>
+                )}
               </div>
             );
           })}

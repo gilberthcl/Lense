@@ -27,11 +27,21 @@ CATALOG: list[dict] = [
     {
         "key": "cyberpal-20b",
         "name": "CyberPal-2.0-20B",
-        "ref": "hf.co/cyber-pal-security/CyberPal2.0-20B-GGUF",
-        "params": "20B", "approx_gb": 12, "origin": "IBM-affiliated · gpt-oss base (US)",
+        # No public GGUF exists for this model (the publisher ships safetensors;
+        # no community quant on the Hub). So this is a BUILD-FROM-SOURCE entry:
+        # convert the official weights to GGUF locally with import-hf-gguf.sh.
+        # That is also the cleanest provenance — we quantize IBM's own weights,
+        # not a stranger's re-upload. `ollama_name` is what the script registers.
+        "ref": "hf.co/cyber-pal-security/CyberPal2.0-20B",
+        "ollama_name": "cyberpal2.0-20b",
+        "params": "20B", "approx_gb": 14, "origin": "IBM SecKnowledge · gpt-oss-20B base (US)",
         "focus": "Deep CTI Q&A, vuln→weakness mapping, TTPs",
-        "kind": "cyber", "recommended": True, "compliant": True,
-        "note": "Heavier deep-CTI option. Verify the GGUF repo exists on install.",
+        "kind": "cyber", "recommended": False, "compliant": True,
+        "build_only": True,
+        "build_cmd": "./scripts/import-hf-gguf.sh cyber-pal-security/CyberPal2.0-20B Q5_K_M cyberpal2.0-20b",
+        "note": "No public GGUF — build locally from the official weights with the "
+                "import script (one-time, ~40 GB temp disk). Cleaner provenance "
+                "than a community re-upload.",
     },
     {
         "key": "zysec-7b",
@@ -76,11 +86,15 @@ def _base(ref: str) -> str:
 
 def by_ref(ref: str) -> dict | None:
     """Match an installed model name to a catalog entry, tag-insensitively, so
-    `:latest` / `:Q5_K_M` suffixes still resolve."""
+    `:latest` / `:Q5_K_M` suffixes still resolve. Also matches a build-from-source
+    entry's locally-registered `ollama_name` (e.g. `cyberpal2.0-20b`), so a model
+    we built ourselves is still recognised as vetted/compliant after the build."""
     b = _base(ref)
+    def _names(m: dict) -> list[str]:
+        return [n for n in (m["ref"], m["name"], m.get("ollama_name")) if n]
     return next(
         (m for m in CATALOG
-         if ref in (m["ref"], m["name"]) or b in (_base(m["ref"]), _base(m["name"]))),
+         if ref in _names(m) or b in [_base(n) for n in _names(m)]),
         None,
     )
 

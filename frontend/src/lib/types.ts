@@ -826,6 +826,11 @@ export interface CatalogModel {
   recommended: boolean;
   compliant: boolean;
   note: string;
+  // Build-from-source entries: no public GGUF, so they can't be one-click
+  // pulled — the operator runs the import script to convert official weights.
+  build_only?: boolean;
+  build_cmd?: string;
+  ollama_name?: string;
 }
 export interface InstalledModel {
   name: string;

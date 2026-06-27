@@ -26,3 +26,19 @@ def test_embeddings_is_protected_others_are_not():
 def test_recommended_defaults_present():
     rec = {m["key"] for m in mc.CATALOG if m.get("recommended")}
     assert {"foundation-sec-8b", "gemma3-27b", "nomic-embed-text"} <= rec
+
+
+def test_build_only_entry_carries_a_command_and_resolves_by_local_name():
+    cp = mc.by_ref("hf.co/cyber-pal-security/CyberPal2.0-20B")
+    assert cp and cp["key"] == "cyberpal-20b"
+    assert cp.get("build_only") is True
+    assert cp.get("build_cmd")  # the operator needs the exact command
+    # After the local build it registers as `ollama_name`; that must still resolve
+    # to the vetted catalog entry so compliance recognises it as allowed.
+    assert mc.by_ref("cyberpal2.0-20b")["key"] == "cyberpal-20b"
+
+
+def test_locally_built_model_passes_compliance():
+    from app.services import model_compliance
+    allowed, _ = model_compliance.classify("cyberpal2.0-20b")
+    assert allowed is True  # via the vetted-catalog exception (ollama_name match)
