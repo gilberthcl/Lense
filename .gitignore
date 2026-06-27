@@ -29,3 +29,6 @@ backend/training/
 .idea/
 .vscode/
 .run/
+
+# Local model-conversion scratch (import-hf-gguf.sh): venv + llama.cpp + weights
+.gguf-build/
