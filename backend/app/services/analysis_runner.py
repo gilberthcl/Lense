@@ -427,6 +427,33 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
             tenant_context=tenant_context,
         )
 
+        # Parse-failure ≠ success. If the analyst model's output couldn't be
+        # parsed, there are no real findings — surfacing this as a clean
+        # "analyzed" dataset (finding_count=0) silently hides a failed run and is
+        # exactly the "stopped without error, called it done" trap. Mark the
+        # dataset needs-attention so "Analyze all" retries it, and carry the
+        # model-fit recommendation up to the operator. Done BEFORE the draft
+        # delete so we never wipe prior good findings with an empty result.
+        trace = result.get("trace", {})
+        if trace.get("analyst_parse_error"):
+            db.rollback()
+            job = db.get(AnalysisJob, job_id)
+            dataset = db.get(Dataset, job.dataset_id)
+            msg = (
+                "The analyst model's output could not be parsed into findings — "
+                "the dataset was not analysed. "
+                + (trace.get("model_fit_warning") or
+                   "Re-analysing (often on a stronger model) usually resolves it.")
+            )
+            job.status = "error"
+            job.error = msg
+            job.current_task = "Analysis parse error"
+            job.result = {"finding_count": 0, "trace": trace}
+            if dataset:
+                dataset.status = "error"
+            db.commit()
+            return
+
         job.current_task = "Persisting findings"
         job.progress = 85
         # Re-analysis must be idempotent for the MODEL's own output: drop this
@@ -481,6 +508,9 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
             "assessment": result["dataset_assessment"],
             "finding_count": len(result["findings"]),
             "trace": result["trace"],
+            # Carry any model-fit recommendation to the top level for the UI even
+            # on an otherwise-successful run (e.g. empty shells were dropped).
+            "warning": result["trace"].get("model_fit_warning"),
         }
         db.commit()
         # If this was the last dataset and the hunt opted in, run correlation now.

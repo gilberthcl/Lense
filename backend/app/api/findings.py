@@ -363,10 +363,14 @@ def add_missed_finding(
         raise HTTPException(status_code=502, detail=f"Analysis failed: {exc}") from exc
     f, why, lessons = missed_finding.parse_result(out)
     if not f.get("title"):
+        from app.services import model_fit  # lazy: avoid import cost on hot paths
         _finish_job(db, job, error="No structured finding could be reconstructed.")
         raise HTTPException(
             status_code=422,
-            detail="The model could not reconstruct a structured finding — add more detail.",
+            detail=(
+                "The model could not reconstruct a structured finding — add more "
+                "detail." + model_fit.weak_model_suffix(model)
+            ),
         )
 
     from app.services.analysis_runner import _next_finding_seq  # lazy: avoid cycle
@@ -433,10 +437,14 @@ def import_findings(
         raise HTTPException(status_code=502, detail=f"Import failed: {exc}") from exc
     items = out.get("findings", [])
     if not items:
+        from app.services import model_fit  # lazy: avoid import cost on hot paths
         _finish_job(db, job, error="No structured findings could be extracted.")
         raise HTTPException(
             status_code=422,
-            detail="The model could not extract any structured findings — check the pasted text.",
+            detail=(
+                "The model could not extract any structured findings — check the "
+                "pasted text." + model_fit.weak_model_suffix(model)
+            ),
         )
 
     from app.services.analysis_runner import _next_finding_seq  # lazy: avoid cycle

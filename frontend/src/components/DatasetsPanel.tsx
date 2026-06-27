@@ -155,6 +155,10 @@ export default function DatasetsPanel({
         toast.error(`Analysis failed: ${final.error ?? "unknown error"}`);
         return false;
       }
+      // Surface a model-fit recommendation even on an otherwise-successful run
+      // (e.g. empty "shell" findings were dropped) so it isn't silently buried.
+      const warning = (final.result as { warning?: string } | undefined)?.warning;
+      if (warning) toast.info(warning);
       toast.success(`Analysis complete for ${ds.filename}.`);
       return true;
     } catch (e) {

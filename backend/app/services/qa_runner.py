@@ -38,9 +38,12 @@ def _correlation_done(db: Session, hunt_id: int, tenant_id: int) -> bool:
 
 
 def _parse_error_datasets(db: Session, hunt_id: int, tenant_id: int) -> list[int]:
+    # A parse failure now lands a job in status='error' (it is no longer reported
+    # as a clean 'done'); older runs may still be 'done' with the trace flag, so
+    # accept both rather than filter by status.
     out: list[int] = []
     for j in db.query(AnalysisJob).filter_by(
-        hunt_id=hunt_id, tenant_id=tenant_id, phase="analysis", status="done"
+        hunt_id=hunt_id, tenant_id=tenant_id, phase="analysis"
     ):
         if j.dataset_id and ((j.result or {}).get("trace") or {}).get("analyst_parse_error"):
             out.append(j.dataset_id)

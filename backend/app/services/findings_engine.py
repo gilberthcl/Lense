@@ -65,6 +65,30 @@ def _validate_against_evidence(finding: dict, evidence_values: set[str]) -> bool
     return any(str(c).lower() in evidence_values for c in cited)
 
 
+def _is_substantive(finding: dict) -> bool:
+    """Reject empty "shell" findings — a title with no body. A weak model can
+    emit `{"title": "...", "evidence": {}, "mitre": {}, "affected_assets": {}}`,
+    which looks like a finding but carries nothing. A real finding must have at
+    least a summary OR some evidence OR a concrete citation (asset/user/MITRE)."""
+    if not isinstance(finding, dict):
+        return False
+
+    def _has(v) -> bool:
+        if v is None:
+            return False
+        if isinstance(v, str):
+            return bool(v.strip())
+        if isinstance(v, (list, dict, tuple, set)):
+            return len(v) > 0
+        return True
+
+    body = any(
+        _has(finding.get(k))
+        for k in ("summary", "evidence", "affected_assets", "affected_users", "mitre")
+    )
+    return _has(finding.get("title")) and body
+
+
 def analyze_dataset(
     *,
     dataset_name: str,
@@ -229,10 +253,32 @@ def analyze_dataset(
         except ollama.OllamaError:
             trace["writer_error"] = True
 
+    # ── Drop empty "shell" findings (title only, no body) ──────────────────
+    # A weak model sometimes emits findings with every field empty. They are not
+    # real findings and must never be persisted as a clean result.
+    substantive = [f for f in findings if _is_substantive(f)]
+    trace["dropped_empty"] = len(findings) - len(substantive)
+    findings = substantive
+
     # ── Hard anti-hallucination gate (code, not model) ─────────────────────
     evidence_values = _flatten_evidence_values(evidence_package)
     validated = [f for f in findings if _validate_against_evidence(f, evidence_values)]
     trace["dropped_unsupported"] = len(findings) - len(validated)
+
+    # ── Model-fit guidance ─────────────────────────────────────────────────
+    # When the analyst output couldn't be parsed, OR every finding was an empty
+    # shell, AND the model is a likely-weak fit, attach a recommendation so the
+    # operator switches models instead of treating the empty result as success.
+    from app.services import model_fit  # lazy: keep import surface small
+    warning = model_fit.extraction_warning(
+        analyst_model,
+        parse_error=bool(trace.get("analyst_parse_error")),
+        empty=bool(trace.get("analyst_parse_error")) or (
+            trace.get("analyst_count", 0) > 0 and not validated
+        ),
+    )
+    if warning:
+        trace["model_fit_warning"] = warning
 
     return {
         "dataset_assessment": assessment,
