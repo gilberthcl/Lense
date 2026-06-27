@@ -82,13 +82,22 @@ if [[ ! -f "$LLAMA_CPP/convert_hf_to_gguf.py" ]]; then
     || die "Failed to clone llama.cpp."
 fi
 
-# convert_hf_to_gguf.py needs a few Python deps. Install them from PUBLIC PyPI,
-# ignoring any local pip config (--isolated) — corporate setups often pin pip to
-# a private, authenticated index (e.g. Artifactory) that 401s on these public
-# packages. Override the index with PIP_INDEX_URL if you have a working mirror.
+# convert_hf_to_gguf.py needs a few Python deps (torch, transformers, …). Install
+# them into a DEDICATED venv under $WORKDIR — NEVER the user's active environment,
+# so we don't disturb the LENS backend venv (e.g. downgrade its numpy).
+# Install from PUBLIC PyPI and ignore any local pip config (--isolated) — corporate
+# setups often pin pip to a private, authenticated index (Artifactory) that 401s on
+# these public packages. Override with PIP_INDEX_URL if you have a working mirror.
+step "Creating an isolated build venv (keeps your project env untouched)"
+BUILD_VENV="$WORKDIR/venv"
+[[ -x "$BUILD_VENV/bin/python" ]] || python3 -m venv "$BUILD_VENV" \
+  || die "Failed to create the build venv at $BUILD_VENV."
+PYBIN="$BUILD_VENV/bin/python"
+
 step "Ensuring Python conversion deps (public PyPI)"
 PIP_INDEX="${PIP_INDEX_URL:-https://pypi.org/simple}"
-pip_install() { python3 -m pip install --isolated --index-url "$PIP_INDEX" "$@"; }
+pip_install() { "$PYBIN" -m pip install --isolated --index-url "$PIP_INDEX" "$@"; }
+pip_install --upgrade pip >/dev/null 2>&1 || true
 
 # Prefer llama.cpp's exact converter requirements; fall back to a minimal set.
 REQ=""
@@ -138,9 +147,9 @@ echo "    using quantizer: $QUANT_BIN"
 # ── Download the official weights ────────────────────────────────────────────
 SNAP="$WORKDIR/${REPO//\//_}"
 step "Downloading $REPO from Hugging Face → $SNAP"
-python3 -m huggingface_hub download "$REPO" --local-dir "$SNAP" \
+"$PYBIN" -m huggingface_hub download "$REPO" --local-dir "$SNAP" \
   >/dev/null 2>&1 \
-  || python3 - "$REPO" "$SNAP" <<'PY' || die "Download failed (check the repo id / your HF access)."
+  || "$PYBIN" - "$REPO" "$SNAP" <<'PY' || die "Download failed (check the repo id / your HF access)."
 import sys
 from huggingface_hub import snapshot_download
 snapshot_download(repo_id=sys.argv[1], local_dir=sys.argv[2])
@@ -149,7 +158,7 @@ PY
 # ── Convert HF → GGUF (f16) ──────────────────────────────────────────────────
 F16="$WORKDIR/${NAME}.f16.gguf"
 step "Converting to GGUF (f16) — this is the slow part"
-python3 "$LLAMA_CPP/convert_hf_to_gguf.py" "$SNAP" --outfile "$F16" --outtype f16 \
+"$PYBIN" "$LLAMA_CPP/convert_hf_to_gguf.py" "$SNAP" --outfile "$F16" --outtype f16 \
   || die "HF→GGUF conversion failed (architecture may be unsupported by this llama.cpp — try 'git -C $LLAMA_CPP pull')."
 
 # ── Quantize ─────────────────────────────────────────────────────────────────
