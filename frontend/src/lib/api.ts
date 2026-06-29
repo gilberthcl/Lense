@@ -509,10 +509,14 @@ export const api = {
     }),
 
   // --- Sable assistant (global; no client data) ---
-  askSable: (question: string, history: { role: string; content: string }[]) =>
+  askSable: (
+    question: string,
+    history: { role: string; content: string }[],
+    web?: boolean,
+  ) =>
     request<{ id: number; answer: string; model: string | null }>(`/api/assistant/chat`, {
       method: "POST",
-      body: JSON.stringify({ question, history }),
+      body: JSON.stringify({ question, history, web: web ?? null }),
     }),
   rateSable: (exchangeId: number, score: number, feedback?: string) =>
     request<{ ok: boolean; id: number; score: number }>(
@@ -601,6 +605,43 @@ export const api = {
     const disposition = res.headers.get("Content-Disposition") ?? "";
     const match = /filename="?([^"]+)"?/.exec(disposition);
     const filename = match?.[1] ?? `lens_report_${hid}_${lang}.docx`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
+
+  // --- Findings export: csv (spreadsheet) | md (report) | json (full data) ---
+  exportFindings: async (tid: string, hid: string, format: "csv" | "md" | "json") => {
+    const path = `/api/tenants/${tid}/hunts/${hid}/findings/export?format=${format}`;
+    const token = getToken();
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}${path}`, {
+        headers: { Accept: "*/*", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+    } catch (e) {
+      throw new ApiError(`Network error contacting ${API_BASE}${path}.`, 0, e);
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      let detail = `Export failed (${res.status})`;
+      try {
+        const j = JSON.parse(text);
+        if (j && typeof j === "object" && "detail" in j) detail = String(j.detail);
+      } catch {
+        /* non-JSON body */
+      }
+      throw new ApiError(detail, res.status, text);
+    }
+    const blob = await res.blob();
+    const disposition = res.headers.get("Content-Disposition") ?? "";
+    const match = /filename="?([^"]+)"?/.exec(disposition);
+    const filename = match?.[1] ?? `findings.${format}`;
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;

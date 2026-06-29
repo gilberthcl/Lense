@@ -1,5 +1,7 @@
 """Findings listing + validation workflow (validated findings feed learning)."""
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+import re
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_tenant
@@ -13,8 +15,8 @@ from app.schemas import (
     MissedFindingResult,
 )
 from app.services import (
-    categories, csv_loader, finding_details, finding_feedback, knowledge,
-    learning, missed_finding, tenant_models, training_import,
+    categories, csv_loader, finding_details, finding_feedback, findings_export,
+    knowledge, learning, missed_finding, tenant_models, training_import,
 )
 from app.services import ollama_client as ollama
 
@@ -196,6 +198,58 @@ def list_findings(
         .filter_by(hunt_id=hunt_id, tenant_id=tenant.id)
         .order_by(Finding.finding_ref)
         .all()
+    )
+
+
+_EXPORT_FORMATS = {
+    "csv": ("text/csv; charset=utf-8", "csv"),
+    "md": ("text/markdown; charset=utf-8", "md"),
+    "markdown": ("text/markdown; charset=utf-8", "md"),
+    "json": ("application/json; charset=utf-8", "json"),
+}
+
+
+@router.get("/export")
+def export_findings(
+    hunt_id: int,
+    format: str = "csv",
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+):
+    """Download this hunt's findings. `format`:
+      • csv  — one row per finding (spreadsheet),
+      • md   — readable report, each finding its own section,
+      • json — the full structured record (every field, nothing dropped).
+    Tenant-scoped: only this tenant's findings for this hunt are exported."""
+    fmt = (format or "csv").lower()
+    if fmt not in _EXPORT_FORMATS:
+        raise HTTPException(status_code=422, detail="format must be csv, md, or json.")
+    findings = (
+        db.query(Finding)
+        .filter_by(hunt_id=hunt_id, tenant_id=tenant.id)
+        .order_by(Finding.finding_ref)
+        .all()
+    )
+    dicts = [findings_export.serialize_finding(f) for f in findings]
+    hunt = db.get(Hunt, hunt_id)
+    hunt_name = (hunt.name if hunt else f"hunt-{hunt_id}") or f"hunt-{hunt_id}"
+
+    if fmt == "csv":
+        body = findings_export.to_csv(dicts)
+    elif fmt in ("md", "markdown"):
+        body = findings_export.to_markdown(hunt_name, dicts)
+    else:
+        body = findings_export.to_json(
+            {"hunt": hunt_name, "hunt_id": hunt_id, "count": len(dicts)}, dicts
+        )
+
+    media_type, ext = _EXPORT_FORMATS[fmt]
+    slug = re.sub(r"[^A-Za-z0-9_-]+", "_", hunt_name).strip("_")[:60] or "hunt"
+    filename = f"{slug}_findings.{ext}"
+    return Response(
+        content=body,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

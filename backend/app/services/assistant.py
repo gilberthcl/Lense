@@ -168,11 +168,17 @@ def _retrieve(db: Session, question: str, k: int = 3) -> list[AssistantExchange]
     return rank(qvec, rows, k=k)
 
 
-def answer(db: Session, question: str, history: list[dict] | None = None) -> AssistantExchange:
+def answer(
+    db: Session, question: str, history: list[dict] | None = None,
+    web: bool | None = None,
+) -> AssistantExchange:
     """Answer a question (with RAG context from highly-rated past answers) and
-    persist the exchange. Raises OllamaError on transport failure."""
+    persist the exchange. Raises OllamaError on transport failure. `web` forces
+    web enrichment on/off for this call; None falls back to the global setting.
+    Only the typed question is ever sent out — never client data."""
     examples = _retrieve(db, question)
-    web_block, _web = _web_block(question) if web_enabled(db) else ("", [])
+    use_web = web if web is not None else web_enabled(db)
+    web_block, _web = _web_block(question) if use_web else ("", [])
     prompt = web_block + build_prompt(question, history, examples)
     model = assistant_model()
     sys = SYSTEM.format(name=assistant_name(db))

@@ -529,6 +529,14 @@ export default function FindingsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tid, hid, reloadKey]);
 
+  const onExport = async (format: "csv" | "md" | "json") => {
+    try {
+      await api.exportFindings(tid, hid, format);
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Download failed.");
+    }
+  };
+
   const onPatch = async (finding: Finding, body: PatchBody) => {
     setPatchingId(finding.id);
     try {
@@ -650,6 +658,27 @@ export default function FindingsPanel({
                 >
                   {showMerged ? "Hide merged" : "Show merged"}
                 </button>
+              )}
+              {findings.length > 0 && (
+                <div className="flex items-center gap-1">
+                  <span className="text-slate-600">Download:</span>
+                  {(["csv", "md", "json"] as const).map((fmt) => (
+                    <button
+                      key={fmt}
+                      onClick={() => onExport(fmt)}
+                      title={
+                        fmt === "csv"
+                          ? "Spreadsheet (one row per finding)"
+                          : fmt === "md"
+                            ? "Readable report (each finding divided)"
+                            : "Full data (every field)"
+                      }
+                      className="rounded border border-slate-700 px-2 py-0.5 uppercase text-slate-300 hover:bg-slate-800"
+                    >
+                      {fmt}
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
           ) : null

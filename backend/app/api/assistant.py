@@ -33,14 +33,17 @@ def identity(db: Session = Depends(get_db)):
 def chat(
     question: str = Body(..., embed=True),
     history: list[dict] = Body(default=[], embed=True),
+    web: bool | None = Body(default=None, embed=True),
     db: Session = Depends(get_db),
 ):
     """Ask Sable. Returns the answer + the exchange id (to rate it). History is
-    the recent turns from the client; no client/tenant data is accepted here."""
+    the recent turns from the client; no client/tenant data is accepted here.
+    `web` enriches this single answer with live web results (overriding the global
+    default); only the typed question is sent out, never client data."""
     if not (question or "").strip():
         raise HTTPException(status_code=422, detail="Ask a question.")
     try:
-        ex = assistant.answer(db, question, history)
+        ex = assistant.answer(db, question, history, web=web)
     except ollama.OllamaError as exc:
         raise HTTPException(status_code=502, detail=f"Sable is unavailable: {exc}") from exc
     return {"id": ex.id, "answer": ex.answer, "model": ex.model}

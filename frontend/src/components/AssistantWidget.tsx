@@ -21,6 +21,16 @@ function IconChat(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
+function IconGlobe(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}
+      strokeLinecap="round" strokeLinejoin="round" width={13} height={13} {...props}>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M2 12h20M12 2a15.3 15.3 0 0 1 0 20M12 2a15.3 15.3 0 0 0 0 20" />
+    </svg>
+  );
+}
+
 /**
  * Sable — a dockable cybersecurity assistant. Lives in the app shell, so it
  * follows the analyst across every page. It is isolated from client data
@@ -36,12 +46,19 @@ export default function AssistantWidget() {
   const [name, setName] = useState("Sable");
   const [hasIcon, setHasIcon] = useState(false);
   const [iconV, setIconV] = useState(0);
+  const [web, setWeb] = useState(false);
+  const [webTouched, setWebTouched] = useState(false);
   const NAME = name;
   const bodyRef = useRef<HTMLDivElement>(null);
 
   const loadIdentity = () =>
     api.sableIdentity()
-      .then((r) => { setName(r.name); setHasIcon(r.has_icon); setIconV(Date.now()); })
+      .then((r) => {
+        setName(r.name); setHasIcon(r.has_icon); setIconV(Date.now());
+        // Seed the per-chat web toggle from the global default until the analyst
+        // flips it themselves (then respect their choice for the session).
+        if (!webTouched) setWeb(r.web);
+      })
       .catch(() => undefined);
 
   useEffect(() => { loadIdentity(); }, []);
@@ -69,7 +86,7 @@ export default function AssistantWidget() {
     setInput("");
     setBusy(true);
     try {
-      const r = await api.askSable(q, history);
+      const r = await api.askSable(q, history, web);
       setMsgs((m) => [...m, { role: "assistant", content: r.answer, id: r.id }]);
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : `${NAME} is unavailable.`);
@@ -115,7 +132,7 @@ export default function AssistantWidget() {
     return (
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-5 right-5 z-30 flex items-center gap-2 rounded-full bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-indigo-900/40 transition-colors hover:bg-indigo-500"
+        className="fixed bottom-5 right-5 z-30 flex items-center gap-2 rounded-full border border-slate-600 bg-slate-800 px-4 py-2.5 text-sm font-medium text-slate-100 shadow-lg shadow-black/40 transition-colors hover:bg-slate-700"
         title={`Ask ${NAME}`}
       >
         <Avatar /> Ask {NAME}
@@ -132,7 +149,7 @@ export default function AssistantWidget() {
       {/* Header */}
       <div className="flex items-center justify-between gap-2 border-b border-slate-800 px-3 py-2">
         <div className="flex items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-500/15 text-indigo-300">
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-800 text-slate-300">
             <Avatar />
           </span>
           <div className="leading-tight">
@@ -174,7 +191,7 @@ export default function AssistantWidget() {
             <div
               className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
                 m.role === "user"
-                  ? "bg-indigo-600 text-white"
+                  ? "bg-slate-700 text-slate-100"
                   : "border border-slate-800 bg-slate-950/60 text-slate-200"
               }`}
             >
@@ -191,7 +208,7 @@ export default function AssistantWidget() {
                         onClick={() => rate(i, n)}
                         className={`h-5 w-5 rounded text-[10px] ${
                           m.rated === n
-                            ? "bg-indigo-600 text-white"
+                            ? "bg-slate-600 text-white"
                             : "bg-slate-800 text-slate-400 hover:bg-slate-700"
                         }`}
                       >
@@ -247,12 +264,27 @@ export default function AssistantWidget() {
             }}
             rows={1}
             placeholder={`Ask ${NAME}…  (Enter to send)`}
-            className="max-h-28 flex-1 resize-none rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none"
+            className="max-h-28 flex-1 resize-none rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-slate-500 focus:outline-none"
           />
           <Button onClick={send} disabled={busy || !input.trim()}>
             {busy ? <Spinner /> : "Send"}
           </Button>
         </div>
+        {/* Web enrichment toggle — like Ollama's. Only the typed question is sent
+            out; never client data. Off by default. */}
+        <button
+          type="button"
+          onClick={() => { setWeb((w) => !w); setWebTouched(true); }}
+          title="Enrich answers with live web results. Sends only your question to a search engine — never client data."
+          className={`mt-1.5 inline-flex items-center gap-1.5 rounded px-2 py-1 text-[11px] transition-colors ${
+            web
+              ? "bg-emerald-950/60 text-emerald-300 hover:bg-emerald-900/50"
+              : "text-slate-500 hover:bg-slate-800 hover:text-slate-300"
+          }`}
+        >
+          <IconGlobe width={13} height={13} />
+          Web {web ? "on" : "off"}
+        </button>
       </div>
     </div>
   );

@@ -11,8 +11,13 @@ function SableConfig({ installed }: { installed: InstalledModel[] | null }) {
   const [model, setModel] = useState("");
   const [savedName, setSavedName] = useState("");
   const [iconV, setIconV] = useState(0);
+  const [iconErr, setIconErr] = useState(false);
   const [web, setWeb] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Re-show the preview whenever the icon version changes (e.g. after an upload),
+  // so a fresh upload isn't hidden by a previous load error.
+  useEffect(() => { setIconErr(false); }, [iconV]);
 
   useEffect(() => {
     api.sableIdentity().then((r) => {
@@ -75,12 +80,18 @@ function SableConfig({ installed }: { installed: InstalledModel[] | null }) {
       />
       <div className="flex flex-wrap items-end gap-4 p-4">
         <div className="flex items-center gap-3">
-          <img
-            src={api.sableIconUrl(iconV)}
-            alt="icon"
-            onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden"; }}
-            className="h-12 w-12 rounded-full border border-slate-700 bg-slate-800 object-cover"
-          />
+          {iconErr ? (
+            <div className="flex h-12 w-12 items-center justify-center rounded-full border border-slate-700 bg-slate-800 text-[10px] text-slate-500">
+              no icon
+            </div>
+          ) : (
+            <img
+              src={api.sableIconUrl(iconV)}
+              alt="icon"
+              onError={() => setIconErr(true)}
+              className="h-12 w-12 rounded-full border border-slate-700 bg-slate-800 object-cover"
+            />
+          )}
           <input ref={fileRef} type="file" accept="image/*" className="hidden"
             onChange={(e) => uploadIcon(e.target.files?.[0])} />
           <Button variant="ghost" className="text-xs" onClick={() => fileRef.current?.click()}>
