@@ -200,6 +200,7 @@ class DatasetOut(ORMModel):
     col_count: int
     status: str
     created_at: datetime
+    analysis_notes: dict | None = None
 
 
 # ── Findings ───────────────────────────────────────────────────────────────

@@ -33,6 +33,7 @@ _COLUMN_ADDITIONS = (
     "ALTER TABLE findings ADD COLUMN IF NOT EXISTS merged_into_id INTEGER",
     "ALTER TABLE findings ADD COLUMN IF NOT EXISTS qa JSON",
     "ALTER TABLE datasets ADD COLUMN IF NOT EXISTS entity_index JSON",
+    "ALTER TABLE datasets ADD COLUMN IF NOT EXISTS analysis_notes JSON",
     "ALTER TABLE hunts ADD COLUMN IF NOT EXISTS auto_correlate BOOLEAN DEFAULT FALSE",
     "ALTER TABLE hunts ADD COLUMN IF NOT EXISTS auto_qa BOOLEAN DEFAULT FALSE",
     # Learning spine (W0). New tables (learning_events, finding_revisions) are

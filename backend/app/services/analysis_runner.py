@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import re
 import time
+from datetime import datetime, timezone
 
 import pandas as pd
 from sqlalchemy.orm import Session
@@ -19,8 +20,8 @@ from app.models import (
     AnalysisJob, ClientApprovedSoftware, Dataset, Finding, Hunt, KnowledgeDocument,
 )
 from app.services import (
-    categories, config_store, correlation_runner, csv_loader, enrichment,
-    finding_details, findings_engine, global_config, jobs, knowledge,
+    categories, config_store, correlation_runner, csv_loader, dataset_report,
+    enrichment, finding_details, findings_engine, global_config, jobs, knowledge,
     methodology, methodology_parser,
 )
 from app.services import ollama_client as ollama
@@ -470,8 +471,15 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
         # Continue numbering from the current max ref so refs stay unique even
         # when only some datasets are re-analyzed (count() could collide).
         start = _next_finding_seq(db, hunt.id)
+        report_findings: list[dict] = []
         for i, f in enumerate(result["findings"], start=start):
             detail = finding_details.build(f, evidence)
+            report_findings.append({
+                "ref": f"F-{i:03d}",
+                "title": (f.get("title") or "Untitled finding")[:200],
+                "category": categories.normalize(f.get("category")),
+                "severity": f.get("severity"),
+            })
             db.add(
                 Finding(
                     tenant_id=job.tenant_id,
@@ -500,6 +508,17 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
         # Persist the per-dataset entity index so the correlation phase can
         # cross-reference entities across datasets without re-analysis.
         dataset.entity_index = finding_details.dataset_index(evidence)
+        # Persist the detailed per-dataset analysis report (durable record of what
+        # was examined + concluded; also the backbone of "find which dataset").
+        dataset.analysis_notes = dataset_report.build(
+            dataset_filename=dataset.filename,
+            analyst_model=analyst_model,
+            dataset_focus=dataset_focus,
+            result=result,
+            evidence=evidence,
+            findings=report_findings,
+            generated_at=datetime.now(timezone.utc).isoformat(),
+        )
         dataset.status = "analyzed"
         job.status = "done"
         job.progress = 100

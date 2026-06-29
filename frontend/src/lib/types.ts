@@ -334,6 +334,31 @@ export interface ClientOverview {
 
 export type DatasetStatus = "uploaded" | "analyzing" | "analyzed" | "error" | string;
 
+export interface DatasetAnalysisReport {
+  generated_at: string;
+  model: string;
+  dataset: string;
+  methodology_context: string;
+  assessment: string;
+  findings: { ref: string; title: string; category: string; severity: string | null }[];
+  found_count: number;
+  clean: boolean;
+  data_overview: {
+    rows: number | null;
+    cols: number | null;
+    columns: string[];
+    entities: Record<string, string[]>;
+  };
+  trace: {
+    parse_ok: boolean;
+    extracted: number | null;
+    dropped_empty: number | null;
+    dropped_unsupported: number | null;
+    analyst_secs: number | null;
+    model_fit_warning: string | null;
+  };
+}
+
 export interface Dataset {
   id: string;
   filename: string;
@@ -342,6 +367,7 @@ export interface Dataset {
   col_count: number;
   status: DatasetStatus;
   created_at: string;
+  analysis_notes?: DatasetAnalysisReport | null;
 }
 
 export type JobStatus = "queued" | "running" | "done" | "error" | string;

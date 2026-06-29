@@ -1,6 +1,12 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { api, ApiError, pollJob } from "../lib/api";
-import type { Dataset, DatasetPreview, Hunt, Job } from "../lib/types";
+import type {
+  Dataset,
+  DatasetAnalysisReport,
+  DatasetPreview,
+  Hunt,
+  Job,
+} from "../lib/types";
 import { useToast } from "./Toast";
 import StageFeedback from "./StageFeedback";
 import {
@@ -10,6 +16,7 @@ import {
   DatasetStatusBadge,
   EmptyState,
   fmtBytes,
+  fmtDate,
   PanelHeader,
   Spinner,
   Textarea,
@@ -55,6 +62,7 @@ export default function DatasetsPanel({
   const [errorFor, setErrorFor] = useState<string | null>(null);
   const [errorText, setErrorText] = useState<string | null>(null);
   const [errorLoading, setErrorLoading] = useState(false);
+  const [reportFor, setReportFor] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const stopRef = useRef(false);
 
@@ -595,6 +603,15 @@ export default function DatasetsPanel({
                           <td className="px-3 py-2.5 text-right font-mono text-xs text-slate-400">{fmtBytes(ds.file_size)}</td>
                           <td className="py-2.5 pl-3 text-right">
                             <div className="inline-flex gap-1.5">
+                              {ds.status === "analyzed" && ds.analysis_notes && (
+                                <Button
+                                  className="px-2 py-1 text-xs"
+                                  variant="ghost"
+                                  onClick={() => setReportFor((r) => (r === ds.id ? null : ds.id))}
+                                >
+                                  {reportFor === ds.id ? "Hide report" : "Report"}
+                                </Button>
+                              )}
                               <Button className="px-2 py-1 text-xs" variant="ghost" onClick={() => togglePreview(ds)}>
                                 {isPreview ? "Hide" : "Preview"}
                               </Button>
@@ -629,6 +646,13 @@ export default function DatasetsPanel({
                             </td>
                           </tr>
                         )}
+                        {reportFor === ds.id && ds.analysis_notes && (
+                          <tr>
+                            <td colSpan={6} className="bg-slate-950/50 px-3 py-3">
+                              <DatasetReportView report={ds.analysis_notes} />
+                            </td>
+                          </tr>
+                        )}
                         {isPreview && (
                           <tr>
                             <td colSpan={6} className="bg-slate-950/50 px-3 py-3">
@@ -651,6 +675,109 @@ export default function DatasetsPanel({
           )}
         </div>
       </Card>
+    </div>
+  );
+}
+
+function DatasetReportView({ report }: { report: DatasetAnalysisReport }) {
+  const ents = Object.entries(report.data_overview.entities || {}).filter(
+    ([, v]) => v && v.length,
+  );
+  return (
+    <div className="space-y-3 text-xs">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+          Analysis report
+        </span>
+        {report.clean ? (
+          <Badge className="border border-emerald-800 bg-emerald-950 text-emerald-300">
+            examined · no findings
+          </Badge>
+        ) : (
+          <Badge className="border border-amber-800 bg-amber-950 text-amber-300">
+            {report.found_count} finding{report.found_count === 1 ? "" : "s"}
+          </Badge>
+        )}
+        {!report.trace.parse_ok && (
+          <Badge className="border border-red-800 bg-red-950 text-red-300">parse error</Badge>
+        )}
+        <span className="ml-auto font-mono text-[10px] text-slate-500">
+          {report.model} · {fmtDate(report.generated_at)}
+        </span>
+      </div>
+
+      {report.methodology_context && (
+        <div>
+          <p className="mb-0.5 text-[10px] uppercase tracking-wide text-slate-500">
+            Methodology match — what this dataset is & what to look for
+          </p>
+          <pre className="whitespace-pre-wrap rounded border border-slate-800 bg-slate-950 p-2 font-sans text-[11px] leading-relaxed text-slate-300">
+            {report.methodology_context}
+          </pre>
+        </div>
+      )}
+
+      {report.assessment && (
+        <div>
+          <p className="mb-0.5 text-[10px] uppercase tracking-wide text-slate-500">Assessment</p>
+          <p className="rounded border border-slate-800 bg-slate-950 p-2 leading-relaxed text-slate-200">
+            {report.assessment}
+          </p>
+        </div>
+      )}
+
+      {report.findings.length > 0 && (
+        <div>
+          <p className="mb-0.5 text-[10px] uppercase tracking-wide text-slate-500">Findings produced</p>
+          <ul className="space-y-1">
+            {report.findings.map((f) => (
+              <li key={f.ref} className="flex items-center gap-2">
+                <span className="font-mono text-slate-400">{f.ref}</span>
+                <span className="text-slate-200">{f.title}</span>
+                <span className="text-[10px] text-slate-500">
+                  {f.category}
+                  {f.severity ? ` · ${f.severity}` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-x-6 gap-y-1 text-[11px] text-slate-500">
+        <span>
+          Rows: <span className="text-slate-300">{report.data_overview.rows ?? "—"}</span> · Cols:{" "}
+          <span className="text-slate-300">{report.data_overview.cols ?? "—"}</span>
+        </span>
+        {report.trace.analyst_secs != null && <span>Analysis: {report.trace.analyst_secs}s</span>}
+        {report.trace.dropped_empty ? <span>Dropped empty: {report.trace.dropped_empty}</span> : null}
+        {report.trace.dropped_unsupported ? (
+          <span>Dropped unsupported: {report.trace.dropped_unsupported}</span>
+        ) : null}
+      </div>
+
+      {ents.length > 0 && (
+        <div>
+          <p className="mb-0.5 text-[10px] uppercase tracking-wide text-slate-500">Entities seen in this dataset</p>
+          <div className="flex flex-wrap gap-1.5">
+            {ents.map(([type, vals]) => (
+              <span
+                key={type}
+                className="rounded border border-slate-800 bg-slate-950 px-2 py-0.5 text-[10px] text-slate-400"
+                title={vals.join(", ")}
+              >
+                {type}: {vals.length}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {report.trace.model_fit_warning && (
+        <p className="rounded border border-amber-900/50 bg-amber-950/30 px-2 py-1.5 text-[11px] text-amber-300">
+          ⚠ {report.trace.model_fit_warning}
+        </p>
+      )}
     </div>
   );
 }

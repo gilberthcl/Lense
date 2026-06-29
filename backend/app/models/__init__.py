@@ -203,6 +203,12 @@ class Dataset(Base):
     # correlation phase can cross-reference entities across datasets cheaply
     # (no LLM re-analysis).
     entity_index: Mapped[dict | None] = mapped_column(JSON)
+    # Detailed per-dataset analysis report, persisted after each analysis: the
+    # matched plan-of-action point + query, what was examined, what was found vs
+    # checked-clean, entities, and the model's assessment. Powers the dataset
+    # report view AND the "find which dataset" lookup (consult notes, don't
+    # re-analyze all datasets).
+    analysis_notes: Mapped[dict | None] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(30), default="uploaded")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
