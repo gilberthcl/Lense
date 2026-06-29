@@ -33,6 +33,7 @@ import type {
   Job,
   KnowledgeDoc,
   ModuleConfig,
+  LearningLog,
   ReportLang,
   Tenant,
   TrainingStats,
@@ -530,6 +531,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify(decode ? { text, decode } : { text }),
     }),
+
+  // --- Per-tenant learning log (audit trail of what taught the model) ---
+  getLearningLog: (tid: string, stage?: string) =>
+    request<LearningLog>(
+      `/api/tenants/${tid}/learning/log${stage ? `?stage=${stage}` : ""}`,
+    ),
 
   // --- Per-tenant training data (LoRA fine-tuning, Phase 1) ---
   getTrainingStats: (tid: string) =>

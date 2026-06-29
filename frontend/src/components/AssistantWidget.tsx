@@ -64,6 +64,14 @@ export default function AssistantWidget() {
   useEffect(() => { loadIdentity(); }, []);
   // Re-fetch on open so a freshly-uploaded name/icon shows without a page reload.
   useEffect(() => { if (open) loadIdentity(); }, [open]);
+  // Live-update when the icon/name is changed in Config → Models (even while the
+  // launcher is closed) — that panel dispatches this event after a save/upload.
+  useEffect(() => {
+    const onChange = () => loadIdentity();
+    window.addEventListener("sable-identity-changed", onChange);
+    return () => window.removeEventListener("sable-identity-changed", onChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight, behavior: "smooth" });

@@ -19,6 +19,10 @@ function SableConfig({ installed }: { installed: InstalledModel[] | null }) {
   // so a fresh upload isn't hidden by a previous load error.
   useEffect(() => { setIconErr(false); }, [iconV]);
 
+  // Tell the floating Sable widget to re-fetch its identity (name/icon/web) so a
+  // change here shows immediately, without a page reload.
+  const notifySable = () => window.dispatchEvent(new Event("sable-identity-changed"));
+
   useEffect(() => {
     api.sableIdentity().then((r) => {
       setName(r.name); setSavedName(r.name); setModel(r.model); setWeb(r.web);
@@ -45,6 +49,7 @@ function SableConfig({ installed }: { installed: InstalledModel[] | null }) {
     try {
       await api.updatePlatform({ assistant_name: name.trim() || "Sable" });
       setSavedName(name.trim() || "Sable");
+      notifySable();
       toast.success("Assistant name saved.");
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Save failed.");
@@ -64,6 +69,7 @@ function SableConfig({ installed }: { installed: InstalledModel[] | null }) {
     try {
       await api.uploadSableIcon(f);
       setIconV((v) => v + 1);
+      notifySable();
       toast.success("Icon updated.");
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Upload failed.");

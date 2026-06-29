@@ -814,6 +814,37 @@ export interface FindingRevisionResult {
 }
 
 // Model manager (global).
+export interface LearningEventItem {
+  id: number;
+  created_at: string;
+  stage: string;
+  source: string;
+  disposition: string | null;
+  score: number | null;
+  feedback: string | null;
+  lesson: string | null;
+  hunt_id: number | null;
+  hunt_name: string | null;
+  target_type: string | null;
+  target_id: number | null;
+}
+export interface LearningLog {
+  count: number;
+  events: LearningEventItem[];
+  summary: {
+    total: number;
+    by_stage: Record<
+      string,
+      {
+        count: number;
+        avg_score: number | null;
+        dispositions: Record<string, number>;
+        recent: unknown[];
+      }
+    >;
+  };
+}
+
 export interface CatalogModel {
   key: string;
   name: string;

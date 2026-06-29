@@ -564,6 +564,10 @@ export default function FindingsPanel({
       setFindings((prev) =>
         prev ? prev.map((f) => (f.id === finding.id ? { ...f, ...result.finding } : f)) : prev,
       );
+      // Refetch so the persisted status (e.g. accept → validated) is guaranteed to
+      // show without a manual page refresh — the optimistic merge alone could miss
+      // server-side changes (KB promotion, status transitions).
+      await load();
       toast.success(`Finding ${action}ed${score ? ` · ${score}/10` : ""}.`);
       return result.reflection;
     } catch (e) {

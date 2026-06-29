@@ -17,6 +17,7 @@ import ClientContacts from "../components/client/ClientContacts";
 import ClientCalendar from "../components/client/ClientCalendar";
 import ClientEnvironment from "../components/client/ClientEnvironment";
 import ClientSettings from "../components/client/ClientSettings";
+import ClientLearningLog from "../components/client/ClientLearningLog";
 
 const TABS = [
   { id: "overview", label: "Overview" },
@@ -25,6 +26,7 @@ const TABS = [
   { id: "environment", label: "Environment" },
   { id: "contacts", label: "Contacts" },
   { id: "calendar", label: "Calendar" },
+  { id: "learning", label: "Learning" },
   { id: "settings", label: "Settings" },
 ];
 
@@ -148,6 +150,7 @@ export default function ClientWorkspace({ moduleId }: { moduleId?: string } = {}
       {tab === "environment" && <ClientEnvironment tid={tid} />}
       {tab === "contacts" && <ClientContacts tid={tid} />}
       {tab === "calendar" && <ClientCalendar tid={tid} />}
+      {tab === "learning" && <ClientLearningLog tid={tid} />}
       {tab === "settings" && client && <ClientSettings client={client} onUpdated={setClient} />}
     </div>
   );

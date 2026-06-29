@@ -120,6 +120,45 @@ def get_contract(tenant_id: int, db: Session = Depends(get_db)):
     return FileResponse(tenant.contract_path, filename=Path(tenant.contract_path).name)
 
 
+# ── Learning log ─────────────────────────────────────────────────────────
+@router.get("/{tenant_id}/learning/log")
+def learning_log(
+    tenant_id: int,
+    stage: str | None = None,
+    limit: int = 500,
+    db: Session = Depends(get_db),
+):
+    """Per-client learning log: every action that taught this client's model,
+    newest first, with a timestamp. This is the audit trail behind 'learning
+    without retraining' — each accept/reject/partial/added finding, with its
+    score, feedback, and the distilled lesson. Tenant-scoped (isolation)."""
+    from app.services import learning  # local import avoids any cycle
+
+    _resolve(db, tenant_id)
+    events = learning.list_events(db, tenant_id, stage=stage, limit=min(limit, 1000))
+    hunt_names = {
+        h.id: h.name for h in db.query(Hunt.id, Hunt.name).filter_by(tenant_id=tenant_id)
+    }
+    items = [
+        {
+            "id": ev.id,
+            "created_at": ev.created_at,
+            "stage": ev.stage,
+            "source": ev.source,
+            "disposition": ev.disposition,
+            "score": ev.score,
+            "feedback": ev.feedback_text,
+            "lesson": ev.summary,
+            "hunt_id": ev.hunt_id,
+            "hunt_name": hunt_names.get(ev.hunt_id),
+            "target_type": ev.target_type,
+            "target_id": ev.target_id,
+        }
+        for ev in events
+    ]
+    return {"count": len(items), "events": items, "summary": learning.summarize_events(events)}
+
+
 # ── Contacts ───────────────────────────────────────────────────────────────
 @router.get("/{tenant_id}/contacts", response_model=list[ContactOut])
 def list_contacts(tenant_id: int, db: Session = Depends(get_db)):
