@@ -98,7 +98,12 @@ def confirm_in_dataset(
     return out if isinstance(out, dict) else {}
 
 
-def locate(
+# Don't model-check more than this many datasets in one locate (bounds runtime on
+# a local model). The deterministic rank puts the relevant datasets first.
+_HARD_CHECK_CAP = 20
+
+
+def locate_matches(
     db: Session,
     tenant_id: int,
     hunt_id: int,
@@ -107,27 +112,38 @@ def locate(
     model: str | None = None,
     on_progress: Callable[[str, int], None] | None = None,
 ) -> dict[str, Any]:
-    """Scan the hunt's datasets (descriptive-name priority) until the source of the
-    finding is found. Returns {dataset, evidence, ranked, checked, confidence} where
-    `dataset` is the matched ORM Dataset (or None if exhausted)."""
+    """Scan the hunt's datasets (descriptive-name priority) and collect EVERY
+    dataset that confirms the finding — a finding can span several datasets and
+    then needs correlation. Returns {matches: [{dataset, evidence, confidence,
+    rationale}], ranked, checked, note}.
+
+    Efficiency: once at least one match is found, only datasets with a deterministic
+    signal (name/entity overlap) are model-checked; with zero matches yet we keep
+    scanning everything so a poorly-named source is still found. Bounded by a hard
+    check cap."""
     def progress(msg: str, pct: int) -> None:
         if on_progress:
             on_progress(msg, pct)
 
-    datasets = (
-        db.query(Dataset).filter_by(tenant_id=tenant_id, hunt_id=hunt_id).all()
-    )
+    datasets = db.query(Dataset).filter_by(tenant_id=tenant_id, hunt_id=hunt_id).all()
     if not datasets:
-        return {"dataset": None, "evidence": None, "ranked": [], "checked": 0,
-                "confidence": None, "note": "This hunt has no datasets to scan."}
+        return {"matches": [], "ranked": [], "checked": 0,
+                "note": "This hunt has no datasets to scan."}
 
     by_id = {ds.id: ds for ds in datasets}
     ranked = rank_datasets(finding_text, candidate_meta(datasets))
     progress(f"Ranked {len(ranked)} datasets by name + entities; scanning…", 20)
 
+    matches: list[dict] = []
     checked = 0
     total = len(ranked)
     for i, cand in enumerate(ranked):
+        has_signal = cand["name_overlap"] > 0 or cand["entity_hits"] > 0
+        # Once we have a hit, spend model calls only on candidates with some signal.
+        if matches and not has_signal:
+            continue
+        if checked >= _HARD_CHECK_CAP:
+            break
         ds = by_id[cand["id"]]
         pct = 20 + int(60 * (i / max(1, total)))
         progress(f"Checking {ds.filename} ({i + 1}/{total})…", pct)
@@ -139,11 +155,10 @@ def locate(
         checked += 1
         verdict = confirm_in_dataset(ds.filename, evidence, finding_text, model=model)
         if verdict.get("present") and str(verdict.get("confidence", "")).lower() in ("medium", "high"):
-            progress(f"Found in {ds.filename} ({verdict.get('confidence')} confidence).", 85)
-            return {"dataset": ds, "evidence": evidence, "ranked": ranked,
-                    "checked": checked, "confidence": verdict.get("confidence"),
-                    "rationale": verdict.get("rationale")}
+            matches.append({"dataset": ds, "evidence": evidence,
+                            "confidence": verdict.get("confidence"),
+                            "rationale": verdict.get("rationale")})
+            progress(f"Found in {ds.filename} ({verdict.get('confidence')}). Matches: {len(matches)}.", min(84, pct + 5))
 
-    return {"dataset": None, "evidence": None, "ranked": ranked, "checked": checked,
-            "confidence": None,
-            "note": "Scanned every dataset; none clearly contained the finding."}
+    note = None if matches else "Scanned the datasets; none clearly contained the finding."
+    return {"matches": matches, "ranked": ranked, "checked": checked, "note": note}

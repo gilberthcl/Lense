@@ -69,9 +69,17 @@ export default function MissedFindingWizard({
       if (final.status === "error") {
         toast.error(final.error ?? "Could not locate the dataset.");
       } else {
-        const r = (final.result ?? {}) as { dataset_name?: string; finding_ref?: string };
+        const r = (final.result ?? {}) as {
+          datasets?: string[];
+          finding_refs?: string[];
+          correlated?: boolean;
+        };
+        const ds = r.datasets ?? [];
+        const refs = r.finding_refs ?? [];
+        const where = ds.length > 1 ? `${ds.length} datasets (${ds.join(", ")})` : ds[0] ?? "a dataset";
         toast.success(
-          `Found in ${r.dataset_name ?? "a dataset"} — added ${r.finding_ref ?? "the finding"} and learned from it.`,
+          `Found in ${where} — added ${refs.join(", ") || "the finding"} and learned from it` +
+            (r.correlated ? ", then correlated across datasets." : "."),
         );
         onAdded();
       }

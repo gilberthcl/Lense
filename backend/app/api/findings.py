@@ -451,11 +451,39 @@ def add_missed_finding(
     return {"finding": finding, "why_missed": why, "lessons": lessons}
 
 
+def _learn_from_match(db: Session, tenant_id: int, hunt_id: int, ds, evidence: dict,
+                      description: str, source: str, model: str | None) -> dict | None:
+    """Reconstruct + learn one grounded finding from a confirmed dataset (the same
+    analysis the known-dataset path runs). Returns a summary dict or None if the
+    model couldn't reconstruct a structured finding from this dataset."""
+    out = missed_finding.analyze(ds.filename, evidence, description, model=model)
+    f, why, lessons = missed_finding.parse_result(out)
+    if not f.get("title"):
+        return None
+    ref = _next_finding_seq(db, hunt_id)
+    finding = _build_finding(tenant_id, hunt_id, ds, ref, f, evidence, why=why)
+    db.add(finding)
+    db.commit()
+    db.refresh(finding)
+    doc_id = _promote_to_knowledge(db, finding)
+    db.commit()
+    if doc_id is not None:
+        knowledge.index_document_by_id(db, doc_id)
+    learning.record_event(
+        db, tenant_id=tenant_id, hunt_id=hunt_id, stage="finding",
+        source=source, target_type="finding", target_id=finding.id,
+        disposition="added", feedback_text=description,
+        summary=missed_finding.lessons_summary(why, lessons),
+    )
+    return {"ref": finding.finding_ref, "dataset": ds.filename}
+
+
 def _locate_and_learn(tenant_id: int, hunt_id: int, job_id: int, description: str,
                       model: str | None) -> None:
-    """Background worker: find which dataset the finding came from (descriptive-name
-    priority), then run the SAME learning analysis as a known dataset."""
-    from app.services import model_fit
+    """Background worker: find which dataset(s) the finding came from (descriptive-
+    name priority), reconstruct + learn from each, and — when it spans more than
+    one dataset — correlate them, just as the live pipeline would."""
+    from app.services import correlation_runner, model_fit
 
     db = SessionLocal()
     try:
@@ -466,51 +494,58 @@ def _locate_and_learn(tenant_id: int, hunt_id: int, job_id: int, description: st
             job.progress = pct
             db.commit()
 
-        res = dataset_locator.locate(
+        res = dataset_locator.locate_matches(
             db, tenant_id, hunt_id, description, model=model, on_progress=prog
         )
-        ds = res.get("dataset")
-        if ds is None:
+        matches = res.get("matches", [])
+        if not matches:
             _finish_job(db, job, error=res.get("note") or "Could not locate the dataset.")
             return
 
-        # Found — reconstruct + learn, exactly as the known-dataset path does.
-        job.current_task = f"Found in {ds.filename} — reconstructing & learning…"
-        job.progress = 90
-        db.commit()
-        evidence = res["evidence"]
-        out = missed_finding.analyze(ds.filename, evidence, description, model=model)
-        f, why, lessons = missed_finding.parse_result(out)
-        if not f.get("title"):
+        names = ", ".join(m["dataset"].filename for m in matches)
+        prog(f"Found in {len(matches)} dataset(s) ({names}) — reconstructing & learning…", 88)
+        hunt = db.get(Hunt, hunt_id)
+        source = "training_hunt" if hunt and hunt.kind == "training" else "missed_finding"
+
+        created: list[dict] = []
+        for m in matches:
+            summary = _learn_from_match(
+                db, tenant_id, hunt_id, m["dataset"], m["evidence"], description, source, model
+            )
+            if summary:
+                created.append(summary)
+
+        if not created:
             _finish_job(db, job, error=(
-                f"Located the dataset ({ds.filename}) but couldn't reconstruct a "
-                "structured finding — add more detail." + model_fit.weak_model_suffix(model)
+                "Located the dataset(s) but couldn't reconstruct a structured finding — "
+                "add more detail." + model_fit.weak_model_suffix(model)
             ))
             return
 
-        ref = _next_finding_seq(db, hunt_id)
-        finding = _build_finding(tenant_id, hunt_id, ds, ref, f, evidence, why=why)
-        db.add(finding)
-        db.commit()
-        db.refresh(finding)
+        # A finding that spans more than one dataset needs correlation — run it now
+        # so the pieces are linked into an incident/chain, same as the live pipeline.
+        correlated = False
+        if len(created) > 1:
+            prog("Correlating the findings across datasets…", 95)
+            corr = AnalysisJob(
+                tenant_id=tenant_id, hunt_id=hunt_id, phase="correlation", status="queued",
+            )
+            db.add(corr)
+            db.commit()
+            db.refresh(corr)
+            try:
+                correlation_runner.run_correlation(db, corr.id)
+                correlated = True
+            except Exception:  # noqa: BLE001 — never fail learning because of correlation
+                pass
 
-        doc_id = _promote_to_knowledge(db, finding)
-        db.commit()
-        if doc_id is not None:
-            knowledge.index_document_by_id(db, doc_id)
-        hunt = db.get(Hunt, hunt_id)
-        source = "training_hunt" if hunt and hunt.kind == "training" else "missed_finding"
-        learning.record_event(
-            db, tenant_id=tenant_id, hunt_id=hunt_id, stage="finding",
-            source=source, target_type="finding", target_id=finding.id,
-            disposition="added", feedback_text=description,
-            summary=missed_finding.lessons_summary(why, lessons),
-        )
         _finish_job(db, job, result={
-            "finding_ref": finding.finding_ref, "dataset_id": ds.id,
-            "dataset_name": ds.filename, "kind": source,
-            "confidence": res.get("confidence"), "checked": res.get("checked"),
-            "located": True,
+            "located": True, "kind": source,
+            "findings": created,
+            "finding_refs": [c["ref"] for c in created],
+            "datasets": [c["dataset"] for c in created],
+            "correlated": correlated,
+            "checked": res.get("checked"),
         })
     except Exception as exc:  # noqa: BLE001 — record any failure on the job
         db.rollback()
