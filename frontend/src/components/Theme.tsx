@@ -18,6 +18,53 @@ export const THEMES: { id: ThemeId; label: string; swatch: string }[] = [
 // (style.setProperty) so theming works regardless of any stylesheet build/cache
 // state — the Tailwind slate/indigo scales read these vars.
 type VarMap = Record<string, string>;
+
+// Semantic (status/badge) colors, also var-backed so the LIGHT theme can invert
+// them — otherwise `text-red-300` on `bg-red-950` is light-on-light. Dark themes
+// use Tailwind's palette; Daybreak uses each shade's mirror (n → 1000−n) so
+// dark-fill/light-text combos flip to light-fill/dark-text and stay readable.
+const SEMANTIC_DARK: VarMap = {
+  "--c-red-200": "254 202 202", "--c-red-300": "252 165 165", "--c-red-400": "248 113 113",
+  "--c-red-500": "239 68 68", "--c-red-700": "185 28 28", "--c-red-800": "153 27 27",
+  "--c-red-900": "127 29 29", "--c-red-950": "69 10 10",
+  "--c-rose-200": "254 205 211", "--c-rose-300": "253 164 175", "--c-rose-400": "251 113 133",
+  "--c-rose-800": "159 18 57", "--c-rose-900": "136 19 55", "--c-rose-950": "76 5 25",
+  "--c-amber-200": "253 230 138", "--c-amber-300": "252 211 77", "--c-amber-400": "251 191 36",
+  "--c-amber-500": "245 158 11", "--c-amber-800": "146 64 14", "--c-amber-900": "120 53 15",
+  "--c-amber-950": "69 26 3",
+  "--c-orange-200": "254 215 170", "--c-orange-300": "253 186 116", "--c-orange-800": "154 52 18",
+  "--c-orange-900": "124 45 18", "--c-orange-950": "67 20 7",
+  "--c-emerald-200": "167 243 208", "--c-emerald-300": "110 231 183", "--c-emerald-400": "52 211 153",
+  "--c-emerald-500": "16 185 129", "--c-emerald-700": "4 120 87", "--c-emerald-800": "6 95 70",
+  "--c-emerald-900": "6 78 59", "--c-emerald-950": "2 44 34",
+  "--c-teal-300": "94 234 212", "--c-teal-800": "17 94 89", "--c-teal-950": "4 47 46",
+  "--c-cyan-300": "103 232 249", "--c-cyan-800": "21 94 117", "--c-cyan-950": "8 51 68",
+  "--c-sky-200": "186 230 253", "--c-sky-900": "12 74 110",
+  "--c-blue-300": "147 197 253", "--c-blue-800": "30 64 175", "--c-blue-950": "23 37 84",
+  "--c-purple-300": "216 180 254", "--c-purple-800": "107 33 168", "--c-purple-950": "59 7 100",
+  "--c-violet-300": "196 181 253", "--c-violet-800": "91 33 182", "--c-violet-950": "46 16 101",
+};
+const SEMANTIC_LIGHT: VarMap = {
+  "--c-red-200": "153 27 27", "--c-red-300": "185 28 28", "--c-red-400": "220 38 38",
+  "--c-red-500": "239 68 68", "--c-red-700": "252 165 165", "--c-red-800": "254 202 202",
+  "--c-red-900": "254 226 226", "--c-red-950": "254 242 242",
+  "--c-rose-200": "159 18 57", "--c-rose-300": "190 18 60", "--c-rose-400": "225 29 72",
+  "--c-rose-800": "254 205 211", "--c-rose-900": "255 228 230", "--c-rose-950": "255 241 242",
+  "--c-amber-200": "146 64 14", "--c-amber-300": "180 83 9", "--c-amber-400": "217 119 6",
+  "--c-amber-500": "245 158 11", "--c-amber-800": "253 230 138", "--c-amber-900": "254 243 199",
+  "--c-amber-950": "255 251 235",
+  "--c-orange-200": "154 52 18", "--c-orange-300": "194 65 12", "--c-orange-800": "254 215 170",
+  "--c-orange-900": "255 237 213", "--c-orange-950": "255 247 237",
+  "--c-emerald-200": "6 95 70", "--c-emerald-300": "4 120 87", "--c-emerald-400": "5 150 105",
+  "--c-emerald-500": "16 185 129", "--c-emerald-700": "110 231 183", "--c-emerald-800": "167 243 208",
+  "--c-emerald-900": "209 250 229", "--c-emerald-950": "236 253 245",
+  "--c-teal-300": "15 118 110", "--c-teal-800": "153 246 228", "--c-teal-950": "240 253 250",
+  "--c-cyan-300": "14 116 144", "--c-cyan-800": "165 243 252", "--c-cyan-950": "236 254 255",
+  "--c-sky-200": "7 89 133", "--c-sky-900": "224 242 254",
+  "--c-blue-300": "29 78 216", "--c-blue-800": "191 219 254", "--c-blue-950": "239 246 255",
+  "--c-purple-300": "126 34 206", "--c-purple-800": "233 213 255", "--c-purple-950": "250 245 255",
+  "--c-violet-300": "109 40 217", "--c-violet-800": "221 214 254", "--c-violet-950": "245 243 255",
+};
 const THEME_VARS: Record<ThemeId, { scheme: "dark" | "light"; vars: VarMap }> = {
   midnight: {
     scheme: "dark",
@@ -32,6 +79,7 @@ const THEME_VARS: Record<ThemeId, { scheme: "dark" | "light"; vars: VarMap }> = 
       "--c-indigo-300": "165 180 252", "--c-indigo-400": "129 140 248",
       "--c-indigo-500": "99 102 241", "--c-indigo-600": "79 70 229",
       "--c-indigo-700": "67 56 202", "--scrollbar": "51 65 85",
+      ...SEMANTIC_DARK,
     },
   },
   graphite: {
@@ -47,6 +95,7 @@ const THEME_VARS: Record<ThemeId, { scheme: "dark" | "light"; vars: VarMap }> = 
       "--c-indigo-300": "94 234 212", "--c-indigo-400": "45 212 191",
       "--c-indigo-500": "20 184 166", "--c-indigo-600": "13 148 136",
       "--c-indigo-700": "15 118 110", "--scrollbar": "68 64 60",
+      ...SEMANTIC_DARK,
     },
   },
   daybreak: {
@@ -62,6 +111,7 @@ const THEME_VARS: Record<ThemeId, { scheme: "dark" | "light"; vars: VarMap }> = 
       "--c-indigo-300": "79 70 229", "--c-indigo-400": "99 102 241",
       "--c-indigo-500": "99 102 241", "--c-indigo-600": "79 70 229",
       "--c-indigo-700": "67 56 202", "--scrollbar": "203 213 225",
+      ...SEMANTIC_LIGHT,
     },
   },
 };

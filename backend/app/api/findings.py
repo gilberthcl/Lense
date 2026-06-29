@@ -458,6 +458,8 @@ def _learn_from_match(db: Session, tenant_id: int, hunt_id: int, ds, evidence: d
     model couldn't reconstruct a structured finding from this dataset — including
     when its response wasn't parseable JSON. Resilient per-dataset: one bad model
     response must NOT abort the whole multi-dataset learn."""
+    from app.services.analysis_runner import _next_finding_seq  # lazy: avoid cycle
+
     try:
         out = missed_finding.analyze(ds.filename, evidence, description, model=model)
     except ollama.OllamaError:
