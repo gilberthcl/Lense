@@ -490,7 +490,8 @@ def _locate_and_learn(tenant_id: int, hunt_id: int, job_id: int, description: st
         job = db.get(AnalysisJob, job_id)
 
         def prog(msg: str, pct: int) -> None:
-            job.current_task = msg
+            # current_task is varchar(300) — never overflow it (filenames can be long).
+            job.current_task = (msg or "")[:290]
             job.progress = pct
             db.commit()
 
@@ -502,8 +503,9 @@ def _locate_and_learn(tenant_id: int, hunt_id: int, job_id: int, description: st
             _finish_job(db, job, error=res.get("note") or "Could not locate the dataset.")
             return
 
-        names = ", ".join(m["dataset"].filename for m in matches)
-        prog(f"Found in {len(matches)} dataset(s) ({names}) — reconstructing & learning…", 88)
+        # Don't list every (long) filename in the short progress field — the full
+        # list goes in the final result. Just the count here.
+        prog(f"Found in {len(matches)} dataset(s) — reconstructing & learning…", 88)
         hunt = db.get(Hunt, hunt_id)
         source = "training_hunt" if hunt and hunt.kind == "training" else "missed_finding"
 
