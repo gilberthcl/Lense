@@ -454,9 +454,14 @@ def add_missed_finding(
 def _learn_from_match(db: Session, tenant_id: int, hunt_id: int, ds, evidence: dict,
                       description: str, source: str, model: str | None) -> dict | None:
     """Reconstruct + learn one grounded finding from a confirmed dataset (the same
-    analysis the known-dataset path runs). Returns a summary dict or None if the
-    model couldn't reconstruct a structured finding from this dataset."""
-    out = missed_finding.analyze(ds.filename, evidence, description, model=model)
+    analysis the known-dataset path runs). Returns a summary dict, or None if the
+    model couldn't reconstruct a structured finding from this dataset — including
+    when its response wasn't parseable JSON. Resilient per-dataset: one bad model
+    response must NOT abort the whole multi-dataset learn."""
+    try:
+        out = missed_finding.analyze(ds.filename, evidence, description, model=model)
+    except ollama.OllamaError:
+        return None
     f, why, lessons = missed_finding.parse_result(out)
     if not f.get("title"):
         return None

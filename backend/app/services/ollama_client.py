@@ -276,6 +276,37 @@ def embed(text: str) -> list[float]:
     return vec
 
 
+def _balanced_spans(text: str, opener: str, closer: str):
+    """Yield each top-level balanced `opener…closer` span in `text`, string-aware
+    (braces inside quoted strings don't count). Lets us recover a JSON object even
+    when a reasoning model emits a 'thinking' preamble that itself contains braces
+    — the first-{ to last-} heuristic fails on that, this doesn't."""
+    depth = 0
+    start = None
+    in_str = False
+    esc = False
+    for i, ch in enumerate(text):
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == opener:
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == closer and depth:
+            depth -= 1
+            if depth == 0 and start is not None:
+                yield text[start : i + 1]
+                start = None
+
+
 def _salvage_truncated_json(text: str) -> dict | list | None:
     """
     Recover findings from a response that was cut off mid-JSON (the model hit its
@@ -355,6 +386,20 @@ def parse_json_response(text: str) -> dict | list:
                 return json.loads(text[start : end + 1])
             except json.JSONDecodeError:
                 continue
+    # fall back: scan for a balanced, string-aware JSON span. Handles reasoning
+    # models (gpt-oss / CyberPal) that prepend a 'thinking' preamble containing
+    # braces, which the first-{/last-} heuristic above mis-spans. Prefer the
+    # LARGEST object/array (the real payload, not a stray {} in the preamble).
+    candidates = [
+        s
+        for opener, closer in (("{", "}"), ("[", "]"))
+        for s in _balanced_spans(text, opener, closer)
+    ]
+    for span in sorted(candidates, key=len, reverse=True):
+        try:
+            return json.loads(span)
+        except json.JSONDecodeError:
+            continue
     # last resort: the response was cut off mid-JSON — recover what completed.
     salvaged = _salvage_truncated_json(text)
     if salvaged is not None:
