@@ -416,6 +416,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ dataset_id: Number(dataset_id), description }),
     }),
+  // Locate which dataset a finding came from, then learn — returns a job to poll.
+  locateMissedFinding: (tid: string, hid: string, description: string) =>
+    request<Job>(`/api/tenants/${tid}/hunts/${hid}/findings/missed/locate`, {
+      method: "POST",
+      body: JSON.stringify({ description }),
+    }),
   addMissedContext: (tid: string, hid: string, fid: string, text: string) =>
     request<Finding>(`/api/tenants/${tid}/hunts/${hid}/findings/${fid}/missed-context`, {
       method: "POST",

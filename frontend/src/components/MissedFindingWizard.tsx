@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { api, ApiError } from "../lib/api";
-import type { Dataset, MissedFindingResult } from "../lib/types";
+import { api, ApiError, pollJob } from "../lib/api";
+import type { Dataset, Job, MissedFindingResult } from "../lib/types";
 import { useToast } from "./Toast";
 import { Button, Spinner, Textarea } from "./ui";
 
@@ -26,6 +26,8 @@ export default function MissedFindingWizard({
   const [datasetId, setDatasetId] = useState("");
   const [description, setDescription] = useState("");
   const [bulk, setBulk] = useState(false);
+  const [findMode, setFindMode] = useState(false);    // don't know the dataset — locate it
+  const [locating, setLocating] = useState<Job | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<MissedFindingResult | null>(null);
   const [bulkResult, setBulkResult] = useState<{ count: number; refs: string[] } | null>(null);
@@ -53,7 +55,38 @@ export default function MissedFindingWizard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submitting, bulk]);
 
+  const locate = async () => {
+    if (!description.trim()) {
+      toast.error("Describe the finding so the model can locate it.");
+      return;
+    }
+    setResult(null);
+    setBulkResult(null);
+    try {
+      const started = await api.locateMissedFinding(tid, hid, description);
+      setLocating(started);
+      const final = await pollJob(tid, hid, started.id, (j) => setLocating(j));
+      if (final.status === "error") {
+        toast.error(final.error ?? "Could not locate the dataset.");
+      } else {
+        const r = (final.result ?? {}) as { dataset_name?: string; finding_ref?: string };
+        toast.success(
+          `Found in ${r.dataset_name ?? "a dataset"} — added ${r.finding_ref ?? "the finding"} and learned from it.`,
+        );
+        onAdded();
+      }
+    } catch (e) {
+      toast.error((e as ApiError).message);
+    } finally {
+      setLocating(null);
+    }
+  };
+
   const submit = async () => {
+    if (findMode && !bulk) {
+      void locate();
+      return;
+    }
     if (!datasetId || !description.trim()) {
       toast.error("Pick the dataset and describe the finding.");
       return;
@@ -100,6 +133,7 @@ export default function MissedFindingWizard({
     setResult(null);
     setBulkResult(null);
     setContext("");
+    setFindMode(false);
   };
 
   if (!open) {
@@ -124,28 +158,43 @@ export default function MissedFindingWizard({
       </div>
 
       <div className="space-y-2">
-        <label className="block text-xs text-slate-400">
-          Dataset it was found in
-          <select
-            value={datasetId}
-            onChange={(e) => setDatasetId(e.target.value)}
-            className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
-          >
-            <option value="">Select a dataset…</option>
-            {datasets.map((d) => (
-              <option key={d.id} value={d.id}>{d.filename}</option>
-            ))}
-          </select>
-        </label>
-        <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-400">
-          <input
-            type="checkbox"
-            checked={bulk}
-            onChange={(e) => setBulk(e.target.checked)}
-            className="h-3.5 w-3.5 accent-indigo-500"
-          />
-          Bulk paste — multiple findings (e.g. a whole report)
-        </label>
+        {!findMode && (
+          <label className="block text-xs text-slate-400">
+            Dataset it was found in
+            <select
+              value={datasetId}
+              onChange={(e) => setDatasetId(e.target.value)}
+              className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+            >
+              <option value="">Select a dataset…</option>
+              {datasets.map((d) => (
+                <option key={d.id} value={d.id}>{d.filename}</option>
+              ))}
+            </select>
+          </label>
+        )}
+        {!bulk && (
+          <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-400">
+            <input
+              type="checkbox"
+              checked={findMode}
+              onChange={(e) => setFindMode(e.target.checked)}
+              className="h-3.5 w-3.5 accent-indigo-500"
+            />
+            I don't know which dataset — find it for me (scans by name first, then content)
+          </label>
+        )}
+        {!findMode && (
+          <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-400">
+            <input
+              type="checkbox"
+              checked={bulk}
+              onChange={(e) => setBulk(e.target.checked)}
+              className="h-3.5 w-3.5 accent-indigo-500"
+            />
+            Bulk paste — multiple findings (e.g. a whole report)
+          </label>
+        )}
         <Textarea
           rows={bulk ? 8 : 4}
           value={description}
@@ -156,9 +205,29 @@ export default function MissedFindingWizard({
               : "Describe the finding you found manually — what it is, the hosts/users/values involved, and why it matters."
           }
         />
-        <Button variant="primary" disabled={submitting} onClick={submit}>
-          {submitting ? <Spinner /> : bulk ? "Extract & import all" : "Analyse & add"}
+        <Button variant="primary" disabled={submitting || !!locating} onClick={submit}>
+          {submitting || locating ? (
+            <Spinner />
+          ) : findMode ? (
+            "Find dataset, analyse & learn"
+          ) : bulk ? (
+            "Extract & import all"
+          ) : (
+            "Analyse & add"
+          )}
         </Button>
+
+        {locating && (
+          <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+            <div className="flex items-center gap-2 text-xs text-slate-300">
+              <Spinner /> {locating.current_task ?? "Locating the dataset…"}
+            </div>
+            <p className="mt-1 text-[11px] text-slate-600">
+              Scanning datasets — descriptive names are checked first, then content — until the
+              one containing this finding is found. Then it learns from it, just like a known dataset.
+            </p>
+          </div>
+        )}
 
         {submitting && (
           <div className="rounded border border-slate-800 bg-slate-950/60 p-3">

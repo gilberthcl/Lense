@@ -11,12 +11,13 @@ from app.models import AnalysisJob, Dataset, Finding, Hunt, KnowledgeDocument, T
 from app.schemas import (
     FindingBulkUpdate, FindingDisposition, FindingDispositionResult, FindingOut,
     FindingRegenerate, FindingRevisionResult, FindingStatusUpdate,
-    ImportFindingsCreate, ImportFindingsResult, LearningNote, MissedFindingCreate,
-    MissedFindingResult,
+    ImportFindingsCreate, ImportFindingsResult, JobOut, LearningNote,
+    MissedFindingCreate, MissedLocateCreate, MissedFindingResult,
 )
 from app.services import (
-    categories, csv_loader, finding_details, finding_feedback, findings_export,
-    knowledge, learning, missed_finding, tenant_models, training_import,
+    categories, csv_loader, dataset_locator, finding_details, finding_feedback,
+    findings_export, knowledge, learning, missed_finding, tenant_models,
+    training_import,
 )
 from app.services import ollama_client as ollama
 
@@ -448,6 +449,96 @@ def add_missed_finding(
     )
     _finish_job(db, job, result={"finding_ref": finding.finding_ref, "kind": source})
     return {"finding": finding, "why_missed": why, "lessons": lessons}
+
+
+def _locate_and_learn(tenant_id: int, hunt_id: int, job_id: int, description: str,
+                      model: str | None) -> None:
+    """Background worker: find which dataset the finding came from (descriptive-name
+    priority), then run the SAME learning analysis as a known dataset."""
+    from app.services import model_fit
+
+    db = SessionLocal()
+    try:
+        job = db.get(AnalysisJob, job_id)
+
+        def prog(msg: str, pct: int) -> None:
+            job.current_task = msg
+            job.progress = pct
+            db.commit()
+
+        res = dataset_locator.locate(
+            db, tenant_id, hunt_id, description, model=model, on_progress=prog
+        )
+        ds = res.get("dataset")
+        if ds is None:
+            _finish_job(db, job, error=res.get("note") or "Could not locate the dataset.")
+            return
+
+        # Found — reconstruct + learn, exactly as the known-dataset path does.
+        job.current_task = f"Found in {ds.filename} — reconstructing & learning…"
+        job.progress = 90
+        db.commit()
+        evidence = res["evidence"]
+        out = missed_finding.analyze(ds.filename, evidence, description, model=model)
+        f, why, lessons = missed_finding.parse_result(out)
+        if not f.get("title"):
+            _finish_job(db, job, error=(
+                f"Located the dataset ({ds.filename}) but couldn't reconstruct a "
+                "structured finding — add more detail." + model_fit.weak_model_suffix(model)
+            ))
+            return
+
+        ref = _next_finding_seq(db, hunt_id)
+        finding = _build_finding(tenant_id, hunt_id, ds, ref, f, evidence, why=why)
+        db.add(finding)
+        db.commit()
+        db.refresh(finding)
+
+        doc_id = _promote_to_knowledge(db, finding)
+        db.commit()
+        if doc_id is not None:
+            knowledge.index_document_by_id(db, doc_id)
+        hunt = db.get(Hunt, hunt_id)
+        source = "training_hunt" if hunt and hunt.kind == "training" else "missed_finding"
+        learning.record_event(
+            db, tenant_id=tenant_id, hunt_id=hunt_id, stage="finding",
+            source=source, target_type="finding", target_id=finding.id,
+            disposition="added", feedback_text=description,
+            summary=missed_finding.lessons_summary(why, lessons),
+        )
+        _finish_job(db, job, result={
+            "finding_ref": finding.finding_ref, "dataset_id": ds.id,
+            "dataset_name": ds.filename, "kind": source,
+            "confidence": res.get("confidence"), "checked": res.get("checked"),
+            "located": True,
+        })
+    except Exception as exc:  # noqa: BLE001 — record any failure on the job
+        db.rollback()
+        job = db.get(AnalysisJob, job_id)
+        if job:
+            _finish_job(db, job, error=str(exc))
+    finally:
+        db.close()
+
+
+@router.post("/missed/locate", response_model=JobOut, status_code=202)
+def locate_missed_finding(
+    hunt_id: int,
+    payload: MissedLocateCreate,
+    background: BackgroundTasks,
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+):
+    """Find which dataset an offline finding came from (the analyst doesn't know),
+    then learn from it. Runs in the background (it may scan several datasets);
+    poll the returned job. Datasets are ranked by descriptive filename first, then
+    entity overlap, and checked in that order until the source is found."""
+    if not payload.description.strip():
+        raise HTTPException(status_code=422, detail="Describe the finding to locate it.")
+    model = tenant_models.resolve_analyst_model(db, tenant.id)
+    job = _new_learning_job(db, tenant.id, hunt_id, model, "Locating the dataset for the finding…")
+    background.add_task(_locate_and_learn, tenant.id, hunt_id, job.id, payload.description, model)
+    return job
 
 
 @router.post("/{finding_id}/missed-context", response_model=FindingOut)

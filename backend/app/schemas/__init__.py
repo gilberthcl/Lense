@@ -298,6 +298,10 @@ class MissedFindingCreate(BaseModel):
     description: str           # the finding the analyst found manually (free text)
 
 
+class MissedLocateCreate(BaseModel):
+    description: str           # the finding; the model finds which dataset it came from
+
+
 class MissedFindingResult(BaseModel):
     finding: FindingOut
     why_missed: str | None = None

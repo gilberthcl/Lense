@@ -802,6 +802,34 @@ Return STRICTLY this JSON:
 """
 
 
+# ── Dataset locator (find which dataset an offline finding came from) ───────
+LOCATE_SYSTEM = """\
+You are a threat hunter checking whether a specific finding an analyst described
+is OBSERVABLE in ONE candidate dataset, judging ONLY by the evidence provided.
+Be strict: say it is present only if the dataset's evidence actually supports the
+described finding (matching entities, fields, or behaviour). Never assume.
+
+{guardrails}
+"""
+
+LOCATE_PROMPT = """\
+CANDIDATE DATASET: {dataset_name}
+DATASET EVIDENCE:
+{evidence_json}
+
+ANALYST'S DESCRIBED FINDING (which dataset did it come from?):
+{description}
+
+Decide whether THIS dataset is where that finding would be observed. Return
+STRICTLY this JSON:
+{{
+  "present": true|false,
+  "confidence": "low|medium|high",
+  "rationale": "<one sentence: which evidence supports or rules it out>"
+}}
+"""
+
+
 # ── Training-hunt batch import (W3 slice 2) ─────────────────────────────────
 # The analyst pastes one or more ALREADY-REPORTED findings (e.g. from a historic
 # report) for a dataset. Structure EACH into the canonical shape, grounded in the
