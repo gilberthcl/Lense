@@ -22,7 +22,7 @@ from app.models import (
 from app.services import (
     categories, config_store, correlation_runner, csv_loader, dataset_report,
     enrichment, finding_details, findings_engine, global_config, jobs, knowledge,
-    methodology, methodology_parser,
+    methodology, methodology_parser, tenant_models,
 )
 from app.services import ollama_client as ollama
 
@@ -406,7 +406,6 @@ def run_dataset_analysis(db: Session, job_id: int) -> None:
         ai = global_config.current_ai()
         # Route the extractor to this tenant's active fine-tuned model if it has
         # one (Phase 3); None → the global default, unchanged.
-        from app.services import tenant_models  # lazy: avoid import cycle
         analyst_model = tenant_models.resolve_analyst_model(db, job.tenant_id)
         result = findings_engine.analyze_dataset(
             on_stage=_stage,
