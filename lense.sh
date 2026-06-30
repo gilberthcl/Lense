@@ -544,7 +544,7 @@ case "${1:-start}" in
   train)   cmd_train "$@" ;;
   start)   cmd_start ;;
   up)      cmd_up ;;
-  fresh)   rm -rf "$FRONTEND/node_modules/.vite" && ok "cleared Vite cache"; cmd_start ;;
+  fresh)   cmd_stop; sleep 1; rm -rf "$FRONTEND/node_modules/.vite" && ok "cleared Vite cache"; cmd_start ;;
   stop)    cmd_stop "${2:-}" ;;
   restart) cmd_stop "${2:-}"; sleep 1; cmd_start ;;
   status)  cmd_status ;;

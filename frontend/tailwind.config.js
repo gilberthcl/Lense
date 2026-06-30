@@ -12,7 +12,10 @@ const slate = Object.fromEntries(
   ]),
 );
 const indigo = Object.fromEntries(
-  [100, 200, 300, 400, 500, 600, 700].map((n) => [n, v(`--c-indigo-${n}`)]),
+  [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950].map((n) => [
+    n,
+    v(`--c-indigo-${n}`),
+  ]),
 );
 
 // Semantic (status/badge) colors are ALSO var-backed so the light theme can
