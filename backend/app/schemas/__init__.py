@@ -302,6 +302,13 @@ class MissedLocateCreate(BaseModel):
     description: str           # the finding; the model finds which dataset it came from
 
 
+class LearnFromFindingCreate(BaseModel):
+    # Learn the detection logic behind an existing (historical) ground-truth finding.
+    # The finding is never modified. Either pass the dataset, or ask the model to find it.
+    dataset_id: int | None = None
+    find_dataset: bool = False
+
+
 class MissedFindingResult(BaseModel):
     finding: FindingOut
     why_missed: str | None = None

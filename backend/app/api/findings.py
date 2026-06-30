@@ -11,8 +11,8 @@ from app.models import AnalysisJob, Dataset, Finding, Hunt, KnowledgeDocument, T
 from app.schemas import (
     FindingBulkUpdate, FindingDisposition, FindingDispositionResult, FindingOut,
     FindingRegenerate, FindingRevisionResult, FindingStatusUpdate,
-    ImportFindingsCreate, ImportFindingsResult, JobOut, LearningNote,
-    MissedFindingCreate, MissedLocateCreate, MissedFindingResult,
+    ImportFindingsCreate, ImportFindingsResult, JobOut, LearnFromFindingCreate,
+    LearningNote, MissedFindingCreate, MissedLocateCreate, MissedFindingResult,
 )
 from app.services import (
     categories, csv_loader, dataset_locator, finding_details, finding_feedback,
@@ -567,6 +567,123 @@ def locate_missed_finding(
     model = tenant_models.resolve_analyst_model(db, tenant.id)
     job = _new_learning_job(db, tenant.id, hunt_id, model, "Locating the dataset for the finding…")
     background.add_task(_locate_and_learn, tenant.id, hunt_id, job.id, payload.description, model)
+    return job
+
+
+def _learn_from_existing_finding(tenant_id: int, hunt_id: int, finding_id: int, job_id: int,
+                                 dataset_id: int | None, find_dataset: bool,
+                                 model: str | None) -> None:
+    """Background worker: learn the DETECTION LOGIC behind a historical ground-truth
+    finding by analyzing it against its dataset. The finding is NEVER created or
+    modified — only a learning signal is recorded (this is a training hunt)."""
+    from app.services import model_fit
+
+    db = SessionLocal()
+    try:
+        job = db.get(AnalysisJob, job_id)
+
+        def prog(msg: str, pct: int) -> None:
+            job.current_task = (msg or "")[:290]
+            job.progress = pct
+            db.commit()
+
+        finding = db.get(Finding, finding_id)
+        if finding is None:
+            _finish_job(db, job, error="Finding not found.")
+            return
+        description = "\n".join(
+            p for p in (finding.title, finding.summary, finding.reviewer_notes) if p
+        )[:4000]
+
+        also_in: list[str] = []
+        if dataset_id:
+            prog("Loading the dataset…", 40)
+            dataset = db.get(Dataset, dataset_id)
+            if not dataset or dataset.tenant_id != tenant_id or dataset.hunt_id != hunt_id:
+                _finish_job(db, job, error="Dataset not found.")
+                return
+            try:
+                df = csv_loader.load_csv(dataset.file_path, settings.max_upload_bytes)
+                evidence = csv_loader.build_evidence_package(df, sample_rows=12)
+            except Exception as exc:  # noqa: BLE001
+                _finish_job(db, job, error=f"Dataset file unavailable ({exc}).")
+                return
+        elif find_dataset:
+            res = dataset_locator.locate_matches(
+                db, tenant_id, hunt_id, description, model=model, on_progress=prog
+            )
+            matches = res.get("matches", [])
+            if not matches:
+                _finish_job(db, job, error=res.get("note") or
+                            "Could not locate the dataset for this finding.")
+                return
+            best = matches[0]
+            dataset, evidence = best["dataset"], best["evidence"]
+            also_in = [m["dataset"].filename for m in matches[1:]]
+        else:
+            _finish_job(db, job, error="Pick the dataset or enable 'find the dataset'.")
+            return
+
+        prog(f"Analyzing {finding.finding_ref} against {dataset.filename} — learning the logic…", 90)
+        try:
+            out = missed_finding.analyze(dataset.filename, evidence, description, model=model)
+        except ollama.OllamaError as exc:
+            _finish_job(db, job, error=f"Analysis failed: {exc}" + model_fit.weak_model_suffix(model))
+            return
+        _, why, lessons = missed_finding.parse_result(out)
+        if not (why or lessons):
+            _finish_job(db, job, error=(
+                "The model couldn't extract the detection logic from this dataset."
+                + model_fit.weak_model_suffix(model)
+            ))
+            return
+
+        # Record learning ONLY — the historical finding stays untouched.
+        summary = missed_finding.lessons_summary(why, lessons) or f"Learned logic for {finding.finding_ref}"
+        learning.record_event(
+            db, tenant_id=tenant_id, hunt_id=hunt_id, stage="finding",
+            source="training_hunt", target_type="finding", target_id=finding.id,
+            disposition="added", feedback_text=description, summary=summary,
+        )
+        _finish_job(db, job, result={
+            "learned": True, "finding_ref": finding.finding_ref,
+            "dataset": dataset.filename, "also_in": also_in,
+            "why": why, "lessons": lessons,
+        })
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        job = db.get(AnalysisJob, job_id)
+        if job:
+            _finish_job(db, job, error=str(exc))
+    finally:
+        db.close()
+
+
+@router.post("/{finding_id}/learn", response_model=JobOut, status_code=202)
+def learn_from_finding(
+    hunt_id: int,
+    finding_id: int,
+    payload: LearnFromFindingCreate,
+    background: BackgroundTasks,
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+):
+    """Learn the detection logic behind a HISTORICAL ground-truth finding (training
+    hunt): analyze it against its dataset and record the learning. The finding is
+    never modified. Either pass `dataset_id`, or set `find_dataset` to have the
+    model locate it (descriptive-name priority). Runs in the background — poll the
+    returned job."""
+    finding = _resolve_finding(db, tenant.id, hunt_id, finding_id)
+    if not (payload.dataset_id or payload.find_dataset):
+        raise HTTPException(status_code=422, detail="Pick the dataset, or enable 'find the dataset'.")
+    model = tenant_models.resolve_analyst_model(db, tenant.id)
+    job = _new_learning_job(
+        db, tenant.id, hunt_id, model, f"Learning the logic behind {finding.finding_ref}…"
+    )
+    background.add_task(
+        _learn_from_existing_finding, tenant.id, hunt_id, finding.id, job.id,
+        payload.dataset_id, payload.find_dataset, model,
+    )
     return job
 
 
