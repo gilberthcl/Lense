@@ -153,7 +153,8 @@ async def create_hunt_from_report(
         objective=(parsed["sections"].get("Executive Summary") or "")[:2000] or None,
         methodology_text=methodology_text or None,
         report_language=report_language or "English",
-        edr=edr, siem=siem, kind="training",
+        # EDR/SIEM inherited from the client profile (the form no longer asks).
+        edr=tenant.edr_platform, siem=tenant.siem_platform, kind="training",
     )
     db.add(hunt)
     db.commit()
