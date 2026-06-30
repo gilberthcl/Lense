@@ -1,10 +1,12 @@
 import { Fragment, useEffect, useState } from "react";
-import { api, ApiError } from "../lib/api";
+import { api, ApiError, pollJob } from "../lib/api";
 import type {
+  Dataset,
   DispositionReflection,
   Finding,
   FindingRevisionResult,
   FindingStatus,
+  Hunt,
 } from "../lib/types";
 import { useToast } from "./Toast";
 import MissedFindingWizard from "./MissedFindingWizard";
@@ -109,6 +111,10 @@ function FindingDetail({
   onRegenerate,
   onDelete,
   patching,
+  groundTruth = false,
+  datasets = [],
+  learning = false,
+  onLearn,
 }: {
   finding: Finding;
   onPatch: (body: PatchBody) => void;
@@ -120,7 +126,13 @@ function FindingDetail({
   onRegenerate: (feedback: string) => Promise<FindingRevisionResult | null>;
   onDelete: () => void;
   patching: boolean;
+  groundTruth?: boolean;
+  datasets?: Dataset[];
+  learning?: boolean;
+  onLearn?: (datasetId: string | null, findDataset: boolean) => void;
 }) {
+  const [learnDataset, setLearnDataset] = useState("");
+  const [learnFind, setLearnFind] = useState(false);
   const [notes, setNotes] = useState(finding.reviewer_notes ?? "");
   const notesDirty = notes !== (finding.reviewer_notes ?? "");
   const [mode, setMode] = useState<"accept" | "partial" | "reject" | null>(null);
@@ -257,9 +269,56 @@ function FindingDetail({
         </div>
       </Field>
 
+      {/* Ground-truth (historical) finding: never accept/reject/regenerate — only
+          learn the detection logic from it (the finding is not modified). */}
+      {groundTruth && (
+        <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Learn the detection logic
+            </span>
+            <span className="text-[11px] text-slate-500">historical finding — never modified</span>
+          </div>
+          <p className="mb-2 text-[11px] text-slate-500">
+            The model analyzes this finding against its dataset and learns the logic behind how it
+            was identified. Tell it where the finding was observed, or let it find the dataset.
+          </p>
+          <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-400">
+            <input
+              type="checkbox"
+              checked={learnFind}
+              onChange={(e) => setLearnFind(e.target.checked)}
+              className="h-3.5 w-3.5 accent-indigo-500"
+            />
+            I don't know the dataset — find it for me
+          </label>
+          {!learnFind && (
+            <select
+              value={learnDataset}
+              onChange={(e) => setLearnDataset(e.target.value)}
+              className="mt-2 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+            >
+              <option value="">Select the dataset where it was identified…</option>
+              {datasets.map((d) => (
+                <option key={d.id} value={d.id}>{d.filename}</option>
+              ))}
+            </select>
+          )}
+          <Button
+            variant="primary"
+            className="mt-2"
+            disabled={learning || (!learnFind && !learnDataset)}
+            onClick={() => onLearn?.(learnFind ? null : learnDataset, learnFind)}
+          >
+            {learning ? <Spinner /> : "Analyze & learn"}
+          </Button>
+        </div>
+      )}
+
       {/* Disposition (W1): every action teaches the model — feedback + 1–10 score.
           Accept/reject record the verdict; partial rewrites the finding and lets
           you iterate until it's right, then accept. */}
+      {!groundTruth && (
       <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
         <div className="mb-2 flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Disposition</span>
@@ -407,6 +466,7 @@ function FindingDetail({
 
         {revision && <RevisionResultPanel revision={revision} onDismiss={() => setRevision(null)} />}
       </div>
+      )}
     </div>
   );
 }
@@ -489,28 +549,52 @@ export default function FindingsPanel({
   tid,
   hid,
   reloadKey,
+  hunt,
 }: {
   tid: string;
   hid: string;
   reloadKey: number;
+  hunt?: Hunt | null;
 }) {
   const toast = useToast();
+  const isTraining = hunt?.kind === "training";
   const [findings, setFindings] = useState<Finding[] | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [patchingId, setPatchingId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [showMerged, setShowMerged] = useState(false);
+  const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [learningId, setLearningId] = useState<string | null>(null);
+
+  // Training hunts only: load the datasets so a ground-truth finding can be learned
+  // against a chosen one.
+  useEffect(() => {
+    if (!isTraining) return;
+    api.listDatasets(tid, hid).then(setDatasets).catch(() => setDatasets([]));
+  }, [tid, hid, isTraining, reloadKey]);
+
+  // A historical ground-truth finding (loaded from a report / imported / added):
+  // never accept/reject — only learn from it.
+  const isGroundTruth = (f: Finding) => isTraining && f.disposition === "added";
 
   // After correlation, merged findings are folded into their survivor. Hide them
   // by default so this tab shows the curated, post-correlation list.
   const mergedCount = (findings ?? []).filter((f) => f.merged_into_id != null).length;
-  const visible =
+  const visibleBase =
     findings === null
       ? null
       : showMerged
         ? findings
         : findings.filter((f) => f.merged_into_id == null);
+  // On training hunts, show the historical ground-truth findings first, then the
+  // model's complementary findings, so the two groups read as separate sections.
+  const visible =
+    visibleBase && isTraining
+      ? [...visibleBase].sort(
+          (a, b) => (isGroundTruth(b) ? 1 : 0) - (isGroundTruth(a) ? 1 : 0),
+        )
+      : visibleBase;
 
   const load = () =>
     api
@@ -596,6 +680,29 @@ export default function FindingsPanel({
       return null;
     } finally {
       setPatchingId(null);
+    }
+  };
+
+  const onLearn = async (finding: Finding, datasetId: string | null, findDataset: boolean) => {
+    setLearningId(finding.id);
+    try {
+      const job = await api.learnFromFinding(tid, hid, finding.id, {
+        dataset_id: datasetId ? Number(datasetId) : null,
+        find_dataset: findDataset,
+      });
+      const final = await pollJob(tid, hid, job.id, () => {});
+      if (final.status === "error") {
+        toast.error(final.error ?? "Could not learn from this finding.");
+      } else {
+        const r = (final.result ?? {}) as { dataset?: string };
+        toast.success(
+          `Learned the detection logic for ${finding.finding_ref} from ${r.dataset ?? "the dataset"}.`,
+        );
+      }
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Learn failed.");
+    } finally {
+      setLearningId(null);
     }
   };
 
@@ -740,10 +847,24 @@ export default function FindingsPanel({
                 </tr>
               </thead>
               <tbody>
-                {(visible ?? []).map((f) => {
+                {(visible ?? []).map((f, idx) => {
                   const open = expanded === f.id;
+                  const gt = isGroundTruth(f);
+                  // Section header rows (training hunts): one above the first
+                  // ground-truth finding and one above the first complementary.
+                  const prevGt = idx > 0 ? isGroundTruth((visible ?? [])[idx - 1]) : null;
+                  const header = isTraining && (idx === 0 || prevGt !== gt) ? (
+                    <tr className="bg-slate-950/60">
+                      <td colSpan={7} className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                        {gt
+                          ? "Ground truth — historical findings (learn from these)"
+                          : "Complementary findings — generated by the model"}
+                      </td>
+                    </tr>
+                  ) : null;
                   return (
                     <Fragment key={f.id}>
+                      {header}
                       <tr
                         onClick={() => setExpanded(open ? null : f.id)}
                         className={`cursor-pointer border-b border-slate-900 transition-colors hover:bg-slate-800/40 ${
@@ -806,6 +927,10 @@ export default function FindingsPanel({
                               onDispose={(action, feedback, score) => onDispose(f, action, feedback, score)}
                               onRegenerate={(feedback) => onRegenerate(f, feedback)}
                               onDelete={() => onDelete(f)}
+                              groundTruth={isGroundTruth(f)}
+                              datasets={datasets}
+                              learning={learningId === f.id}
+                              onLearn={(datasetId, findDataset) => onLearn(f, datasetId, findDataset)}
                             />
                           </td>
                         </tr>

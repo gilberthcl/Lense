@@ -143,7 +143,8 @@ export default function HuntView() {
           { id: "datasets", label: "Datasets" },
           { id: "findings", label: "Findings" },
           { id: "correlations", label: "Correlations" },
-          { id: "qa", label: "QA" },
+          // QA is a live-deliverable step — not part of the training/learning loop.
+          ...(hunt?.kind === "training" ? [] : [{ id: "qa", label: "QA" }]),
           // Training hunts get a learning tab — the model's "what I learned" review.
           ...(hunt?.kind === "training" ? [{ id: "learning", label: "Learning" }] : []),
         ]}
@@ -163,7 +164,7 @@ export default function HuntView() {
           onAnalysisComplete={() => setFindingsKey((k) => k + 1)}
         />
       )}
-      {tab === "findings" && <FindingsPanel tid={tid} hid={hid} reloadKey={findingsKey} />}
+      {tab === "findings" && <FindingsPanel tid={tid} hid={hid} reloadKey={findingsKey} hunt={hunt} />}
       {tab === "correlations" && (
         <CorrelationsPanel tid={tid} hid={hid} reloadKey={findingsKey} hunt={hunt} onRefresh={loadHunt} />
       )}

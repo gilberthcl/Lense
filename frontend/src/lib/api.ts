@@ -446,6 +446,21 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ description }),
     }),
+  // Learn the detection logic behind a historical ground-truth finding (training
+  // hunt). The finding is never modified — returns a job to poll.
+  learnFromFinding: (
+    tid: string,
+    hid: string,
+    fid: string,
+    opts: { dataset_id?: number | null; find_dataset?: boolean },
+  ) =>
+    request<Job>(`/api/tenants/${tid}/hunts/${hid}/findings/${fid}/learn`, {
+      method: "POST",
+      body: JSON.stringify({
+        dataset_id: opts.dataset_id ?? null,
+        find_dataset: !!opts.find_dataset,
+      }),
+    }),
   addMissedContext: (tid: string, hid: string, fid: string, text: string) =>
     request<Finding>(`/api/tenants/${tid}/hunts/${hid}/findings/${fid}/missed-context`, {
       method: "POST",
