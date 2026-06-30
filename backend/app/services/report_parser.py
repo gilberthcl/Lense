@@ -161,8 +161,10 @@ def _heuristic_findings(blocks: list[dict]) -> list[dict]:
     appear BEFORE the methodology section as the findings (in these reports the
     findings always sit between the summary/actions and the methodology). Robust
     to whatever sub-heading level the report uses (H2 or H3)."""
-    # Where does the methodology (or, failing that, the first appendix) start?
-    limit = len(blocks)
+    # Anchor on the methodology (or first appendix) heading: findings sit BEFORE it.
+    # If the report has no such boundary, don't guess — return nothing rather than
+    # mistake a stray subsection for a finding.
+    limit = None
     for i, b in enumerate(blocks):
         if b["kind"] == "p" and b["level"] is not None and b["text"] and (
             any(w in b["text"].lower() for w in _METHODOLOGY_WORDS)
@@ -171,6 +173,8 @@ def _heuristic_findings(blocks: list[dict]) -> list[dict]:
         ):
             limit = i
             break
+    if limit is None:
+        return []
 
     cand = [
         (i, b) for i, b in enumerate(blocks[:limit])
