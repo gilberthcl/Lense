@@ -60,6 +60,34 @@ def test_findings_outside_a_findings_section_are_not_captured():
     assert r["findings"] == []  # nothing mis-detected as a finding
 
 
+def test_findings_with_no_named_section_before_methodology():
+    # Spanish-style report: no "Findings"/"Hallazgos" heading — the findings are
+    # bare sub-headings between Actions and Methodology.
+    d = Document()
+    d.add_heading("Resumen Ejecutivo", level=1)
+    d.add_paragraph("Resumen del hunt.")
+    d.add_heading("Acciones y Recomendaciones", level=1)
+    d.add_paragraph("Tabla de acciones.")
+    d.add_heading("Desactivación Masiva del Firewall de Windows", level=3)
+    d.add_paragraph("Se modificó el registro para desactivar el firewall.")
+    d.add_heading("mstsc.exe ejecutado desde PowerShell", level=3)
+    d.add_paragraph("Pivoteo RDP automatizado observado.")
+    d.add_heading("Metodología", level=1)
+    d.add_heading("Plan de Acción", level=2)
+    d.add_paragraph("plan...")
+    buf = io.BytesIO()
+    d.save(buf)
+    r = report_parser.parse_report_docx(buf.getvalue())
+    titles = [f["title"] for f in r["findings"]]
+    assert titles == [
+        "Desactivación Masiva del Firewall de Windows",
+        "mstsc.exe ejecutado desde PowerShell",
+    ]
+    # "Plan de Acción" (boilerplate, after Methodology) must NOT be a finding.
+    assert "Plan de Acción" not in titles
+    assert "Metodología" in r["methodology_text"]
+
+
 def test_empty_doc_is_safe():
     d = Document()
     buf = io.BytesIO()

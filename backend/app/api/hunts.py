@@ -125,14 +125,17 @@ async def create_hunt_from_report(
         raise HTTPException(status_code=422, detail=f"Could not parse the report: {exc}") from exc
 
     if not parsed["findings"]:
-        found = ", ".join(parsed["section_names"][:12]) or "none"
+        # Dump the heading structure so a format mismatch is diagnosable at a glance.
+        hmap = "; ".join(
+            f"H{h['level']}:{h['text'][:50]}" for h in parsed.get("headings", [])[:25]
+        ) or "no headings detected"
         raise HTTPException(
             status_code=422,
             detail=(
-                "No findings could be parsed from the report. I look for a section "
-                "whose heading contains 'Findings', with each finding as a heading "
-                f"under it. Sections I detected: [{found}]. If your findings use a "
-                "different layout, tell me and I'll adapt the parser."
+                "No findings could be parsed. I look for a Findings/Hallazgos section "
+                "with each finding as a heading under it. Headings I detected — "
+                f"[{hmap}]. If the findings sit elsewhere, share this and I'll adapt "
+                "the parser."
             ),
         )
 
