@@ -59,8 +59,10 @@ def create_hunt(
         objective=payload.objective,
         methodology_text=methodology,
         report_language=payload.report_language or "English",
-        edr=payload.edr,
-        siem=payload.siem,
+        # EDR/SIEM are defined on the client profile — inherit them; the hunt form
+        # no longer asks. (An explicit per-hunt override is still honoured.)
+        edr=payload.edr or tenant.edr_platform,
+        siem=payload.siem or tenant.siem_platform,
         kind="training" if payload.kind == "training" else "live",
     )
     db.add(hunt)
@@ -107,8 +109,6 @@ async def create_hunt_from_report(
     report: UploadFile = File(...),
     methodology: UploadFile | None = File(None),
     name: str | None = Form(None),
-    edr: str | None = Form(None),
-    siem: str | None = Form(None),
     report_language: str = Form("English"),
     tenant: Tenant = Depends(get_tenant),
     db: Session = Depends(get_db),
@@ -125,10 +125,15 @@ async def create_hunt_from_report(
         raise HTTPException(status_code=422, detail=f"Could not parse the report: {exc}") from exc
 
     if not parsed["findings"]:
+        found = ", ".join(parsed["section_names"][:12]) or "none"
         raise HTTPException(
             status_code=422,
-            detail="No findings could be parsed from the report — check it has a "
-                   "Findings section with one heading per finding.",
+            detail=(
+                "No findings could be parsed from the report. I look for a section "
+                "whose heading contains 'Findings', with each finding as a heading "
+                f"under it. Sections I detected: [{found}]. If your findings use a "
+                "different layout, tell me and I'll adapt the parser."
+            ),
         )
 
     # Methodology: prefer the dedicated file, else the report's methodology section.

@@ -37,9 +37,11 @@ export default function HuntsPanel({
   const toast = useToast();
   const [hunts, setHunts] = useState<Hunt[] | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [trainingChoice, setTrainingChoice] = useState(false);  // pick standard vs from-report
   const [showReportForm, setShowReportForm] = useState(false);
   const [reportFile, setReportFile] = useState<File | null>(null);
-  const [reportMeta, setReportMeta] = useState({ name: "", edr: "", siem: "", report_language: "English" });
+  const [reportDatasets, setReportDatasets] = useState<File[]>([]);
+  const [reportMeta, setReportMeta] = useState({ name: "", report_language: "English" });
   const [listTab, setListTab] = useState<"live" | "historic" | "training">("live");
   const [formKind, setFormKind] = useState<"live" | "training">("live");
   const [submitting, setSubmitting] = useState(false);
@@ -103,10 +105,12 @@ export default function HuntsPanel({
   };
 
   const openReportForm = () => {
-    setReportMeta({ name: "", edr: "", siem: "", report_language: "English" });
+    setReportMeta({ name: "", report_language: "English" });
     setReportFile(null);
+    setReportDatasets([]);
     setMethodFile(null);
     setShowForm(false);
+    setTrainingChoice(false);
     setShowReportForm(true);
   };
 
@@ -119,17 +123,28 @@ export default function HuntsPanel({
         report: reportFile,
         methodology: methodFile,
         name: reportMeta.name.trim() || undefined,
-        edr: reportMeta.edr.trim() || undefined,
-        siem: reportMeta.siem.trim() || undefined,
         report_language: reportMeta.report_language,
       });
+      // Upload the datasets straight away (analysis is still deferred — the
+      // analyst runs it from the hunt once they're in).
+      let uploaded = 0;
+      for (const f of reportDatasets) {
+        try {
+          await api.uploadDataset(tid, r.hunt.id, f);
+          uploaded += 1;
+        } catch {
+          toast.error(`Failed to upload ${f.name}.`);
+        }
+      }
       toast.success(
-        `Training hunt created from report — ${r.findings_loaded} finding(s) loaded` +
-          `${r.has_methodology ? ", methodology set" : ""}${r.has_mitre ? ", MITRE coverage parsed" : ""}. ` +
-          "Now upload the datasets to analyze.",
+        `Training hunt created — ${r.findings_loaded} finding(s) loaded` +
+          `${r.has_methodology ? ", methodology set" : ""}${r.has_mitre ? ", MITRE parsed" : ""}` +
+          `${uploaded ? `, ${uploaded} dataset(s) uploaded` : ""}. ` +
+          (uploaded ? "Open the hunt to run the analysis." : "Now upload the datasets to analyze."),
       );
       setShowReportForm(false);
       setReportFile(null);
+      setReportDatasets([]);
       setMethodFile(null);
       await load();
     } catch (err) {
@@ -174,19 +189,56 @@ export default function HuntsPanel({
         title="Hunts"
         subtitle="Hypothesis-driven hunt runs scoped to this client"
         right={
-          showForm || showReportForm ? (
-            <Button variant="ghost" onClick={() => { setShowForm(false); setShowReportForm(false); }}>
+          showForm || showReportForm || trainingChoice ? (
+            <Button
+              variant="ghost"
+              onClick={() => { setShowForm(false); setShowReportForm(false); setTrainingChoice(false); }}
+            >
               Close
             </Button>
           ) : (
             <div className="flex items-center gap-2">
               <Button onClick={() => openForm("live")}>+ New Hunt</Button>
-              <Button variant="ghost" onClick={() => openForm("training")}>+ Training Hunt</Button>
-              <Button variant="ghost" onClick={openReportForm}>+ From Report</Button>
+              <Button
+                variant="ghost"
+                onClick={() => { setShowForm(false); setShowReportForm(false); setTrainingChoice(true); }}
+              >
+                + Training Hunt
+              </Button>
             </div>
           )
         }
       />
+
+      {trainingChoice && (
+        <div className="border-b border-slate-800 bg-slate-950/40 p-4">
+          <p className="mb-3 text-xs text-slate-400">
+            Create a <b>Training Hunt</b> — its findings become training data for this client's model.
+            Choose how to provide them:
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={() => { setTrainingChoice(false); openForm("training"); }}
+              className="flex-1 rounded-lg border border-slate-700 bg-slate-900/60 p-3 text-left hover:border-indigo-600"
+            >
+              <p className="text-sm font-medium text-slate-200">Standard</p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Enter the methodology, then upload datasets and add/import the known findings yourself.
+              </p>
+            </button>
+            <button
+              onClick={openReportForm}
+              className="flex-1 rounded-lg border border-slate-700 bg-slate-900/60 p-3 text-left hover:border-indigo-600"
+            >
+              <p className="text-sm font-medium text-slate-200">From a report</p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Upload a final hunt report — LENS parses the methodology, MITRE coverage, and findings,
+                and loads them automatically.
+              </p>
+            </button>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="border-b border-slate-800 bg-slate-950/40 px-4 pt-3 text-xs text-slate-400">
@@ -225,35 +277,20 @@ export default function HuntsPanel({
               placeholder="What hypothesis is this hunt testing?"
             />
           </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div>
-              <Label>Report Language</Label>
-              <Select
-                value={form.report_language ?? "English"}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, report_language: e.target.value }))
-                }
-              >
-                <option value="English">English</option>
-                <option value="Spanish">Spanish</option>
-              </Select>
-            </div>
-            <div>
-              <Label>EDR</Label>
-              <Input
-                value={form.edr ?? ""}
-                onChange={(e) => setForm((f) => ({ ...f, edr: e.target.value }))}
-                placeholder="e.g. CrowdStrike Falcon"
-              />
-            </div>
-            <div>
-              <Label>SIEM</Label>
-              <Input
-                value={form.siem ?? ""}
-                onChange={(e) => setForm((f) => ({ ...f, siem: e.target.value }))}
-                placeholder="e.g. IBM QRadar"
-              />
-            </div>
+          <div>
+            <Label>Report Language</Label>
+            <Select
+              value={form.report_language ?? "English"}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, report_language: e.target.value }))
+              }
+            >
+              <option value="English">English</option>
+              <option value="Spanish">Spanish</option>
+            </Select>
+            <p className="mt-1 text-[11px] text-slate-600">
+              EDR &amp; SIEM are inherited from the client profile.
+            </p>
           </div>
           <div>
             <Label>Methodology — upload (.docx / .txt / .md)</Label>
@@ -317,6 +354,19 @@ export default function HuntsPanel({
             />
             {methodFile && <p className="mt-1 text-xs text-slate-500">Selected: {methodFile.name}</p>}
           </div>
+          <div>
+            <Label>Datasets (.csv) — optional, upload now or later</Label>
+            <input
+              type="file"
+              accept=".csv"
+              multiple
+              onChange={(e) => setReportDatasets(Array.from(e.target.files ?? []))}
+              className="block w-full text-sm text-slate-400 file:mr-3 file:rounded-md file:border file:border-slate-700 file:bg-slate-800 file:px-3 file:py-1.5 file:text-sm file:text-slate-200 hover:file:bg-slate-700"
+            />
+            {reportDatasets.length > 0 && (
+              <p className="mt-1 text-xs text-slate-500">{reportDatasets.length} dataset(s) selected. Analysis stays deferred until you run it from the hunt.</p>
+            )}
+          </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <Label>Name — optional (defaults to the report's filename)</Label>
@@ -336,23 +386,8 @@ export default function HuntsPanel({
                 <option value="Spanish">Spanish</option>
               </Select>
             </div>
-            <div>
-              <Label>EDR</Label>
-              <Input
-                value={reportMeta.edr}
-                onChange={(e) => setReportMeta((m) => ({ ...m, edr: e.target.value }))}
-                placeholder="e.g. CrowdStrike Falcon"
-              />
-            </div>
-            <div>
-              <Label>SIEM</Label>
-              <Input
-                value={reportMeta.siem}
-                onChange={(e) => setReportMeta((m) => ({ ...m, siem: e.target.value }))}
-                placeholder="e.g. IBM QRadar"
-              />
-            </div>
           </div>
+          <p className="text-[11px] text-slate-600">EDR &amp; SIEM are inherited from the client profile.</p>
           <Button type="submit" variant="primary" disabled={submitting || !reportFile}>
             {submitting ? <Spinner /> : "Parse report & create training hunt"}
           </Button>

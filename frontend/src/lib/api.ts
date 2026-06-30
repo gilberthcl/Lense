@@ -264,8 +264,6 @@ export const api = {
       report: File;
       methodology?: File | null;
       name?: string;
-      edr?: string;
-      siem?: string;
       report_language?: string;
     },
   ) => {
@@ -273,8 +271,6 @@ export const api = {
     fd.append("report", opts.report);
     if (opts.methodology) fd.append("methodology", opts.methodology);
     if (opts.name) fd.append("name", opts.name);
-    if (opts.edr) fd.append("edr", opts.edr);
-    if (opts.siem) fd.append("siem", opts.siem);
     fd.append("report_language", opts.report_language ?? "English");
     return request<{
       hunt: Hunt;
