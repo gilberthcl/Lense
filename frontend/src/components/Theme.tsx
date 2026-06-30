@@ -9,7 +9,7 @@ import {
 export type ThemeId = "midnight" | "graphite" | "daybreak";
 
 export const THEMES: { id: ThemeId; label: string; swatch: string }[] = [
-  { id: "midnight", label: "Midnight", swatch: "#6366f1" },
+  { id: "midnight", label: "Midnight", swatch: "#4a739e" },
   { id: "graphite", label: "Graphite", swatch: "#14b8a6" },
   { id: "daybreak", label: "Daybreak", swatch: "#e2e8f0" },
 ];
@@ -66,22 +66,23 @@ const SEMANTIC_LIGHT: VarMap = {
   "--c-violet-300": "109 40 217", "--c-violet-800": "221 214 254", "--c-violet-950": "245 243 255",
 };
 const THEME_VARS: Record<ThemeId, { scheme: "dark" | "light"; vars: VarMap }> = {
+  // Gunmetal neutrals + steel-blue accent (deeper, cooler, less violet).
   midnight: {
     scheme: "dark",
     vars: {
-      "--c-slate-50": "248 250 252", "--c-slate-100": "241 245 249",
-      "--c-slate-200": "226 232 240", "--c-slate-300": "203 213 225",
-      "--c-slate-400": "148 163 184", "--c-slate-500": "100 116 139",
-      "--c-slate-600": "71 85 105", "--c-slate-700": "51 65 85",
-      "--c-slate-800": "30 41 59", "--c-slate-900": "15 23 42",
-      "--c-slate-950": "2 6 23",
-      "--c-indigo-50": "238 242 255",
-      "--c-indigo-100": "224 231 255", "--c-indigo-200": "199 210 254",
-      "--c-indigo-300": "165 180 252", "--c-indigo-400": "129 140 248",
-      "--c-indigo-500": "99 102 241", "--c-indigo-600": "79 70 229",
-      "--c-indigo-700": "67 56 202", "--c-indigo-800": "55 48 163",
-      "--c-indigo-900": "49 46 129", "--c-indigo-950": "30 27 75",
-      "--scrollbar": "51 65 85",
+      "--c-slate-50": "245 247 250", "--c-slate-100": "236 240 245",
+      "--c-slate-200": "213 220 230", "--c-slate-300": "182 192 206",
+      "--c-slate-400": "136 149 168", "--c-slate-500": "95 108 128",
+      "--c-slate-600": "66 79 99", "--c-slate-700": "45 56 74",
+      "--c-slate-800": "25 33 47", "--c-slate-900": "13 19 30",
+      "--c-slate-950": "6 10 18",
+      "--c-indigo-50": "235 242 248",
+      "--c-indigo-100": "219 229 240", "--c-indigo-200": "181 201 223",
+      "--c-indigo-300": "140 170 203", "--c-indigo-400": "99 138 180",
+      "--c-indigo-500": "74 115 158", "--c-indigo-600": "57 92 132",
+      "--c-indigo-700": "46 74 107", "--c-indigo-800": "36 58 85",
+      "--c-indigo-900": "28 46 68", "--c-indigo-950": "17 30 46",
+      "--scrollbar": "45 56 74",
       ...SEMANTIC_DARK,
     },
   },
@@ -113,14 +114,15 @@ const THEME_VARS: Record<ThemeId, { scheme: "dark" | "light"; vars: VarMap }> = 
       "--c-slate-600": "148 163 184", "--c-slate-700": "203 213 225",
       "--c-slate-800": "222 228 237", "--c-slate-900": "255 255 255",
       "--c-slate-950": "241 245 249",
-      "--c-indigo-50": "238 242 255",
-      "--c-indigo-100": "224 231 255", "--c-indigo-200": "165 180 252",
-      "--c-indigo-300": "79 70 229", "--c-indigo-400": "99 102 241",
-      "--c-indigo-500": "99 102 241", "--c-indigo-600": "79 70 229",
-      "--c-indigo-700": "67 56 202",
-      // Dark indigo fills (badges) → light tints on light surfaces.
-      "--c-indigo-800": "165 180 252", "--c-indigo-900": "199 210 254",
-      "--c-indigo-950": "224 231 255",
+      // Steel-blue accent (matches Midnight's), mapped for light surfaces.
+      "--c-indigo-50": "235 242 248",
+      "--c-indigo-100": "219 229 240", "--c-indigo-200": "181 201 223",
+      "--c-indigo-300": "46 74 107", "--c-indigo-400": "57 92 132",
+      "--c-indigo-500": "74 115 158", "--c-indigo-600": "57 92 132",
+      "--c-indigo-700": "46 74 107",
+      // Dark steel fills (badges) → light tints on light surfaces.
+      "--c-indigo-800": "181 201 223", "--c-indigo-900": "213 226 238",
+      "--c-indigo-950": "235 242 248",
       "--scrollbar": "203 213 225",
       ...SEMANTIC_LIGHT,
     },
