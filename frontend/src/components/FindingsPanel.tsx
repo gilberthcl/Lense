@@ -114,6 +114,7 @@ function FindingDetail({
   groundTruth = false,
   datasets = [],
   learning = false,
+  learningMsg = "",
   onLearn,
 }: {
   finding: Finding;
@@ -129,6 +130,7 @@ function FindingDetail({
   groundTruth?: boolean;
   datasets?: Dataset[];
   learning?: boolean;
+  learningMsg?: string;
   onLearn?: (datasetId: string | null, findDataset: boolean) => void;
 }) {
   const [learnDataset, setLearnDataset] = useState("");
@@ -304,14 +306,18 @@ function FindingDetail({
               ))}
             </select>
           )}
-          <Button
-            variant="primary"
-            className="mt-2"
-            disabled={learning || (!learnFind && !learnDataset)}
-            onClick={() => onLearn?.(learnFind ? null : learnDataset, learnFind)}
-          >
-            {learning ? <Spinner /> : "Analyze & learn"}
-          </Button>
+          <div className="mt-2 flex items-center gap-2">
+            <Button
+              variant="primary"
+              disabled={learning || (!learnFind && !learnDataset)}
+              onClick={() => onLearn?.(learnFind ? null : learnDataset, learnFind)}
+            >
+              {learning ? <Spinner /> : "Analyze & learn"}
+            </Button>
+            {learning && (
+              <span className="text-[11px] text-slate-400">{learningMsg || "Working…"}</span>
+            )}
+          </div>
         </div>
       )}
 
@@ -566,6 +572,7 @@ export default function FindingsPanel({
   const [showMerged, setShowMerged] = useState(false);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [learningId, setLearningId] = useState<string | null>(null);
+  const [learnMsg, setLearnMsg] = useState("");
 
   // Training hunts only: load the datasets so a ground-truth finding can be learned
   // against a chosen one.
@@ -685,12 +692,13 @@ export default function FindingsPanel({
 
   const onLearn = async (finding: Finding, datasetId: string | null, findDataset: boolean) => {
     setLearningId(finding.id);
+    setLearnMsg(findDataset ? "Locating the dataset…" : "Analyzing…");
     try {
       const job = await api.learnFromFinding(tid, hid, finding.id, {
         dataset_id: datasetId ? Number(datasetId) : null,
         find_dataset: findDataset,
       });
-      const final = await pollJob(tid, hid, job.id, () => {});
+      const final = await pollJob(tid, hid, job.id, (j) => setLearnMsg(j.current_task ?? ""));
       if (final.status === "error") {
         toast.error(final.error ?? "Could not learn from this finding.");
       } else {
@@ -703,6 +711,7 @@ export default function FindingsPanel({
       toast.error(e instanceof ApiError ? e.message : "Learn failed.");
     } finally {
       setLearningId(null);
+      setLearnMsg("");
     }
   };
 
@@ -930,6 +939,7 @@ export default function FindingsPanel({
                               groundTruth={isGroundTruth(f)}
                               datasets={datasets}
                               learning={learningId === f.id}
+                              learningMsg={learningId === f.id ? learnMsg : ""}
                               onLearn={(datasetId, findDataset) => onLearn(f, datasetId, findDataset)}
                             />
                           </td>

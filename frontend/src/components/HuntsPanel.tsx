@@ -125,6 +125,9 @@ export default function HuntsPanel({
         name: reportMeta.name.trim() || undefined,
         report_language: reportMeta.report_language,
       });
+      // Comprehend the methodology now (it only reads the methodology doc — no
+      // datasets needed), so the Methodology tab isn't blank on first open.
+      if (r.has_methodology) api.analyzeMethodology(tid, r.hunt.id).catch(() => undefined);
       // Upload the datasets straight away (analysis is still deferred — the
       // analyst runs it from the hunt once they're in).
       let uploaded = 0;

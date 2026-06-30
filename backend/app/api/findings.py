@@ -626,12 +626,11 @@ def _learn_from_existing_finding(tenant_id: int, hunt_id: int, finding_id: int, 
 
         prog(f"Analyzing {finding.finding_ref} against {dataset.filename} — learning the logic…", 90)
         try:
-            out = missed_finding.analyze(dataset.filename, evidence, description, model=model)
+            logic, lesson = missed_finding.learn_logic(dataset.filename, evidence, description, model=model)
         except ollama.OllamaError as exc:
             _finish_job(db, job, error=f"Analysis failed: {exc}" + model_fit.weak_model_suffix(model))
             return
-        _, why, lessons = missed_finding.parse_result(out)
-        if not (why or lessons):
+        if not (logic or lesson):
             _finish_job(db, job, error=(
                 "The model couldn't extract the detection logic from this dataset."
                 + model_fit.weak_model_suffix(model)
@@ -639,7 +638,12 @@ def _learn_from_existing_finding(tenant_id: int, hunt_id: int, finding_id: int, 
             return
 
         # Record learning ONLY — the historical finding stays untouched.
-        summary = missed_finding.lessons_summary(why, lessons) or f"Learned logic for {finding.finding_ref}"
+        parts = []
+        if logic:
+            parts.append(f"Detection logic: {logic}")
+        if lesson:
+            parts.append(f"Lesson: {lesson}")
+        summary = "\n".join(parts) or f"Learned logic for {finding.finding_ref}"
         learning.record_event(
             db, tenant_id=tenant_id, hunt_id=hunt_id, stage="finding",
             source="training_hunt", target_type="finding", target_id=finding.id,
@@ -648,7 +652,7 @@ def _learn_from_existing_finding(tenant_id: int, hunt_id: int, finding_id: int, 
         _finish_job(db, job, result={
             "learned": True, "finding_ref": finding.finding_ref,
             "dataset": dataset.filename, "also_in": also_in,
-            "why": why, "lessons": lessons,
+            "detection_logic": logic, "lesson": lesson,
         })
     except Exception as exc:  # noqa: BLE001
         db.rollback()

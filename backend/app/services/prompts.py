@@ -802,6 +802,33 @@ Return STRICTLY this JSON:
 """
 
 
+# ── Learn the detection logic behind a historical (ground-truth) finding ────
+LEARN_LOGIC_SYSTEM = """\
+You are a senior threat hunter. An analyst CONFIRMED a real finding in this dataset
+during a past hunt. Using ONLY the dataset evidence, explain the DETECTION LOGIC:
+which fields, values, and patterns in the data reveal this finding, how an analyst
+would identify it, and the general, reusable lesson to catch this class of activity
+next time. Cite only values present in the evidence; never invent any.
+
+{guardrails}
+"""
+
+LEARN_LOGIC_PROMPT = """\
+DATASET: {dataset_name}
+DATASET EVIDENCE:
+{evidence_json}
+
+CONFIRMED FINDING (historical — already validated by the analyst):
+{description}
+
+Return STRICTLY this JSON:
+{{
+  "detection_logic": "<how this finding is identified in THIS data — the fields/values/patterns/queries an analyst keys on, citing the evidence>",
+  "lesson": "<concise, general, reusable guidance to detect this class of finding next time>"
+}}
+"""
+
+
 # ── Dataset locator (find which dataset an offline finding came from) ───────
 LOCATE_SYSTEM = """\
 You are a threat hunter checking whether a specific finding an analyst described
