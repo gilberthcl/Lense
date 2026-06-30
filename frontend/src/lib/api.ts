@@ -257,6 +257,34 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  // Create a Training Hunt from a final report (.docx): parses sections + findings.
+  createHuntFromReport: (
+    tid: string,
+    opts: {
+      report: File;
+      methodology?: File | null;
+      name?: string;
+      edr?: string;
+      siem?: string;
+      report_language?: string;
+    },
+  ) => {
+    const fd = new FormData();
+    fd.append("report", opts.report);
+    if (opts.methodology) fd.append("methodology", opts.methodology);
+    if (opts.name) fd.append("name", opts.name);
+    if (opts.edr) fd.append("edr", opts.edr);
+    if (opts.siem) fd.append("siem", opts.siem);
+    fd.append("report_language", opts.report_language ?? "English");
+    return request<{
+      hunt: Hunt;
+      findings_loaded: number;
+      finding_titles: string[];
+      section_names: string[];
+      has_methodology: boolean;
+      has_mitre: boolean;
+    }>(`/api/tenants/${tid}/hunts/from-report`, { method: "POST", body: fd });
+  },
   getHunt: (tid: string, hid: string) =>
     request<Hunt>(`/api/tenants/${tid}/hunts/${hid}`),
   deleteHunt: (tid: string, hid: string) =>

@@ -1,5 +1,5 @@
 from fastapi import (
-    APIRouter, BackgroundTasks, Body, Depends, File, HTTPException, UploadFile,
+    APIRouter, BackgroundTasks, Body, Depends, File, Form, HTTPException, UploadFile,
 )
 from sqlalchemy.orm import Session
 
@@ -11,8 +11,8 @@ from app.schemas import HuntCreate, HuntOut, HuntUpdate, JobOut, StageFeedback
 import time
 
 from app.services import (
-    doc_loader, jobs, learning, methodology, methodology_parser, tenant_models,
-    training_review,
+    categories, doc_loader, jobs, learning, methodology, methodology_parser,
+    report_parser, tenant_models, training_review,
 )
 from app.services import ollama_client as ollama
 from app.services.analysis_runner import ensure_methodology_brief
@@ -67,6 +67,100 @@ def create_hunt(
     db.commit()
     db.refresh(hunt)
     return hunt
+
+
+def _load_report_findings(db: Session, tenant_id: int, hunt_id: int,
+                          findings: list[dict]) -> int:
+    """Load parsed report findings as ground-truth Finding rows (validated, added),
+    raw title+body, NO dataset analysis. They are the 'answer key' a training hunt
+    compares its own analysis against once datasets arrive. Records a training
+    learning signal per finding."""
+    loaded = 0
+    for i, rf in enumerate(findings, start=1):
+        title = (rf.get("title") or "").strip()
+        if not title:
+            continue
+        finding = Finding(
+            tenant_id=tenant_id, hunt_id=hunt_id, dataset_id=None,
+            finding_ref=f"F-{i:03d}",
+            title=title[:400],
+            category=categories.normalize("unconfirmed"),
+            summary=(rf.get("body") or "")[:6000] or None,
+            source_dataset="(from report)",
+            reviewer_notes="Ground truth loaded from the final report.",
+            status="validated", disposition="added",
+        )
+        db.add(finding)
+        db.flush()
+        learning.record_event(
+            db, tenant_id=tenant_id, hunt_id=hunt_id, stage="finding",
+            source="training_hunt", target_type="finding", target_id=finding.id,
+            disposition="added", summary=f"Report finding: {title}",
+        )
+        loaded += 1
+    db.commit()
+    return loaded
+
+
+@router.post("/from-report", status_code=201)
+async def create_hunt_from_report(
+    report: UploadFile = File(...),
+    methodology: UploadFile | None = File(None),
+    name: str | None = Form(None),
+    edr: str | None = Form(None),
+    siem: str | None = Form(None),
+    report_language: str = Form("English"),
+    tenant: Tenant = Depends(get_tenant),
+    db: Session = Depends(get_db),
+):
+    """Create a TRAINING hunt from a final hunt report (.docx). LENS parses the
+    report into its sections — methodology / action plan, MITRE coverage, and the
+    findings — and loads the findings as ground truth. NO analysis runs yet: the
+    analyst then uploads the datasets and the normal analysis + training proceeds.
+    A separate methodology file (optional) overrides the report's methodology."""
+    data = await report.read()
+    try:
+        parsed = report_parser.parse_report_docx(data)
+    except Exception as exc:  # noqa: BLE001 — unreadable / not a .docx
+        raise HTTPException(status_code=422, detail=f"Could not parse the report: {exc}") from exc
+
+    if not parsed["findings"]:
+        raise HTTPException(
+            status_code=422,
+            detail="No findings could be parsed from the report — check it has a "
+                   "Findings section with one heading per finding.",
+        )
+
+    # Methodology: prefer the dedicated file, else the report's methodology section.
+    methodology_text = parsed.get("methodology_text") or ""
+    if methodology is not None and methodology.filename:
+        try:
+            methodology_text = doc_loader.extract_text(methodology.filename, await methodology.read())
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    hunt_name = (name or "").strip() or (report.filename or "Imported report").rsplit(".", 1)[0]
+    hunt = Hunt(
+        tenant_id=tenant.id, name=hunt_name[:200],
+        objective=(parsed["sections"].get("Executive Summary") or "")[:2000] or None,
+        methodology_text=methodology_text or None,
+        report_language=report_language or "English",
+        edr=edr, siem=siem, kind="training",
+    )
+    db.add(hunt)
+    db.commit()
+    db.refresh(hunt)
+
+    loaded = _load_report_findings(db, tenant.id, hunt.id, parsed["findings"])
+
+    return {
+        "hunt": HuntOut.model_validate(hunt).model_dump(),
+        "findings_loaded": loaded,
+        "finding_titles": [f["title"] for f in parsed["findings"]],
+        "section_names": parsed["section_names"],
+        "has_methodology": bool(methodology_text),
+        "has_mitre": bool(parsed["mitre_table"]),
+    }
 
 
 @router.get("/{hunt_id}", response_model=HuntOut)

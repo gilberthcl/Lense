@@ -37,6 +37,9 @@ export default function HuntsPanel({
   const toast = useToast();
   const [hunts, setHunts] = useState<Hunt[] | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [showReportForm, setShowReportForm] = useState(false);
+  const [reportFile, setReportFile] = useState<File | null>(null);
+  const [reportMeta, setReportMeta] = useState({ name: "", edr: "", siem: "", report_language: "English" });
   const [listTab, setListTab] = useState<"live" | "historic" | "training">("live");
   const [formKind, setFormKind] = useState<"live" | "training">("live");
   const [submitting, setSubmitting] = useState(false);
@@ -99,6 +102,43 @@ export default function HuntsPanel({
     }
   };
 
+  const openReportForm = () => {
+    setReportMeta({ name: "", edr: "", siem: "", report_language: "English" });
+    setReportFile(null);
+    setMethodFile(null);
+    setShowForm(false);
+    setShowReportForm(true);
+  };
+
+  const onSubmitReport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reportFile) return toast.error("Upload the final hunt report (.docx).");
+    setSubmitting(true);
+    try {
+      const r = await api.createHuntFromReport(tid, {
+        report: reportFile,
+        methodology: methodFile,
+        name: reportMeta.name.trim() || undefined,
+        edr: reportMeta.edr.trim() || undefined,
+        siem: reportMeta.siem.trim() || undefined,
+        report_language: reportMeta.report_language,
+      });
+      toast.success(
+        `Training hunt created from report — ${r.findings_loaded} finding(s) loaded` +
+          `${r.has_methodology ? ", methodology set" : ""}${r.has_mitre ? ", MITRE coverage parsed" : ""}. ` +
+          "Now upload the datasets to analyze.",
+      );
+      setShowReportForm(false);
+      setReportFile(null);
+      setMethodFile(null);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Could not parse the report.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const liveHunts = (hunts ?? []).filter((h) => h.kind !== "training" && h.status !== "completed");
   // Completed hunts — live or training — move to Historic ("previous hunts").
   const historicHunts = (hunts ?? []).filter((h) => h.status === "completed");
@@ -134,12 +174,15 @@ export default function HuntsPanel({
         title="Hunts"
         subtitle="Hypothesis-driven hunt runs scoped to this client"
         right={
-          showForm ? (
-            <Button variant="ghost" onClick={() => setShowForm(false)}>Close</Button>
+          showForm || showReportForm ? (
+            <Button variant="ghost" onClick={() => { setShowForm(false); setShowReportForm(false); }}>
+              Close
+            </Button>
           ) : (
             <div className="flex items-center gap-2">
               <Button onClick={() => openForm("live")}>+ New Hunt</Button>
               <Button variant="ghost" onClick={() => openForm("training")}>+ Training Hunt</Button>
+              <Button variant="ghost" onClick={openReportForm}>+ From Report</Button>
             </div>
           )
         }
@@ -242,6 +285,76 @@ export default function HuntsPanel({
           </p>
           <Button type="submit" variant="primary" disabled={submitting}>
             {submitting ? <Spinner /> : (formKind === "training" ? "Create Training Hunt" : "Create Hunt")}
+          </Button>
+        </form>
+      )}
+
+      {showReportForm && (
+        <form onSubmit={onSubmitReport} className="space-y-3 border-b border-slate-800 bg-slate-950/40 p-4">
+          <p className="text-xs text-amber-300">
+            <b>Training Hunt from a final report.</b> LENS parses the report into its sections —
+            methodology / action plan, MITRE coverage, and the findings — and loads the findings as
+            ground truth. <b>No analysis runs yet</b>: upload the datasets afterwards and the normal
+            analysis + training proceeds.
+          </p>
+          <div>
+            <Label>Final hunt report (.docx) — required</Label>
+            <input
+              type="file"
+              accept=".docx"
+              onChange={(e) => setReportFile(e.target.files?.[0] ?? null)}
+              className="block w-full text-sm text-slate-400 file:mr-3 file:rounded-md file:border file:border-slate-700 file:bg-slate-800 file:px-3 file:py-1.5 file:text-sm file:text-slate-200 hover:file:bg-slate-700"
+            />
+            {reportFile && <p className="mt-1 text-xs text-slate-500">Selected: {reportFile.name}</p>}
+          </div>
+          <div>
+            <Label>Methodology file (.docx / .txt / .md) — optional (overrides the report's)</Label>
+            <input
+              type="file"
+              accept=".docx,.txt,.md,.markdown"
+              onChange={(e) => setMethodFile(e.target.files?.[0] ?? null)}
+              className="block w-full text-sm text-slate-400 file:mr-3 file:rounded-md file:border file:border-slate-700 file:bg-slate-800 file:px-3 file:py-1.5 file:text-sm file:text-slate-200 hover:file:bg-slate-700"
+            />
+            {methodFile && <p className="mt-1 text-xs text-slate-500">Selected: {methodFile.name}</p>}
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <Label>Name — optional (defaults to the report's filename)</Label>
+              <Input
+                value={reportMeta.name}
+                onChange={(e) => setReportMeta((m) => ({ ...m, name: e.target.value }))}
+                placeholder="e.g. Handala / Void Manticore — Jan 2026"
+              />
+            </div>
+            <div>
+              <Label>Report Language</Label>
+              <Select
+                value={reportMeta.report_language}
+                onChange={(e) => setReportMeta((m) => ({ ...m, report_language: e.target.value }))}
+              >
+                <option value="English">English</option>
+                <option value="Spanish">Spanish</option>
+              </Select>
+            </div>
+            <div>
+              <Label>EDR</Label>
+              <Input
+                value={reportMeta.edr}
+                onChange={(e) => setReportMeta((m) => ({ ...m, edr: e.target.value }))}
+                placeholder="e.g. CrowdStrike Falcon"
+              />
+            </div>
+            <div>
+              <Label>SIEM</Label>
+              <Input
+                value={reportMeta.siem}
+                onChange={(e) => setReportMeta((m) => ({ ...m, siem: e.target.value }))}
+                placeholder="e.g. IBM QRadar"
+              />
+            </div>
+          </div>
+          <Button type="submit" variant="primary" disabled={submitting || !reportFile}>
+            {submitting ? <Spinner /> : "Parse report & create training hunt"}
           </Button>
         </form>
       )}
