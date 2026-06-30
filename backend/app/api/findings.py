@@ -452,12 +452,13 @@ def add_missed_finding(
 
 
 def _learn_from_match(db: Session, tenant_id: int, hunt_id: int, ds, evidence: dict,
-                      description: str, source: str, model: str | None) -> dict | None:
-    """Reconstruct + learn one grounded finding from a confirmed dataset (the same
-    analysis the known-dataset path runs). Returns a summary dict, or None if the
-    model couldn't reconstruct a structured finding from this dataset — including
-    when its response wasn't parseable JSON. Resilient per-dataset: one bad model
-    response must NOT abort the whole multi-dataset learn."""
+                      description: str, source: str, model: str | None,
+                      also_in: list[str] | None = None) -> dict | None:
+    """Reconstruct + learn ONE grounded finding from the confirmed dataset (the
+    same analysis the known-dataset path runs). `also_in` names the other datasets
+    the finding was also observed in — recorded as context, NOT as duplicate
+    findings. Returns a summary dict, or None if the model couldn't reconstruct a
+    structured finding (incl. unparseable JSON — resilient, never aborts)."""
     from app.services.analysis_runner import _next_finding_seq  # lazy: avoid cycle
 
     try:
@@ -467,6 +468,9 @@ def _learn_from_match(db: Session, tenant_id: int, hunt_id: int, ds, evidence: d
     f, why, lessons = missed_finding.parse_result(out)
     if not f.get("title"):
         return None
+    if also_in:
+        note = "Also observed in: " + ", ".join(also_in)
+        why = f"{why}\n{note}" if why else note
     ref = _next_finding_seq(db, hunt_id)
     finding = _build_finding(tenant_id, hunt_id, ds, ref, f, evidence, why=why)
     db.add(finding)
@@ -487,10 +491,11 @@ def _learn_from_match(db: Session, tenant_id: int, hunt_id: int, ds, evidence: d
 
 def _locate_and_learn(tenant_id: int, hunt_id: int, job_id: int, description: str,
                       model: str | None) -> None:
-    """Background worker: find which dataset(s) the finding came from (descriptive-
-    name priority), reconstruct + learn from each, and — when it spans more than
-    one dataset — correlate them, just as the live pipeline would."""
-    from app.services import correlation_runner, model_fit
+    """Background worker: find which dataset the finding came from (descriptive-name
+    priority), then reconstruct + learn ONE finding from the best match. A single
+    pasted finding produces a SINGLE finding — never one duplicate per dataset; the
+    other matching datasets are recorded on it as 'also observed in'."""
+    from app.services import model_fit
 
     db = SessionLocal()
     try:
@@ -510,50 +515,30 @@ def _locate_and_learn(tenant_id: int, hunt_id: int, job_id: int, description: st
             _finish_job(db, job, error=res.get("note") or "Could not locate the dataset.")
             return
 
-        # Don't list every (long) filename in the short progress field — the full
-        # list goes in the final result. Just the count here.
-        prog(f"Found in {len(matches)} dataset(s) — reconstructing & learning…", 88)
+        # matches are ranked best-first. Ground the ONE finding in the best match;
+        # name the others as context so we don't create duplicate findings.
+        best = matches[0]
+        also_in = [m["dataset"].filename for m in matches[1:]]
+        prog(f"Found in {best['dataset'].filename} — reconstructing & learning…", 88)
         hunt = db.get(Hunt, hunt_id)
         source = "training_hunt" if hunt and hunt.kind == "training" else "missed_finding"
 
-        created: list[dict] = []
-        for m in matches:
-            summary = _learn_from_match(
-                db, tenant_id, hunt_id, m["dataset"], m["evidence"], description, source, model
-            )
-            if summary:
-                created.append(summary)
-
-        if not created:
+        summary = _learn_from_match(
+            db, tenant_id, hunt_id, best["dataset"], best["evidence"],
+            description, source, model, also_in=also_in,
+        )
+        if not summary:
             _finish_job(db, job, error=(
-                "Located the dataset(s) but couldn't reconstruct a structured finding — "
+                "Located the dataset but couldn't reconstruct a structured finding — "
                 "add more detail." + model_fit.weak_model_suffix(model)
             ))
             return
 
-        # A finding that spans more than one dataset needs correlation — run it now
-        # so the pieces are linked into an incident/chain, same as the live pipeline.
-        correlated = False
-        if len(created) > 1:
-            prog("Correlating the findings across datasets…", 95)
-            corr = AnalysisJob(
-                tenant_id=tenant_id, hunt_id=hunt_id, phase="correlation", status="queued",
-            )
-            db.add(corr)
-            db.commit()
-            db.refresh(corr)
-            try:
-                correlation_runner.run_correlation(db, corr.id)
-                correlated = True
-            except Exception:  # noqa: BLE001 — never fail learning because of correlation
-                pass
-
         _finish_job(db, job, result={
             "located": True, "kind": source,
-            "findings": created,
-            "finding_refs": [c["ref"] for c in created],
-            "datasets": [c["dataset"] for c in created],
-            "correlated": correlated,
+            "finding_refs": [summary["ref"]],
+            "datasets": [summary["dataset"]],
+            "also_in": also_in,
             "checked": res.get("checked"),
         })
     except Exception as exc:  # noqa: BLE001 — record any failure on the job

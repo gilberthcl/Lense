@@ -72,14 +72,14 @@ export default function MissedFindingWizard({
         const r = (final.result ?? {}) as {
           datasets?: string[];
           finding_refs?: string[];
-          correlated?: boolean;
+          also_in?: string[];
         };
-        const ds = r.datasets ?? [];
+        const where = (r.datasets ?? [])[0] ?? "a dataset";
         const refs = r.finding_refs ?? [];
-        const where = ds.length > 1 ? `${ds.length} datasets (${ds.join(", ")})` : ds[0] ?? "a dataset";
+        const extra = (r.also_in ?? []).length;
         toast.success(
           `Found in ${where} — added ${refs.join(", ") || "the finding"} and learned from it` +
-            (r.correlated ? ", then correlated across datasets." : "."),
+            (extra ? ` (also seen in ${extra} other dataset${extra > 1 ? "s" : ""}).` : "."),
         );
         onAdded();
       }
